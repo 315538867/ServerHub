@@ -1,0 +1,286 @@
+package alerts
+
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/pkg/crypto"
+	"github.com/serverhub/serverhub/pkg/resp"
+	"gorm.io/gorm"
+)
+
+func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+	// Rules
+	r.GET("/rules", listRules(db))
+	r.POST("/rules", createRule(db))
+	r.PUT("/rules/:id", updateRule(db))
+	r.DELETE("/rules/:id", deleteRule(db))
+
+	// Events
+	r.GET("/events", listEvents(db))
+	r.DELETE("/events", clearEvents(db))
+
+	// Channels
+	r.GET("/channels", listChannels(db, cfg))
+	r.POST("/channels", createChannel(db, cfg))
+	r.PUT("/channels/:id", updateChannel(db, cfg))
+	r.DELETE("/channels/:id", deleteChannel(db))
+	r.POST("/channels/:id/test", testChannel(db, cfg))
+}
+
+// ── Rules ─────────────────────────────────────────────────────────────────────
+
+func listRules(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var rules []model.AlertRule
+		db.Order("id asc").Find(&rules)
+		resp.OK(c, rules)
+	}
+}
+
+func createRule(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body struct {
+			ServerID  uint    `json:"server_id"`
+			Metric    string  `json:"metric"    binding:"required"`
+			Operator  string  `json:"operator"`
+			Threshold float64 `json:"threshold"`
+			Duration  int     `json:"duration"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			resp.BadRequest(c, "指标类型不能为空")
+			return
+		}
+		if body.Operator == "" {
+			body.Operator = "gt"
+		}
+		if body.Duration < 1 {
+			body.Duration = 1
+		}
+		rule := model.AlertRule{
+			ServerID: body.ServerID, Metric: body.Metric, Operator: body.Operator,
+			Threshold: body.Threshold, Duration: body.Duration, Enabled: true,
+		}
+		db.Create(&rule)
+		resp.OK(c, rule)
+	}
+}
+
+func updateRule(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, _ := strconv.Atoi(c.Param("id"))
+		var rule model.AlertRule
+		if err := db.First(&rule, id).Error; err != nil {
+			resp.NotFound(c, "资源不存在")
+			return
+		}
+		var body struct {
+			Operator  *string  `json:"operator"`
+			Threshold *float64 `json:"threshold"`
+			Duration  *int     `json:"duration"`
+			Enabled   *bool    `json:"enabled"`
+		}
+		c.ShouldBindJSON(&body) //nolint:errcheck
+		if body.Operator != nil {
+			rule.Operator = *body.Operator
+		}
+		if body.Threshold != nil {
+			rule.Threshold = *body.Threshold
+		}
+		if body.Duration != nil {
+			rule.Duration = *body.Duration
+		}
+		if body.Enabled != nil {
+			rule.Enabled = *body.Enabled
+		}
+		db.Save(&rule)
+		resp.OK(c, rule)
+	}
+}
+
+func deleteRule(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, _ := strconv.Atoi(c.Param("id"))
+		db.Delete(&model.AlertRule{}, id)
+		resp.OK(c, nil)
+	}
+}
+
+// ── Events ────────────────────────────────────────────────────────────────────
+
+func listEvents(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+		size, _ := strconv.Atoi(c.DefaultQuery("size", "50"))
+		if page < 1 {
+			page = 1
+		}
+		if size < 1 || size > 200 {
+			size = 50
+		}
+		var events []model.AlertEvent
+		var total int64
+		db.Model(&model.AlertEvent{}).Count(&total)
+		db.Order("sent_at desc").Offset((page - 1) * size).Limit(size).Find(&events)
+		resp.OK(c, gin.H{"total": total, "events": events})
+	}
+}
+
+func clearEvents(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		db.Where("sent_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&model.AlertEvent{})
+		resp.OK(c, nil)
+	}
+}
+
+// ── Channels ──────────────────────────────────────────────────────────────────
+
+type channelResp struct {
+	ID        uint      `json:"id"`
+	Name      string    `json:"name"`
+	Type      string    `json:"type"`
+	Template  string    `json:"template"`
+	Enabled   bool      `json:"enabled"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func listChannels(db *gorm.DB, _ *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var channels []model.NotifyChannel
+		db.Find(&channels)
+		result := make([]channelResp, len(channels))
+		for i, ch := range channels {
+			result[i] = channelResp{ID: ch.ID, Name: ch.Name, Type: ch.Type,
+				Template: ch.Template, Enabled: ch.Enabled, CreatedAt: ch.CreatedAt}
+		}
+		resp.OK(c, result)
+	}
+}
+
+func createChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var body struct {
+			Name     string `json:"name"     binding:"required"`
+			Type     string `json:"type"     binding:"required"`
+			URL      string `json:"url"      binding:"required"`
+			Template string `json:"template"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			resp.BadRequest(c, "名称、类型和 URL 不能为空")
+			return
+		}
+		encURL, err := crypto.Encrypt(body.URL, cfg.Security.AESKey)
+		if err != nil {
+			resp.InternalError(c, "加密失败")
+			return
+		}
+		ch := model.NotifyChannel{Name: body.Name, Type: body.Type, URL: encURL,
+			Template: body.Template, Enabled: true}
+		db.Create(&ch)
+		resp.OK(c, channelResp{ID: ch.ID, Name: ch.Name, Type: ch.Type,
+			Template: ch.Template, Enabled: ch.Enabled, CreatedAt: ch.CreatedAt})
+	}
+}
+
+func updateChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, _ := strconv.Atoi(c.Param("id"))
+		var ch model.NotifyChannel
+		if err := db.First(&ch, id).Error; err != nil {
+			resp.NotFound(c, "资源不存在")
+			return
+		}
+		var body struct {
+			Name     *string `json:"name"`
+			URL      *string `json:"url"`
+			Template *string `json:"template"`
+			Enabled  *bool   `json:"enabled"`
+		}
+		c.ShouldBindJSON(&body) //nolint:errcheck
+		if body.Name != nil {
+			ch.Name = *body.Name
+		}
+		if body.URL != nil && *body.URL != "" {
+			enc, err := crypto.Encrypt(*body.URL, cfg.Security.AESKey)
+			if err == nil {
+				ch.URL = enc
+			}
+		}
+		if body.Template != nil {
+			ch.Template = *body.Template
+		}
+		if body.Enabled != nil {
+			ch.Enabled = *body.Enabled
+		}
+		db.Save(&ch)
+		resp.OK(c, channelResp{ID: ch.ID, Name: ch.Name, Type: ch.Type,
+			Template: ch.Template, Enabled: ch.Enabled, CreatedAt: ch.CreatedAt})
+	}
+}
+
+func deleteChannel(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, _ := strconv.Atoi(c.Param("id"))
+		db.Delete(&model.NotifyChannel{}, id)
+		resp.OK(c, nil)
+	}
+}
+
+func testChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, _ := strconv.Atoi(c.Param("id"))
+		var ch model.NotifyChannel
+		if err := db.First(&ch, id).Error; err != nil {
+			resp.NotFound(c, "资源不存在")
+			return
+		}
+		rawURL, err := crypto.Decrypt(ch.URL, cfg.Security.AESKey)
+		if err != nil {
+			resp.InternalError(c, "解密失败")
+			return
+		}
+		testRule := model.AlertRule{Metric: "cpu", Operator: "gt", Threshold: 80}
+		testSrv := model.Server{Name: "测试服务器"}
+		go sendTestWebhook(ch.Type, rawURL, ch.Template, testSrv, testRule)
+		resp.OK(c, gin.H{"message": "测试通知已发送"})
+	}
+}
+
+func sendTestWebhook(chType, rawURL, template string, srv model.Server, rule model.AlertRule) {
+	msg := "[测试] ServerHub 告警通知测试消息"
+	if template != "" {
+		msg = strings.NewReplacer(
+			"{{.Server}}", srv.Name,
+			"{{.Metric}}", rule.Metric,
+			"{{.Value}}", "99.9",
+			"{{.Time}}", time.Now().Format("2006-01-02 15:04:05"),
+		).Replace(template)
+	}
+	sendWebhookRaw(chType, rawURL, msg)
+}
+
+func sendWebhookRaw(chType, rawURL, text string) {
+	var payload []byte
+	switch chType {
+	case "webhook_wechat", "webhook_dingtalk":
+		payload, _ = json.Marshal(map[string]any{"msgtype": "text", "text": map[string]string{"content": text}})
+	default:
+		payload, _ = json.Marshal(map[string]string{"content": text, "message": text})
+	}
+	req, err := http.NewRequest("POST", rawURL, strings.NewReader(string(payload)))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err == nil {
+		resp.Body.Close()
+	}
+}

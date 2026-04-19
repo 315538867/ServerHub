@@ -1,0 +1,1 @@
+import{i as r}from"./index-BKf5cmUj.js";function n(){return r.get("/servers")}function u(e){return r.post("/servers",e)}function o(e,t){return r.put(`/servers/${e}`,t)}function v(e){return r.delete(`/servers/${e}`)}function a(e){return r.post(`/servers/${e}/test`)}export{u as c,v as d,n as g,a as t,o as u};

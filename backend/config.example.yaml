@@ -1,0 +1,30 @@
+server:
+  port: 9999
+  data_dir: /opt/serverhub
+
+security:
+  jwt_secret: "replace-with-64-char-random-string-generated-by-serverhub-init"
+  aes_key: "replace-with-32-byte-hex-key-generated-by-serverhub-init-cmd"
+  allow_register: false
+  login_max_attempts: 5
+  login_lockout_min: 15
+
+certbot:
+  email: "admin@yourdomain.com"
+  webroot: /opt/serverhub/acme
+
+nginx:
+  conf_dir: /etc/nginx/conf.d
+  reload_cmd: "nginx -s reload"
+  test_cmd: "nginx -t"
+
+log:
+  level: info
+  file: /opt/serverhub/logs/serverhub.log
+  max_size_mb: 100
+  max_days: 30
+
+scheduler:
+  metrics_interval_sec: 5
+  cert_check_hour: 2
+  deploy_log_keep_days: 30
