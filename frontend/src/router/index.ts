@@ -26,6 +26,7 @@ const router = createRouter({
           redirect: (to) => `${to.path}/overview`,
           children: [
             { path: 'overview', name: 'AppOverview', component: () => import('@/views/Apps/Overview.vue') },
+            { path: 'nginx', name: 'AppNginx', component: () => import('@/views/Apps/NginxRoutes.vue') },
             { path: 'domain', name: 'AppDomain', component: () => import('@/views/Apps/Domain.vue') },
             { path: 'service', name: 'AppService', component: () => import('@/views/Apps/Service.vue') },
             { path: 'deploy', name: 'AppDeploy', component: () => import('@/views/Apps/Deploy.vue') },

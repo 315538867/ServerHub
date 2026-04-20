@@ -13,6 +13,7 @@ import (
 	apialerts "github.com/serverhub/serverhub/api/alerts"
 	apiapplication "github.com/serverhub/serverhub/api/application"
 	apiaudit "github.com/serverhub/serverhub/api/audit"
+	apiapproutes "github.com/serverhub/serverhub/api/approutes"
 	apiauth "github.com/serverhub/serverhub/api/auth"
 	apidatabase "github.com/serverhub/serverhub/api/database"
 	apideploy "github.com/serverhub/serverhub/api/deploy"
@@ -126,7 +127,9 @@ func main() {
 	apideploy.RegisterWebhookRoutes(base.Group("/webhooks"), db, cfg)
 	apimetrics.RegisterRoutes(protected.Group("/metrics"), db)
 	apisettings.RegisterRoutes(protected.Group("/settings"), db, cfg)
-	apiapplication.RegisterRoutes(protected.Group("/apps"), db, cfg)
+	appsGroup := protected.Group("/apps")
+	apiapplication.RegisterRoutes(appsGroup, db, cfg)
+	apiapproutes.RegisterRoutes(appsGroup, db, cfg)
 	apiaudit.RegisterRoutes(protected.Group("/audit"), db)
 
 	// Terminal: auth via ?token= query param (WS upgrade), no Audit middleware

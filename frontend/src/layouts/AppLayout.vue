@@ -53,6 +53,7 @@ const statusLabel = computed(() => {
 
 const tabs = [
   { value: 'overview', label: '概览' },
+  { value: 'nginx',    label: '路由配置' },
   { value: 'domain',   label: '域名' },
   { value: 'service',  label: '服务' },
   { value: 'deploy',   label: '部署' },

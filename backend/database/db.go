@@ -54,6 +54,7 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.AlertEvent{},
 		&model.NotifyChannel{},
 		&model.Application{},
+		&model.AppNginxRoute{},
 	); err != nil {
 		panic(fmt.Sprintf("migration failed: %v", err))
 	}

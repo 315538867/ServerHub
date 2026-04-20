@@ -56,6 +56,15 @@
               <label class="form-label">Nginx 站点</label>
               <t-input v-model="form.site_name" placeholder="conf.d 中的配置文件名（可选）" />
             </div>
+            <div class="form-field">
+              <label class="form-label">Nginx 暴露方式</label>
+              <t-radio-group v-model="form.expose_mode" variant="default-filled">
+                <t-radio-button value="none">不暴露</t-radio-button>
+                <t-radio-button value="path">路径转发</t-radio-button>
+                <t-radio-button value="site">独立站点</t-radio-button>
+              </t-radio-group>
+              <span class="form-hint">创建后可在「路由配置」Tab 中详细设置</span>
+            </div>
           </div>
         </div>
 
@@ -88,6 +97,7 @@ const form = reactive({
   name: '', description: '',
   server_id: null as number | null,
   domain: '', site_name: '', container_name: '',
+  expose_mode: 'none' as 'none' | 'path' | 'site',
   deploy_id: null as number | null, db_conn_id: null as number | null,
 })
 

@@ -25,6 +25,7 @@ type appReq struct {
 	SiteName      string `json:"site_name"`
 	Domain        string `json:"domain"`
 	ContainerName string `json:"container_name"`
+	ExposeMode    string `json:"expose_mode"`
 	DeployID      *uint  `json:"deploy_id"`
 	DBConnID      *uint  `json:"db_conn_id"`
 }
@@ -53,6 +54,10 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "服务器不存在")
 			return
 		}
+		exposeMode := req.ExposeMode
+		if exposeMode != "path" && exposeMode != "site" {
+			exposeMode = "none"
+		}
 		app := model.Application{
 			Name:          req.Name,
 			Description:   req.Description,
@@ -60,6 +65,7 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 			SiteName:      req.SiteName,
 			Domain:        req.Domain,
 			ContainerName: req.ContainerName,
+			ExposeMode:    exposeMode,
 			DeployID:      req.DeployID,
 			DBConnID:      req.DBConnID,
 			Status:        "unknown",
@@ -113,6 +119,9 @@ func updateHandler(db *gorm.DB) gin.HandlerFunc {
 		app.ContainerName = req.ContainerName
 		app.DeployID = req.DeployID
 		app.DBConnID = req.DBConnID
+		if req.ExposeMode == "path" || req.ExposeMode == "site" || req.ExposeMode == "none" {
+			app.ExposeMode = req.ExposeMode
+		}
 		if err := db.Save(&app).Error; err != nil {
 			resp.InternalError(c, err.Error())
 			return
