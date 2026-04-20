@@ -260,17 +260,17 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func applyNone(client *gossh.Client, name string) (string, error) {
 	cmds := []string{
-		fmt.Sprintf("rm -f %s/%s.conf", appLocationsDir, name),
-		fmt.Sprintf("rm -f /etc/nginx/sites-enabled/%s-sh", name),
-		fmt.Sprintf("rm -f /etc/nginx/sites-available/%s-sh.conf", name),
-		"nginx -s reload 2>&1",
+		fmt.Sprintf("sudo -n rm -f %s/%s.conf", appLocationsDir, name),
+		fmt.Sprintf("sudo -n rm -f /etc/nginx/sites-enabled/%s-sh", name),
+		fmt.Sprintf("sudo -n rm -f /etc/nginx/sites-available/%s-sh.conf", name),
+		"sudo -n nginx -s reload 2>&1",
 	}
 	return sshpool.Run(client, strings.Join(cmds, " && "))
 }
 
 func applyPath(client *gossh.Client, name string, routes []model.AppNginxRoute) (string, error) {
 	// ensure app-locations dir exists
-	if _, err := sshpool.Run(client, "mkdir -p "+appLocationsDir); err != nil {
+	if _, err := sshpool.Run(client, "sudo -n mkdir -p "+appLocationsDir); err != nil {
 		return "", fmt.Errorf("创建目录失败")
 	}
 
@@ -290,7 +290,7 @@ func applyPath(client *gossh.Client, name string, routes []model.AppNginxRoute) 
 	}
 
 	locPath := fmt.Sprintf("%s/%s.conf", appLocationsDir, name)
-	writeCmd := fmt.Sprintf("cat > %s << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(locPath), sb.String())
+	writeCmd := fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(locPath), sb.String())
 	if _, err := sshpool.Run(client, writeCmd); err != nil {
 		return "", fmt.Errorf("写入 location 配置失败")
 	}
@@ -308,14 +308,14 @@ func applyPath(client *gossh.Client, name string, routes []model.AppNginxRoute) 
 	checkCmd := fmt.Sprintf("test -f %s", sq(hubAvail))
 	if _, err := sshpool.Run(client, checkCmd); err != nil {
 		// hub doesn't exist, create it
-		createCmd := fmt.Sprintf("cat > %s << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(hubAvail), hubConf)
+		createCmd := fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(hubAvail), hubConf)
 		if _, err := sshpool.Run(client, createCmd); err != nil {
 			return "", fmt.Errorf("创建 app-hub 站点失败")
 		}
 	}
-	sshpool.Run(client, fmt.Sprintf("ln -sf %s %s", sq(hubAvail), sq(hubEnabled))) //nolint:errcheck
+	sshpool.Run(client, fmt.Sprintf("sudo -n ln -sf %s %s", sq(hubAvail), sq(hubEnabled))) //nolint:errcheck
 
-	return sshpool.Run(client, "nginx -t 2>&1 && nginx -s reload 2>&1")
+	return sshpool.Run(client, "sudo -n nginx -t 2>&1 && sudo -n nginx -s reload 2>&1")
 }
 
 func applySite(client *gossh.Client, name, domain string, routes []model.AppNginxRoute) (string, error) {
@@ -342,11 +342,11 @@ func applySite(client *gossh.Client, name, domain string, routes []model.AppNgin
 	sitePath := fmt.Sprintf("/etc/nginx/sites-available/%s-sh.conf", name)
 	symlinkPath := fmt.Sprintf("/etc/nginx/sites-enabled/%s-sh", name)
 
-	writeCmd := fmt.Sprintf("cat > %s << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(sitePath), sb.String())
+	writeCmd := fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(sitePath), sb.String())
 	if _, err := sshpool.Run(client, writeCmd); err != nil {
 		return "", fmt.Errorf("写入站点配置失败")
 	}
-	sshpool.Run(client, fmt.Sprintf("ln -sf %s %s", sq(sitePath), sq(symlinkPath))) //nolint:errcheck
+	sshpool.Run(client, fmt.Sprintf("sudo -n ln -sf %s %s", sq(sitePath), sq(symlinkPath))) //nolint:errcheck
 
-	return sshpool.Run(client, "nginx -t 2>&1 && nginx -s reload 2>&1")
+	return sshpool.Run(client, "sudo -n nginx -t 2>&1 && sudo -n nginx -s reload 2>&1")
 }
