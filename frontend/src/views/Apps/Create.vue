@@ -115,16 +115,6 @@
                   <label class="form-label">镜像名 <span class="form-required">*</span></label>
                   <t-input v-model="deployForm.image_name" placeholder="例如：nginx:latest" />
                 </div>
-                <div class="form-field">
-                  <label class="form-label">启动命令（可选）</label>
-                  <t-input v-model="deployForm.start_cmd" placeholder="docker run 附加参数" />
-                </div>
-              </template>
-              <template v-if="deployType === 'native'">
-                <div class="form-field">
-                  <label class="form-label">启动命令 <span class="form-required">*</span></label>
-                  <t-input v-model="deployForm.start_cmd" placeholder="例如：./server --port 8080" />
-                </div>
               </template>
             </div>
           </div>
@@ -194,8 +184,7 @@ async function handleCreate() {
   if (!form.name || !form.server_id) { MessagePlugin.warning('请填写应用名称和服务器'); return }
   if (form.expose_mode === 'site' && !form.domain) { MessagePlugin.warning('独立站点模式需填写域名'); return }
   if (deployType.value === 'docker' && !deployForm.image_name) { MessagePlugin.warning('Docker 部署需填写镜像名'); return }
-  if (deployType.value === 'native' && !deployForm.start_cmd) { MessagePlugin.warning('文件部署需填写启动命令'); return }
-  saving.value = true
+saving.value = true
   try {
     const app = await createApp(form as any)
     if (deployType.value) {
