@@ -124,6 +124,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { RefreshIcon } from 'tdesign-icons-vue-next'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { showApiError } from '@/utils/errors'
 import { useAppStore } from '@/stores/app'
 import { getAppNginx, setExposeMode, addRoute, updateRoute, deleteRoute, applyNginx } from '@/api/approutes'
 import type { AppNginxConfig, AppNginxRoute } from '@/types/api'
@@ -160,8 +161,8 @@ async function onModeChange(mode: string | number | boolean) {
   try {
     await setExposeMode(appId.value, mode as 'none' | 'path' | 'site')
     MessagePlugin.success('模式已更新')
-  } catch {
-    MessagePlugin.error('更新失败')
+  } catch (e: any) {
+    showApiError(e, '更新失败')
     await load()
   }
 }
@@ -174,7 +175,7 @@ async function doApply() {
     applyOutput.value = res.output || 'nginx reload 成功'
     MessagePlugin.success('配置已应用')
   } catch (e: any) {
-    MessagePlugin.error(e?.response?.data?.msg ?? '应用失败')
+    showApiError(e, '应用失败')
   } finally { applying.value = false }
 }
 

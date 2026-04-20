@@ -251,7 +251,7 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(output)+": "+err.Error())
+			resp.InternalError(c, sshpool.HumanizeErr(output)+": "+err.Error())
 			return
 		}
 		resp.OK(c, gin.H{"output": strings.TrimSpace(output)})

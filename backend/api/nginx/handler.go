@@ -175,7 +175,7 @@ func createSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		// write config (sudo tee so root-owned target is writable)
 		out, err := sshpool.Run(client, fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), config))
 		if err != nil {
-			resp.InternalError(c, "写入配置失败: "+strings.TrimSpace(out))
+			resp.InternalError(c, "写入配置失败: "+sshpool.HumanizeErr(out))
 			return
 		}
 		// validate
@@ -183,7 +183,7 @@ func createSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if err != nil {
 			// rollback
 			sshpool.Run(client, "sudo -n rm -f "+sq(path)) //nolint:errcheck
-			resp.InternalError(c, "Nginx 配置验证失败: "+strings.TrimSpace(out))
+			resp.InternalError(c, "Nginx 配置验证失败: "+sshpool.HumanizeErr(out))
 			return
 		}
 		resp.OK(c, gin.H{"name": body.Name, "path": path})
@@ -256,7 +256,7 @@ func getSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		path := "/etc/nginx/sites-available/" + name
 		out, err := sshpool.Run(client, "cat "+sq(path)+" 2>&1")
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
 		}
 		resp.OK(c, gin.H{"name": name, "path": path, "content": out})
@@ -287,7 +287,7 @@ func putSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if err != nil {
 			// restore backup
 			sshpool.Run(client, fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), backup)) //nolint:errcheck
-			resp.InternalError(c, "Nginx 配置验证失败: "+strings.TrimSpace(out))
+			resp.InternalError(c, "Nginx 配置验证失败: "+sshpool.HumanizeErr(out))
 			return
 		}
 		resp.OK(c, nil)
@@ -306,7 +306,7 @@ func deleteSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		sshpool.Run(client, "sudo -n rm -f "+sq("/etc/nginx/sites-enabled/"+name)) //nolint:errcheck
 		out, err := sshpool.Run(client, "sudo -n rm -f "+sq("/etc/nginx/sites-available/"+name))
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
 		}
 		sshpool.Run(client, "sudo -n nginx -s reload 2>/dev/null") //nolint:errcheck
@@ -325,7 +325,7 @@ func enableSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		dst := "/etc/nginx/sites-enabled/" + name
 		out, err := sshpool.Run(client, fmt.Sprintf("sudo -n ln -sf %s %s && sudo -n nginx -s reload 2>&1", sq(src), sq(dst)))
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
 		}
 		resp.OK(c, nil)
@@ -341,7 +341,7 @@ func disableSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		name := c.Param("name")
 		out, err := sshpool.Run(client, "sudo -n rm -f "+sq("/etc/nginx/sites-enabled/"+name)+" && sudo -n nginx -s reload 2>&1")
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
 		}
 		resp.OK(c, nil)
@@ -358,7 +358,7 @@ func reloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		out, err := sshpool.Run(client, "sudo -n nginx -s reload 2>&1")
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
 		}
 		resp.OK(c, gin.H{"output": strings.TrimSpace(out)})
@@ -373,7 +373,7 @@ func restartHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		out, err := sshpool.Run(client, "sudo -n systemctl restart nginx 2>&1")
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
 		}
 		resp.OK(c, gin.H{"output": strings.TrimSpace(out)})

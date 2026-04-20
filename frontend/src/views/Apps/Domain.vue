@@ -157,6 +157,7 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { RefreshIcon } from 'tdesign-icons-vue-next'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { showApiError } from '@/utils/errors'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -219,7 +220,7 @@ async function confirmCreate() {
     createVisible.value = false
     await loadSites()
   } catch (e: any) {
-    MessagePlugin.error(e?.response?.data?.msg ?? '创建失败')
+    showApiError(e, '创建失败')
   } finally { creating.value = false }
 }
 
@@ -251,7 +252,7 @@ async function saveConfig() {
     MessagePlugin.success('配置已保存')
     editVisible.value = false
   } catch (e: any) {
-    MessagePlugin.error(e?.response?.data?.msg ?? '保存失败')
+    showApiError(e, '保存失败')
   } finally { saving.value = false }
 }
 
@@ -263,24 +264,24 @@ async function toggleSite(row: SiteItem, enable: boolean) {
     else await disableSite(serverId.value, row.name)
     MessagePlugin.success(enable ? '已启用' : '已禁用')
     await loadSites()
-  } catch { MessagePlugin.error('操作失败') }
+  } catch (e: any) { showApiError(e, '操作失败') }
 }
 
 async function delSite(row: SiteItem) {
   try { await deleteSite(serverId.value, row.name); MessagePlugin.success('已删除'); await loadSites() }
-  catch { MessagePlugin.error('删除失败') }
+  catch (e: any) { showApiError(e, '删除失败') }
 }
 
 async function doReload() {
   reloading.value = true
   try { await nginxReload(serverId.value); MessagePlugin.success('nginx reload 成功') }
-  catch { MessagePlugin.error('reload 失败') }
+  catch (e: any) { showApiError(e, 'reload 失败') }
   finally { reloading.value = false }
 }
 
 async function doRestart() {
   try { await nginxRestart(serverId.value); MessagePlugin.success('nginx restart 成功') }
-  catch { MessagePlugin.error('restart 失败') }
+  catch (e: any) { showApiError(e, 'restart 失败') }
 }
 
 const logsVisible = ref(false)
