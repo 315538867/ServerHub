@@ -5,6 +5,10 @@ export function getDeploys() {
   return request.get<never, Deploy[]>('/deploys')
 }
 
+export function getDeploy(id: number) {
+  return request.get<never, Deploy>(`/deploys/${id}`)
+}
+
 export function createDeploy(data: DeployForm) {
   return request.post<never, Deploy>('/deploys', data)
 }

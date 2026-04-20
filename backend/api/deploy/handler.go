@@ -5,17 +5,21 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pkg/sftp"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/deployer"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/sshpool"
 	"gorm.io/gorm"
 )
 
@@ -31,6 +35,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.PUT("/:id/env", putEnvHandler(db, cfg))
 	r.POST("/:id/rollback", rollbackHandler(db, cfg))
 	r.GET("/:id/webhook", webhookInfoHandler(db))
+	r.POST("/:id/upload", uploadHandler(db, cfg))
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────
@@ -275,6 +280,26 @@ func putEnvHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "请求体格式错误")
 			return
 		}
+
+		// Load original vars to preserve unchanged secret values (value == "***")
+		var original []envVar
+		if d.EnvVars != "" {
+			if dec, err := crypto.Decrypt(d.EnvVars, cfg.Security.AESKey); err == nil {
+				_ = json.Unmarshal([]byte(dec), &original)
+			}
+		}
+		origMap := make(map[string]string, len(original))
+		for _, v := range original {
+			origMap[v.Key] = v.Value
+		}
+		for i := range vars {
+			if vars[i].Secret && vars[i].Value == "***" {
+				if orig, ok := origMap[vars[i].Key]; ok {
+					vars[i].Value = orig
+				}
+			}
+		}
+
 		b, _ := json.Marshal(vars)
 		encrypted, err := crypto.Encrypt(string(b), cfg.Security.AESKey)
 		if err != nil {
@@ -300,6 +325,125 @@ func webhookInfoHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 		url := fmt.Sprintf("%s://%s/panel/webhooks/%s", scheme, c.Request.Host, d.WebhookSecret)
 		resp.OK(c, gin.H{"url": url, "secret": d.WebhookSecret})
+	}
+}
+
+// ── Upload (SSE) ───────────────────────────────────────────────────────────
+
+func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		d, ok := findDeploy(c, db)
+		if !ok {
+			return
+		}
+
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Header("Access-Control-Allow-Origin", "*")
+
+		sendUpEvent := func(eventType string, extra map[string]any) {
+			m := map[string]any{"type": eventType}
+			for k, v := range extra {
+				m[k] = v
+			}
+			payload, _ := json.Marshal(m)
+			fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
+			c.Writer.Flush()
+		}
+
+		fh, err := c.FormFile("file")
+		if err != nil {
+			sendUpEvent("error", map[string]any{"msg": "获取上传文件失败: " + err.Error()})
+			return
+		}
+		f, err := fh.Open()
+		if err != nil {
+			sendUpEvent("error", map[string]any{"msg": "打开文件失败: " + err.Error()})
+			return
+		}
+		defer f.Close()
+
+		var s model.Server
+		if err := db.First(&s, d.ServerID).Error; err != nil {
+			sendUpEvent("error", map[string]any{"msg": "服务器不存在"})
+			return
+		}
+
+		var cred string
+		switch s.AuthType {
+		case "key":
+			if s.PrivateKey != "" {
+				cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
+			}
+		default:
+			if s.Password != "" {
+				cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
+			}
+		}
+		if err != nil {
+			sendUpEvent("error", map[string]any{"msg": "解密 SSH 凭证失败"})
+			return
+		}
+
+		sshClient, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+		if err != nil {
+			sendUpEvent("error", map[string]any{"msg": "SSH 连接失败: " + err.Error()})
+			return
+		}
+
+		sftpClient, err := sftp.NewClient(sshClient)
+		if err != nil {
+			sendUpEvent("error", map[string]any{"msg": "SFTP 会话失败: " + err.Error()})
+			return
+		}
+		defer sftpClient.Close()
+
+		workDir := d.WorkDir
+		if workDir == "" {
+			workDir = "/tmp"
+		}
+		if err := sftpClient.MkdirAll(workDir); err != nil {
+			sendUpEvent("error", map[string]any{"msg": "创建远程目录失败: " + err.Error()})
+			return
+		}
+
+		filename := filepath.Base(fh.Filename)
+		remotePath := workDir + "/" + filename
+		total := fh.Size
+
+		sendUpEvent("start", map[string]any{"filename": filename, "total": total})
+
+		dst, err := sftpClient.Create(remotePath)
+		if err != nil {
+			sendUpEvent("error", map[string]any{"msg": "创建远程文件失败: " + err.Error()})
+			return
+		}
+		defer dst.Close()
+
+		buf := make([]byte, 128*1024)
+		var transferred int64
+		for {
+			n, readErr := f.Read(buf)
+			if n > 0 {
+				if _, writeErr := dst.Write(buf[:n]); writeErr != nil {
+					sendUpEvent("error", map[string]any{"msg": "写入远程文件失败: " + writeErr.Error()})
+					return
+				}
+				transferred += int64(n)
+				sendUpEvent("progress", map[string]any{"bytes": transferred, "total": total})
+			}
+			if readErr == io.EOF {
+				break
+			}
+			if readErr != nil {
+				sendUpEvent("error", map[string]any{"msg": "读取文件失败: " + readErr.Error()})
+				return
+			}
+		}
+
+		sendUpEvent("done", map[string]any{"filename": filename, "path": remotePath})
 	}
 }
 
