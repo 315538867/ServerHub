@@ -99,7 +99,6 @@ onMounted(async () => {
 .sl-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px;
 }
 .sl-content--fullscreen {
   overflow: hidden;

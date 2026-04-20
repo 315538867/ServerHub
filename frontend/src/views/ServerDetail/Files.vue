@@ -282,7 +282,9 @@ onBeforeUnmount(() => editorView?.destroy())
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--sh-border);
+  margin-bottom: 0;
   flex-wrap: wrap;
   gap: 8px;
 }

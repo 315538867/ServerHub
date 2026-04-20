@@ -337,13 +337,14 @@ onBeforeUnmount(() => { svcLogsWs?.close(); svcLogsTerm?.dispose() })
 </script>
 
 <style scoped>
-.toolbar { margin-bottom: 4px; }
+.toolbar { margin-bottom: 0; }
 
 .tab-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--sh-border);
 }
 
 .toolbar-left {
@@ -364,4 +365,5 @@ onBeforeUnmount(() => { svcLogsWs?.close(); svcLogsTerm?.dispose() })
 }
 
 :deep(.t-table) { font-size: 13px; }
+:deep(.t-tab-panel) { padding: 0; }
 </style>

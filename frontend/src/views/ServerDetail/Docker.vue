@@ -247,7 +247,9 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--sh-border);
+  margin-bottom: 0;
 }
 
 .toolbar-left {
@@ -294,5 +296,8 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
 
 :deep(.t-table) {
   font-size: 13px;
+}
+:deep(.t-tab-panel) {
+  padding: 0;
 }
 </style>
