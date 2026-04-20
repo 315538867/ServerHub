@@ -292,6 +292,11 @@ html, body, #app {
 .section-block .t-tab-panel {
   padding: 0 !important;
 }
+/* Tables inside tab panels — inset from card edge for visual balance */
+.section-block .t-tab-panel > .t-table,
+.section-block .t-tab-panel > .t-table-plugin {
+  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
+}
 /* Tab toolbar inside panels */
 .tab-toolbar {
   display: flex;
