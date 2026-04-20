@@ -30,3 +30,21 @@ export function initAppDirs(id: number) {
   return request.post<never, { message: string }>(`/apps/${id}/init-dirs`, {})
 }
 
+// 应用实时指标（通过 SSH 调用远端 docker stats）
+export interface AppMetrics {
+  available: boolean
+  reason?: string
+  cpu_percent: number
+  mem_usage: string
+  mem_percent: number
+  net_io: string
+  block_io: string
+  pids: number
+  container_id: string
+  ts: number
+}
+
+export function getAppMetrics(id: number) {
+  return request.get<never, AppMetrics>(`/apps/${id}/metrics`)
+}
+

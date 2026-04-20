@@ -1,10 +1,12 @@
 package application
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
@@ -24,6 +26,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.DELETE("/:id", deleteHandler(db))
 	r.GET("/:id/dirs", dirsHandler(db, cfg))
 	r.POST("/:id/init-dirs", initDirsHandler(db, cfg))
+	r.GET("/:id/metrics", metricsHandler(db, cfg))
 }
 
 type appReq struct {
@@ -301,3 +304,123 @@ func initDirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		resp.OK(c, gin.H{"message": "目录初始化成功"})
 	}
 }
+
+// ── metrics ───────────────────────────────────────────────────────────────────
+//
+// GET /api/applications/:id/metrics
+// 通过 SSH 调 `docker stats --no-stream --format '{{json .}}'` 取关联容器的实时指标。
+
+type appMetrics struct {
+	Available   bool    `json:"available"`
+	Reason      string  `json:"reason,omitempty"`
+	CPUPercent  float64 `json:"cpu_percent"`
+	MemUsage    string  `json:"mem_usage"`    // e.g. "128.5MiB / 2GiB"
+	MemPercent  float64 `json:"mem_percent"`
+	NetIO       string  `json:"net_io"`       // e.g. "1.2MB / 340kB"
+	BlockIO     string  `json:"block_io"`
+	PIDs        int     `json:"pids"`
+	ContainerID string  `json:"container_id"`
+	Timestamp   int64   `json:"ts"`
+}
+
+// docker stats JSON 行字段名（Docker CLI 输出格式）
+type dockerStatsLine struct {
+	ID       string `json:"ID"`
+	CPUPerc  string `json:"CPUPerc"`
+	MemUsage string `json:"MemUsage"`
+	MemPerc  string `json:"MemPerc"`
+	NetIO    string `json:"NetIO"`
+	BlockIO  string `json:"BlockIO"`
+	PIDs     string `json:"PIDs"`
+}
+
+func metricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			resp.BadRequest(c, "无效 ID")
+			return
+		}
+		var app model.Application
+		if err := db.First(&app, id).Error; err != nil {
+			resp.NotFound(c, "应用不存在")
+			return
+		}
+		if app.ContainerName == "" {
+			resp.OK(c, appMetrics{Available: false, Reason: "未关联容器"})
+			return
+		}
+		client, err := connectSSH(db, cfg, app.ServerID)
+		if err != nil {
+			resp.OK(c, appMetrics{Available: false, Reason: "SSH 连接失败: " + err.Error()})
+			return
+		}
+		cmd := fmt.Sprintf(
+			"docker stats --no-stream --format '{{json .}}' %s 2>/dev/null",
+			shellQuoteSafe(app.ContainerName),
+		)
+		out, err := sshpool.Run(client, cmd)
+		if err != nil || strings.TrimSpace(out) == "" {
+			reason := "容器未运行或不存在"
+			if err != nil {
+				reason = err.Error()
+			}
+			resp.OK(c, appMetrics{Available: false, Reason: reason})
+			return
+		}
+		line := strings.TrimSpace(strings.Split(out, "\n")[0])
+		var s dockerStatsLine
+		if err := json.Unmarshal([]byte(line), &s); err != nil {
+			resp.OK(c, appMetrics{Available: false, Reason: "解析 docker stats 失败"})
+			return
+		}
+		m := appMetrics{
+			Available:   true,
+			CPUPercent:  parsePercent(s.CPUPerc),
+			MemUsage:    s.MemUsage,
+			MemPercent:  parsePercent(s.MemPerc),
+			NetIO:       s.NetIO,
+			BlockIO:     s.BlockIO,
+			PIDs:        atoiSafe(s.PIDs),
+			ContainerID: s.ID,
+			Timestamp:   timeNowUnix(),
+		}
+		resp.OK(c, m)
+	}
+}
+
+func shellQuoteSafe(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+func parsePercent(s string) float64 {
+	s = strings.TrimSpace(strings.TrimSuffix(s, "%"))
+	if s == "" || s == "--" {
+		return 0
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0
+	}
+	return f
+}
+
+func atoiSafe(s string) int {
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+func timeNowUnix() int64 {
+	return timeNowFn()
+}
+
+// 允许测试时替换；生产用 time.Now().Unix()
+var timeNowFn = func() int64 {
+	return time.Now().Unix()
+}
+
+// 避免 gossh 未使用报警（connectSSH 已使用）
+var _ = (*gossh.Client)(nil)
