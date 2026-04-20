@@ -13,6 +13,8 @@ type Deploy struct {
 	ComposeFile string `gorm:"default:docker-compose.yml" json:"compose_file"`
 	StartCmd    string `gorm:"default:''" json:"start_cmd"`
 	ImageName   string `gorm:"default:''" json:"image_name"` // used for docker rmi on version update
+	Runtime     string `gorm:"default:''" json:"runtime"`     // java|go|node|rust|python|custom (native/docker)
+	ConfigFiles string `gorm:"default:''" json:"config_files"` // JSON: [{name,content}]
 
 	// Auth & secrets
 	EnvVars       string `gorm:"default:''" json:"-"` // AES-encrypted JSON array

@@ -71,6 +71,11 @@ export interface Metric {
   created_at: string
 }
 
+export interface ConfigFile {
+  name: string
+  content: string
+}
+
 export interface Deploy {
   id: number
   name: string
@@ -80,6 +85,8 @@ export interface Deploy {
   compose_file: string
   start_cmd: string
   image_name: string
+  runtime: string
+  config_files: string // JSON string of ConfigFile[]
   // version management
   desired_version: string
   actual_version: string
@@ -106,6 +113,8 @@ export interface DeployForm {
   desired_version?: string
   auto_sync?: boolean
   sync_interval?: number
+  runtime?: string
+  config_files?: string // JSON string of ConfigFile[]
 }
 
 export interface DeployLog {

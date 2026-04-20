@@ -63,20 +63,25 @@
                 <label class="form-label">期望版本 <span class="form-required">*</span></label>
                 <t-input v-model="wizardForm.desired_version" placeholder="latest" />
               </div>
-              <div class="form-field form-field--full">
-                <label class="form-label">启动命令 <span class="form-required">*</span></label>
-                <t-input v-model="wizardForm.start_cmd" placeholder="docker run -d --name myapp -p 8080:8080 nginx:latest" />
-                <span class="form-hint">完整的 docker run 命令</span>
-              </div>
-            </template>
-            <template v-if="wizardType === 'native'">
-              <div class="form-field form-field--full">
-                <label class="form-label">启动命令 <span class="form-required">*</span></label>
-                <t-input v-model="wizardForm.start_cmd" placeholder="./app --port 8080" />
-                <span class="form-hint">上传文件后在工作目录执行此命令</span>
-              </div>
             </template>
           </div>
+
+          <!-- 运行时选择（native / docker 类型） -->
+          <template v-if="wizardType !== 'docker-compose'">
+            <div class="wizard-divider">运行环境 <span class="divider-hint">选择后自动生成 startup.sh 模板</span></div>
+            <div class="runtime-chips">
+              <div
+                v-for="rt in RUNTIMES"
+                :key="rt.value"
+                class="runtime-chip"
+                :class="{ active: wizardRuntime === rt.value }"
+                @click="selectWizardRuntime(rt.value)"
+              >
+                <span class="rt-icon">{{ rt.icon }}</span>
+                <span class="rt-label">{{ rt.label }}</span>
+              </div>
+            </div>
+          </template>
           <div class="wizard-footer">
             <t-button theme="primary" size="large" :loading="creating" @click="createAndLink">创建并关联部署配置</t-button>
           </div>
@@ -112,7 +117,10 @@
             <t-descriptions-item label="工作目录">{{ deploy.work_dir || '—' }}</t-descriptions-item>
             <t-descriptions-item v-if="deploy.type === 'docker-compose'" label="Compose 文件">{{ deploy.compose_file || '—' }}</t-descriptions-item>
             <t-descriptions-item v-if="deploy.type !== 'native'" label="镜像名称">{{ deploy.image_name || '—' }}</t-descriptions-item>
-            <t-descriptions-item v-if="deploy.type !== 'docker-compose'" label="启动命令">{{ deploy.start_cmd || '—' }}</t-descriptions-item>
+            <t-descriptions-item v-if="deploy.type !== 'docker-compose' && deploy.start_cmd" label="启动命令">{{ deploy.start_cmd }}</t-descriptions-item>
+            <t-descriptions-item v-if="deploy.runtime" label="运行时">
+              <t-tag size="small" variant="light" theme="default">{{ RUNTIME_LABELS[deploy.runtime] ?? deploy.runtime }}</t-tag>
+            </t-descriptions-item>
             <t-descriptions-item v-if="deploy.type !== 'native'" label="期望版本">{{ deploy.desired_version || '—' }}</t-descriptions-item>
             <t-descriptions-item v-if="deploy.type !== 'native'" label="实际版本">{{ deploy.actual_version || '—' }}</t-descriptions-item>
             <t-descriptions-item v-if="deploy.type !== 'native'" label="上一版本">{{ deploy.previous_version || '—' }}</t-descriptions-item>
@@ -138,15 +146,26 @@
                 <label class="form-label">镜像名称</label>
                 <t-input v-model="editForm.image_name" />
               </div>
-              <div class="form-field form-field--full">
-                <label class="form-label">启动命令</label>
-                <t-input v-model="editForm.start_cmd" />
-              </div>
             </template>
-            <template v-if="editForm.type === 'native'">
+            <template v-if="editForm.type !== 'docker-compose'">
               <div class="form-field form-field--full">
-                <label class="form-label">启动命令</label>
-                <t-input v-model="editForm.start_cmd" />
+                <label class="form-label">启动命令 <span class="form-hint">（可选，有 startup.sh 时此项被忽略）</span></label>
+                <t-input v-model="editForm.start_cmd" placeholder="作为 startup.sh 的备用方案" />
+              </div>
+              <div class="form-field form-field--full">
+                <label class="form-label">运行时</label>
+                <div class="runtime-chips runtime-chips--sm">
+                  <div
+                    v-for="rt in RUNTIMES"
+                    :key="rt.value"
+                    class="runtime-chip"
+                    :class="{ active: editForm.runtime === rt.value }"
+                    @click="selectEditRuntime(rt.value)"
+                  >
+                    <span class="rt-icon">{{ rt.icon }}</span>
+                    <span class="rt-label">{{ rt.label }}</span>
+                  </div>
+                </div>
               </div>
             </template>
             <div class="form-field">
@@ -157,9 +176,32 @@
         </div>
       </div>
 
-      <!-- S2: 操作台 -->
+      <!-- S_CF: 配置文件 -->
       <div class="section-block">
         <div class="section-title">
+          <span>配置文件</span>
+          <t-space size="small">
+            <t-button size="small" variant="outline" :loading="cfSaving" @click="saveCfList">保存</t-button>
+            <t-button size="small" theme="primary" @click="openCfEditor(null)">添加文件</t-button>
+          </t-space>
+        </div>
+        <div class="cf-body">
+          <div v-if="cfList.length === 0" class="cf-empty">
+            暂无配置文件。添加 <code>startup.sh</code> 将在部署时自动执行；亦可添加 <code>application.yml</code>、<code>config.toml</code> 等配套文件。
+          </div>
+          <div v-for="(f, i) in cfList" :key="i" class="cf-row">
+            <span class="cf-name">{{ f.name }}</span>
+            <span class="cf-ext-badge">{{ getExtBadge(f.name) }}</span>
+            <t-space size="small" class="cf-actions-inline">
+              <t-button size="small" variant="text" @click="openCfEditor(i)">编辑</t-button>
+              <t-button size="small" variant="text" theme="danger" @click="deleteCfItem(i)">删除</t-button>
+            </t-space>
+          </div>
+        </div>
+      </div>
+
+      <!-- S2: 操作台 -->
+      <div class="section-block">
           <span>操作台</span>
           <t-space v-if="!running" size="small">
             <t-button theme="primary" size="small" @click="doRun('run')">立即部署</t-button>
@@ -319,24 +361,120 @@
         </div>
       </div>
 
+      <!-- CodeMirror 配置文件编辑器 Dialog -->
+      <t-dialog
+        v-model:visible="editorVisible"
+        :header="editorIsNew ? '添加配置文件' : `编辑：${editorFileName}`"
+        width="720px"
+        class="code-editor-dialog"
+        :confirm-btn="{ content: '保存', loading: editorSaving }"
+        :cancel-btn="{ content: '取消' }"
+        @confirm="saveCfEditor"
+        @closed="destroyCfEditor"
+      >
+        <div class="cf-editor-toolbar">
+          <t-input
+            v-if="editorIsNew"
+            v-model="editorFileName"
+            placeholder="文件名（如 startup.sh）"
+            size="small"
+            style="width: 220px"
+          />
+          <span v-else class="cf-editor-filename">{{ editorFileName }}</span>
+          <input ref="cfFileInputRef" type="file" style="display:none" @change="onCfFileUpload" />
+          <t-button size="small" variant="outline" @click="cfFileInputRef?.click()">上传本地文件</t-button>
+        </div>
+        <div ref="cfEditorEl" class="code-editor" />
+      </t-dialog>
+
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { getDeploy, createDeploy, updateDeploy, getDeployLogs, getDeployEnv, putDeployEnv, getWebhookInfo } from '@/api/deploy'
 import { updateApp } from '@/api/application'
-import type { Deploy, DeployLog, DeployForm } from '@/types/api'
+import type { Deploy, DeployLog, DeployForm, ConfigFile } from '@/types/api'
 import type { EnvVar } from '@/api/deploy'
+import { EditorView, basicSetup } from 'codemirror'
+import { EditorState } from '@codemirror/state'
+import { oneDark } from '@codemirror/theme-one-dark'
+import { yaml } from '@codemirror/lang-yaml'
+import { json } from '@codemirror/lang-json'
+import { javascript } from '@codemirror/lang-javascript'
 
 // ── Local types ────────────────────────────────────────────────────────────
 
 type LocalEnvVar = EnvVar & { _revealed: boolean }
+
+// ── Runtime constants ──────────────────────────────────────────────────────
+
+const RUNTIMES = [
+  { value: 'java',   icon: '☕', label: 'Java'   },
+  { value: 'go',     icon: '🐹', label: 'Go'     },
+  { value: 'node',   icon: '🟢', label: 'Node'   },
+  { value: 'rust',   icon: '🦀', label: 'Rust'   },
+  { value: 'python', icon: '🐍', label: 'Python' },
+  { value: 'custom', icon: '⚙️', label: '自定义'  },
+]
+
+const RUNTIME_LABELS: Record<string, string> = Object.fromEntries(RUNTIMES.map(r => [r.value, r.label]))
+
+const RUNTIME_TEMPLATES: Record<string, ConfigFile[]> = {
+  java: [
+    { name: 'startup.sh', content: '#!/bin/bash\nset -e\nJAVA_OPTS="${JAVA_OPTS:--Xmx512m -Xms256m}"\nexec java $JAVA_OPTS -jar app.jar "$@"\n' },
+    { name: 'application.yml', content: 'server:\n  port: 8080\n\nspring:\n  application:\n    name: myapp\n  profiles:\n    active: prod\n' },
+  ],
+  go: [
+    { name: 'startup.sh', content: '#!/bin/bash\nset -e\nexec ./server "$@"\n' },
+    { name: 'config.yaml', content: 'server:\n  host: 0.0.0.0\n  port: 8080\n\nlog:\n  level: info\n' },
+  ],
+  node: [
+    { name: 'startup.sh', content: '#!/bin/bash\nset -e\nexec node dist/main.js "$@"\n' },
+  ],
+  rust: [
+    { name: 'startup.sh', content: '#!/bin/bash\nset -e\nexec ./app "$@"\n' },
+    { name: 'config.toml', content: '[server]\nhost = "0.0.0.0"\nport = 8080\n\n[log]\nlevel = "info"\n' },
+  ],
+  python: [
+    { name: 'startup.sh', content: '#!/bin/bash\nset -e\nexec python main.py "$@"\n' },
+    { name: 'requirements.txt', content: '# Add your dependencies here\n' },
+  ],
+  custom: [
+    { name: 'startup.sh', content: '#!/bin/bash\nset -e\n# Write your startup command here\n' },
+  ],
+  docker: [
+    { name: 'startup.sh', content: '#!/bin/bash\nset -e\ndocker stop myapp 2>/dev/null || true\ndocker rm myapp 2>/dev/null || true\ndocker run -d \\\n  --name myapp \\\n  --restart unless-stopped \\\n  -p 8080:8080 \\\n  IMAGE_NAME:latest\n' },
+  ],
+}
+
+function getTemplateFiles(runtime: string, deployType?: string): ConfigFile[] {
+  if (deployType === 'docker') return RUNTIME_TEMPLATES['docker'] ?? []
+  return RUNTIME_TEMPLATES[runtime] ?? []
+}
+
+function getExtLang(filename: string) {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+  if (['yml', 'yaml'].includes(ext)) return yaml()
+  if (ext === 'json') return json()
+  if (['js', 'ts', 'sh', 'bash'].includes(ext)) return javascript()
+  return []
+}
+
+function getExtBadge(filename: string): string {
+  const ext = filename.split('.').pop()?.toLowerCase() ?? ''
+  return ext || 'txt'
+}
+
+function parseCfJson(raw: string): ConfigFile[] {
+  if (!raw) return []
+  try { return JSON.parse(raw) } catch { return [] }
+}
 
 // ── Route & store ─────────────────────────────────────────────────────────
 
@@ -351,12 +489,112 @@ const app = computed(() => appStore.getById(appId.value))
 const deploy = ref<Deploy | null>(null)
 const loading = ref(false)
 
+// ── Config files state ─────────────────────────────────────────────────────
+
+const cfList = ref<ConfigFile[]>([])
+const cfSaving = ref(false)
+
+async function saveCfList() {
+  if (!deploy.value) return
+  cfSaving.value = true
+  try {
+    await updateDeploy(deploy.value.id, { ...deploy.value, config_files: JSON.stringify(cfList.value) } as any)
+    deploy.value = await getDeploy(deploy.value.id)
+    MessagePlugin.success('配置文件已保存')
+  } catch (e: any) {
+    MessagePlugin.error(e?.message || '保存失败')
+  } finally {
+    cfSaving.value = false
+  }
+}
+
+function deleteCfItem(i: number) { cfList.value.splice(i, 1) }
+
+// ── CodeMirror editor (config files) ──────────────────────────────────────
+
+const editorVisible = ref(false)
+const editorIsNew = ref(false)
+const editorFileName = ref('')
+const editorEditIdx = ref(-1)
+const editorSaving = ref(false)
+const cfEditorEl = ref<HTMLDivElement>()
+const cfFileInputRef = ref<HTMLInputElement>()
+let cfEditorView: EditorView | null = null
+
+function openCfEditor(idx: number | null) {
+  if (idx === null) {
+    editorIsNew.value = true
+    editorFileName.value = ''
+    editorEditIdx.value = -1
+  } else {
+    editorIsNew.value = false
+    editorFileName.value = cfList.value[idx].name
+    editorEditIdx.value = idx
+  }
+  editorVisible.value = true
+  nextTick(() => initCfEditor(idx !== null ? cfList.value[idx].content : ''))
+}
+
+function initCfEditor(content: string) {
+  cfEditorView?.destroy()
+  if (!cfEditorEl.value) return
+  const lang = getExtLang(editorFileName.value)
+  const extensions = [basicSetup, oneDark, ...(Array.isArray(lang) ? lang : [lang])]
+  cfEditorView = new EditorView({
+    state: EditorState.create({ doc: content, extensions }),
+    parent: cfEditorEl.value,
+  })
+}
+
+function destroyCfEditor() { cfEditorView?.destroy(); cfEditorView = null }
+
+async function saveCfEditor() {
+  const fname = editorFileName.value.trim()
+  if (!fname) { MessagePlugin.warning('请输入文件名'); return }
+  const content = cfEditorView?.state.doc.toString() ?? ''
+  editorSaving.value = true
+  try {
+    if (editorIsNew.value) {
+      cfList.value.push({ name: fname, content })
+    } else {
+      cfList.value[editorEditIdx.value] = { name: fname, content }
+    }
+    await saveCfList()
+    editorVisible.value = false
+  } finally {
+    editorSaving.value = false
+  }
+}
+
+function onCfFileUpload(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (ev) => {
+    const text = ev.target?.result as string
+    cfEditorView?.destroy()
+    if (cfEditorEl.value) initCfEditor(text)
+    if (editorIsNew.value && !editorFileName.value) editorFileName.value = file.name
+  }
+  reader.readAsText(file)
+  ;(e.target as HTMLInputElement).value = ''
+}
+
+// ── Wizard runtime ─────────────────────────────────────────────────────────
+
+const wizardRuntime = ref('')
+
+function selectWizardRuntime(rt: string) {
+  wizardRuntime.value = rt
+}
+
 async function loadDeploy() {
   const deployId = app.value?.deploy_id
   if (!deployId) { deploy.value = null; return }
   loading.value = true
   try {
     deploy.value = await getDeploy(deployId)
+    cfList.value = parseCfJson(deploy.value.config_files)
     await Promise.all([loadLogs(), loadEnv(), loadWebhook()])
   } finally {
     loading.value = false
@@ -376,7 +614,6 @@ const wizardForm = reactive({
   compose_file: 'docker-compose.yml',
   image_name: '',
   desired_version: '',
-  start_cmd: '',
 })
 const creating = ref(false)
 
@@ -384,7 +621,7 @@ watch(wizardType, () => {
   wizardForm.compose_file = 'docker-compose.yml'
   wizardForm.image_name = ''
   wizardForm.desired_version = ''
-  wizardForm.start_cmd = ''
+  wizardRuntime.value = ''
   if (app.value && !wizardForm.work_dir) {
     wizardForm.work_dir = app.value.base_dir || `/srv/apps/${app.value.name}`
   }
@@ -393,23 +630,24 @@ watch(wizardType, () => {
 async function createAndLink() {
   if (!app.value || !wizardType.value) return
   if (!wizardForm.work_dir) { MessagePlugin.warning('请填写工作目录'); return }
-  if (wizardType.value === 'docker' && (!wizardForm.image_name || !wizardForm.start_cmd)) {
-    MessagePlugin.warning('Docker 单容器需要填写镜像名称和启动命令'); return
-  }
-  if (wizardType.value === 'native' && !wizardForm.start_cmd) {
-    MessagePlugin.warning('文件部署需要填写启动命令'); return
+  if (wizardType.value === 'docker' && !wizardForm.image_name) {
+    MessagePlugin.warning('Docker 单容器需要填写镜像名称'); return
   }
   creating.value = true
   try {
+    const initFiles = wizardRuntime.value
+      ? getTemplateFiles(wizardRuntime.value, wizardType.value)
+      : (wizardType.value === 'docker' ? getTemplateFiles('docker', 'docker') : [])
     const payload: DeployForm = {
       name: `${app.value.name}-deploy`,
       server_id: app.value.server_id,
       type: wizardType.value as 'docker-compose' | 'docker' | 'native',
       work_dir: wizardForm.work_dir,
       compose_file: wizardForm.compose_file || 'docker-compose.yml',
-      start_cmd: wizardForm.start_cmd,
       image_name: wizardForm.image_name,
       desired_version: wizardForm.desired_version,
+      runtime: wizardRuntime.value,
+      config_files: JSON.stringify(initFiles),
     }
     const newDeploy = await createDeploy(payload)
     await updateApp(appId.value, {
@@ -448,18 +686,28 @@ function startEdit() {
     start_cmd: deploy.value.start_cmd,
     image_name: deploy.value.image_name,
     desired_version: deploy.value.desired_version,
+    runtime: deploy.value.runtime ?? '',
   })
   editMode.value = true
 }
 
 function cancelEdit() { editMode.value = false }
 
+function selectEditRuntime(rt: string) {
+  if (editForm.runtime === rt) { editForm.runtime = ''; return }
+  editForm.runtime = rt
+  if (!cfList.value.length || confirm(`用「${RUNTIME_LABELS[rt]}」的模板初始化配置文件？（将覆盖当前列表）`)) {
+    cfList.value = getTemplateFiles(rt, editForm.type)
+  }
+}
+
 async function saveEdit() {
   if (!deploy.value) return
   saving.value = true
   try {
-    await updateDeploy(deploy.value.id, editForm)
+    await updateDeploy(deploy.value.id, { ...editForm, config_files: JSON.stringify(cfList.value) } as any)
     deploy.value = await getDeploy(deploy.value.id)
+    cfList.value = parseCfJson(deploy.value.config_files)
     editMode.value = false
     MessagePlugin.success('配置已保存')
   } catch (e: any) {
@@ -710,6 +958,8 @@ onMounted(async () => {
   if (!appStore.apps.length) await appStore.fetch()
   await loadDeploy()
 })
+
+onBeforeUnmount(() => { cfEditorView?.destroy() })
 </script>
 
 <style scoped>
@@ -851,4 +1101,69 @@ onMounted(async () => {
 
 /* ── Empty state ── */
 .empty-block { padding: 40px 20px; display: flex; justify-content: center; }
+
+/* ── Runtime chips ── */
+.runtime-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 0 20px;
+}
+.runtime-chips--sm { padding: 4px 0 0; }
+.runtime-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: 1.5px solid var(--sh-border);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--sh-text-secondary);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.runtime-chip:hover { border-color: var(--sh-blue); color: var(--sh-blue); }
+.runtime-chip.active { border-color: var(--sh-blue); background: var(--sh-blue-bg); color: var(--sh-blue); font-weight: 500; }
+.rt-icon { font-size: 16px; }
+.rt-label { font-size: 13px; }
+.divider-hint { font-size: 12px; font-weight: 400; color: var(--sh-text-placeholder); margin-left: 8px; }
+
+/* ── Config files section ── */
+.cf-body { padding: 8px 20px 16px; }
+.cf-empty {
+  font-size: 13px;
+  color: var(--sh-text-secondary);
+  padding: 12px 0 8px;
+  line-height: 1.6;
+}
+.cf-empty code { font-family: var(--sh-font-mono, monospace); font-size: 12px; background: var(--sh-gray-bg); padding: 1px 5px; border-radius: 3px; color: var(--sh-blue); }
+.cf-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--sh-border);
+}
+.cf-row:last-child { border-bottom: none; }
+.cf-name { font-family: var(--sh-font-mono, monospace); font-size: 13px; font-weight: 500; color: var(--sh-text-primary); flex: 1; }
+.cf-ext-badge {
+  font-size: 11px;
+  color: var(--sh-text-secondary);
+  background: var(--sh-gray-bg);
+  padding: 1px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+.cf-actions-inline { margin-left: auto; }
+
+/* ── Config file editor dialog ── */
+.cf-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0 10px;
+}
+.cf-editor-filename { font-family: var(--sh-font-mono, monospace); font-size: 13px; font-weight: 500; flex: 1; }
+.code-editor { height: 420px; overflow: hidden; border-radius: 4px; }
+:deep(.cm-editor) { height: 100%; }
 </style>

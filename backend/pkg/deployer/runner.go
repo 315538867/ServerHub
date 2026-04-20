@@ -2,6 +2,7 @@ package deployer
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -113,21 +114,49 @@ func BuildCmd(app model.Deploy, aesKey string) string {
 
 	var parts []string
 	if app.WorkDir != "" {
+		parts = append(parts, fmt.Sprintf("mkdir -p %s", shellQuote(app.WorkDir)))
 		parts = append(parts, fmt.Sprintf("cd %s", shellQuote(app.WorkDir)))
+	}
+
+	// Write config files (all deploy types)
+	hasStartupSh := false
+	if app.ConfigFiles != "" {
+		var files []struct {
+			Name    string `json:"name"`
+			Content string `json:"content"`
+		}
+		if err := json.Unmarshal([]byte(app.ConfigFiles), &files); err == nil {
+			for _, f := range files {
+				encoded := base64.StdEncoding.EncodeToString([]byte(f.Content))
+				parts = append(parts, fmt.Sprintf("echo %s | base64 -d > %s", shellQuote(encoded), shellQuote(f.Name)))
+				if f.Name == "startup.sh" {
+					hasStartupSh = true
+				}
+			}
+			if hasStartupSh {
+				parts = append(parts, "chmod +x startup.sh")
+			}
+		}
 	}
 
 	switch app.Type {
 	case "docker-compose":
-		cf := app.ComposeFile
-		if cf == "" {
-			cf = "docker-compose.yml"
+		if hasStartupSh {
+			parts = append(parts, "bash startup.sh 2>&1")
+		} else {
+			cf := app.ComposeFile
+			if cf == "" {
+				cf = "docker-compose.yml"
+			}
+			parts = append(parts,
+				fmt.Sprintf("docker compose -f %s pull --quiet 2>&1 || true", shellQuote(cf)),
+				fmt.Sprintf("docker compose -f %s up -d --build 2>&1", shellQuote(cf)),
+			)
 		}
-		parts = append(parts,
-			fmt.Sprintf("docker compose -f %s pull --quiet 2>&1 || true", shellQuote(cf)),
-			fmt.Sprintf("docker compose -f %s up -d --build 2>&1", shellQuote(cf)),
-		)
 	default: // docker, native
-		if app.StartCmd != "" {
+		if hasStartupSh {
+			parts = append(parts, "bash startup.sh 2>&1")
+		} else if app.StartCmd != "" {
 			parts = append(parts, app.StartCmd+" 2>&1")
 		}
 	}
