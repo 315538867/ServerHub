@@ -6,11 +6,13 @@ import '@/styles/tokens.css'
 import '@/styles/global.css'
 import App from './App.vue'
 import router from './router'
+import { registerUi } from '@/components/ui'
 
 const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
 app.use(TDesign)
+registerUi(app)
 
 app.mount('#app')
