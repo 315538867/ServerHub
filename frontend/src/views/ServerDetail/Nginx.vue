@@ -1,19 +1,16 @@
 <template>
   <div class="page-container">
     <div class="section-block">
-      <!-- 工具栏 -->
-      <div class="toolbar">
-        <div class="toolbar-left">
+      <div class="section-title">
+        <span>Nginx 站点</span>
+        <t-space size="small">
           <t-button size="small" variant="outline" :loading="loading" @click="loadSites">
             <template #icon><refresh-icon /></template>
-            刷新
           </t-button>
-        </div>
-        <div class="toolbar-right">
-          <t-button size="small" variant="outline" :loading="reloading" @click="doReload">Nginx Reload</t-button>
-          <t-button size="small" theme="warning" variant="outline" @click="doRestart">Nginx Restart</t-button>
+          <t-button size="small" variant="outline" :loading="reloading" @click="doReload">Reload</t-button>
+          <t-button size="small" theme="warning" variant="outline" @click="doRestart">Restart</t-button>
           <t-button size="small" theme="primary" @click="openCreate">添加站点</t-button>
-        </div>
+        </t-space>
       </div>
 
       <!-- 站点表格 -->
@@ -264,22 +261,6 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy() })
 </script>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--sh-border);
-  margin-bottom: 0;
-}
-
-.toolbar-left,
-.toolbar-right {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
 .code-editor {
   height: 60vh;
   overflow: auto;

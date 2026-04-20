@@ -243,20 +243,6 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
 </script>
 
 <style scoped>
-.tab-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--sh-border);
-  margin-bottom: 0;
-}
-
-.toolbar-left {
-  display: flex;
-  gap: 8px;
-}
-
 .logs-terminal {
   width: 100%;
   height: calc(100vh - 120px);

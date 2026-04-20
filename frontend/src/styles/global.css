@@ -261,9 +261,39 @@ html, body, #app {
   font-size: 13px !important;
 }
 
-/* Tabs */
+/* Tabs — global refinements */
 .t-tabs__nav-item {
   font-size: 13px !important;
+}
+/* Make tabs inside section-block cards look integrated */
+.section-block .t-tabs__header {
+  background: var(--sh-card-bg);
+}
+.section-block .t-tabs__nav-container.t-is-top::after {
+  background-color: var(--sh-border);
+}
+.section-block .t-tabs__nav-container {
+  padding: 0 12px;
+}
+.section-block .t-tabs__content {
+  background: var(--sh-card-bg);
+}
+.section-block .t-tab-panel {
+  padding: 0 !important;
+}
+/* Tab toolbar inside panels */
+.tab-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--sh-border);
+  background: var(--sh-card-bg);
+}
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Pagination */

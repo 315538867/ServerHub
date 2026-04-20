@@ -1,11 +1,11 @@
 <template>
   <div class="page-container">
     <div class="section-block">
-      <!-- 顶部工具栏 -->
-      <div class="toolbar">
+      <div class="section-title">
+        <span>系统管理</span>
         <t-button size="small" variant="outline" :loading="loading" @click="refreshAll">
           <template #icon><refresh-icon /></template>
-          刷新
+          刷新全部
         </t-button>
       </div>
 
@@ -337,22 +337,6 @@ onBeforeUnmount(() => { svcLogsWs?.close(); svcLogsTerm?.dispose() })
 </script>
 
 <style scoped>
-.toolbar { margin-bottom: 0; }
-
-.tab-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--sh-border);
-}
-
-.toolbar-left {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
 .filter-input { width: 200px; }
 .full-width { width: 100%; }
 
