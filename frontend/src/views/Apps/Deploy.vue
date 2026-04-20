@@ -410,6 +410,9 @@ import { json } from '@codemirror/lang-json'
 import { javascript } from '@codemirror/lang-javascript'
 import { xml } from '@codemirror/lang-xml'
 import { html } from '@codemirror/lang-html'
+import { StreamLanguage } from '@codemirror/language'
+import { toml } from '@codemirror/legacy-modes/mode/toml'
+import { properties } from '@codemirror/legacy-modes/mode/properties'
 
 // ── Local types ────────────────────────────────────────────────────────────
 
@@ -466,9 +469,10 @@ function getExtLang(filename: string) {
   if (['yml', 'yaml'].includes(ext)) return yaml()
   if (ext === 'json') return json()
   if (['js', 'ts', 'sh', 'bash'].includes(ext)) return javascript()
-  if (['xml'].includes(ext)) return xml()
+  if (ext === 'xml') return xml()
   if (['html', 'htm'].includes(ext)) return html()
-  // toml / properties / txt — no dedicated CM6 package, plain text
+  if (ext === 'toml') return StreamLanguage.define(toml)
+  if (['properties', 'ini', 'env'].includes(ext)) return StreamLanguage.define(properties)
   return []
 }
 
