@@ -11,7 +11,7 @@ build: build-frontend
 
 # Build frontend only (output goes to backend/web/dist/)
 build-frontend:
-	cd $(FRONTEND_DIR) && npm ci && npm run build
+	cd $(FRONTEND_DIR) && npm install && npm run build
 
 # Start backend in dev mode (reads frontend from Vite dev server via proxy)
 dev-backend:

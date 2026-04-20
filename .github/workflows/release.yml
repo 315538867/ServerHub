@@ -49,7 +49,7 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: |
-          npm ci
+          npm install
           npm run build
 
       - name: Setup Go
