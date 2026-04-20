@@ -1,18 +1,14 @@
 <template>
   <div class="page-container">
-    <!-- 页面头部 -->
-    <div class="section-block page-header-card">
-      <div class="header-left">
-        <div class="header-title">
-          <server-icon class="header-icon" />
-          <span>服务器管理</span>
-        </div>
-        <div class="header-subtitle">管理并监控所有服务器的连接状态</div>
+    <!-- 页面标题 -->
+    <div class="section-block">
+      <div class="section-title">
+        <span>服务器管理</span>
+        <t-button theme="primary" size="small" @click="openCreate">
+          <template #icon><add-icon /></template>
+          添加服务器
+        </t-button>
       </div>
-      <t-button theme="primary" @click="openCreate">
-        <template #icon><add-icon /></template>
-        添加服务器
-      </t-button>
     </div>
 
     <!-- 服务器列表 -->
@@ -77,7 +73,7 @@
           <t-input v-model="form.host" placeholder="192.168.1.100 或 example.com" />
         </t-form-item>
         <t-form-item label="端口" name="port">
-          <t-input-number v-model="form.port" :min="1" :max="65535" style="width:100%" />
+          <t-input-number v-model="form.port" :min="1" :max="65535" class="full-width" />
         </t-form-item>
         <t-form-item label="用户名" name="username">
           <t-input v-model="form.username" placeholder="root" />
@@ -105,7 +101,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
-import { AddIcon, ServerIcon } from 'tdesign-icons-vue-next'
+import { AddIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import type { Server, ServerForm } from '@/types/api'
 import { getServers, createServer, updateServer, deleteServer, testServer } from '@/api/servers'
@@ -223,82 +219,31 @@ onMounted(loadServers)
 </script>
 
 <style scoped>
-.page-header-card {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px 20px;
-  margin-bottom: 16px;
-}
-
-.header-left {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.header-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--sh-text-primary);
-}
-
-.header-icon {
-  color: var(--sh-blue);
-  font-size: 18px;
-}
-
-.header-subtitle {
-  font-size: 13px;
-  color: var(--sh-text-secondary);
-  margin-left: 26px;
-}
+.full-width { width: 100%; }
 
 .server-name-cell {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-
-.status-dot {
-  flex-shrink: 0;
-}
-
-.status-dot.online { background: var(--sh-green); }
-.status-dot.offline { background: var(--sh-red); }
-.status-dot.unknown { background: #c5c5c5; }
-
 .server-name {
   font-weight: 500;
   color: var(--sh-text-primary);
 }
-
 .server-remark {
   font-size: 12px;
   color: var(--sh-text-secondary);
 }
-
 .mono-text {
-  font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;
-  font-size: 12px;
-  color: var(--sh-text-primary);
+  font-family: 'JetBrains Mono', 'Cascadia Code', Menlo, monospace;
+  font-size: 12.5px;
 }
-
 .time-text {
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--sh-text-secondary);
 }
 
 :deep(.t-table) {
   font-size: 13px;
-}
-
-:deep(.t-table th) {
-  background: #FAFAFA !important;
-  font-weight: 500;
-  color: var(--sh-text-secondary);
 }
 </style>

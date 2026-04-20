@@ -16,7 +16,7 @@
         >
           <template #name="{ row }">
             <span class="name-cell">
-              <span :class="['status-dot', `status-dot--${row.status}`]" />
+              <span :class="['status-dot', row.status]" />
               <t-link theme="primary" @click="$router.push(`/apps/${row.id}/overview`)">{{ row.name }}</t-link>
             </span>
           </template>
@@ -57,22 +57,8 @@ onMounted(() => appStore.fetch())
 </script>
 
 <style scoped>
-.title-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--sh-text-primary);
-}
 .table-wrap {
   padding: 0 20px 16px;
-  font-size: 13px;
-}
-:deep(.t-table th) {
-  background: #FAFAFA;
-  font-size: 12px;
-  color: var(--sh-text-secondary);
-  font-weight: 500;
-}
-:deep(.t-table td) {
   font-size: 13px;
 }
 .name-cell {
@@ -80,15 +66,5 @@ onMounted(() => appStore.fetch())
   align-items: center;
   gap: 6px;
 }
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: inline-block;
-  flex-shrink: 0;
-}
-.status-dot--online { background: var(--sh-green); }
-.status-dot--offline { background: var(--sh-text-secondary); }
-.status-dot--error { background: var(--sh-red); }
-.status-dot--unknown { background: var(--sh-text-secondary); }
+
 </style>

@@ -50,7 +50,7 @@
           <t-input v-model="createForm.name" placeholder="my-site" />
         </t-form-item>
         <t-form-item label="类型">
-          <t-select v-model="createForm.type" style="width:100%">
+          <t-select v-model="createForm.type" class="full-width">
             <t-option label="静态文件" value="static" />
             <t-option label="反向代理" value="proxy" />
             <t-option label="PHP" value="php" />
@@ -60,7 +60,7 @@
           <t-input v-model="createForm.domain" placeholder="example.com" />
         </t-form-item>
         <t-form-item label="监听端口">
-          <t-input-number v-model="createForm.port" :min="1" :max="65535" style="width:100%" />
+          <t-input-number v-model="createForm.port" :min="1" :max="65535" class="full-width" />
         </t-form-item>
         <t-form-item v-if="createForm.type !== 'proxy'" label="根目录">
           <t-input v-model="createForm.root" placeholder="/var/www/html" />
@@ -302,9 +302,5 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy() })
   font-size: 13px;
 }
 
-:deep(.t-table th) {
-  background: #FAFAFA !important;
-  font-weight: 500;
-  color: var(--sh-text-secondary);
-}
+.full-width { width: 100%; }
 </style>

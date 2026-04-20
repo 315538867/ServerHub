@@ -9,7 +9,7 @@
             <template #icon><add-icon /></template>
             添加规则
           </t-button>
-          <t-button variant="outline" size="small" :loading="rulesLoading" @click="loadRules" style="margin-left:8px">刷新</t-button>
+          <t-button variant="outline" size="small" :loading="rulesLoading" @click="loadRules">刷新</t-button>
         </div>
       </div>
       <div class="block-body">
@@ -42,7 +42,7 @@
             <template #icon><add-icon /></template>
             添加渠道
           </t-button>
-          <t-button variant="outline" size="small" :loading="channelsLoading" @click="loadChannels" style="margin-left:8px">刷新</t-button>
+          <t-button variant="outline" size="small" :loading="channelsLoading" @click="loadChannels">刷新</t-button>
         </div>
       </div>
       <div class="block-body">
@@ -72,7 +72,7 @@
         <div class="title-actions">
           <t-button variant="outline" size="small" :loading="eventsLoading" @click="loadEvents">刷新</t-button>
           <t-popconfirm content="确认清理30天前的历史记录？" @confirm="doClearEvents">
-            <t-button theme="warning" variant="outline" size="small" style="margin-left:8px">清理旧记录</t-button>
+          <t-button theme="warning" variant="outline" size="small">清理旧记录</t-button>
           </t-popconfirm>
         </div>
       </div>
@@ -104,12 +104,12 @@
     >
       <t-form :data="ruleForm" label-width="90px" size="small" colon>
         <t-form-item label="服务器">
-          <t-select v-model="ruleForm.server_id" placeholder="所有服务器" clearable style="width:100%">
+          <t-select v-model="ruleForm.server_id" placeholder="所有服务器" clearable class="full-width">
             <t-option v-for="s in servers" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
           </t-select>
         </t-form-item>
         <t-form-item label="指标">
-          <t-select v-model="ruleForm.metric" style="width:100%">
+          <t-select v-model="ruleForm.metric" class="full-width">
             <t-option label="CPU 使用率" value="cpu" />
             <t-option label="内存使用率" value="mem" />
             <t-option label="磁盘使用率" value="disk" />
@@ -124,11 +124,11 @@
             </t-radio-group>
           </t-form-item>
           <t-form-item label="阈值 (%)">
-            <t-input-number v-model="ruleForm.threshold" :min="0" :max="100" style="width:100%" />
+            <t-input-number v-model="ruleForm.threshold" :min="0" :max="100" class="full-width" />
           </t-form-item>
         </template>
         <t-form-item label="持续次数">
-          <t-input-number v-model="ruleForm.duration" :min="1" :max="10" style="width:100%" />
+          <t-input-number v-model="ruleForm.duration" :min="1" :max="10" class="full-width" />
           <div class="form-hint">连续触发 N 次才发告警，防止抖动</div>
         </t-form-item>
       </t-form>
@@ -147,7 +147,7 @@
           <t-input v-model="channelForm.name" placeholder="我的企微机器人" />
         </t-form-item>
         <t-form-item label="类型">
-          <t-select v-model="channelForm.type" style="width:100%">
+          <t-select v-model="channelForm.type" class="full-width">
             <t-option label="企业微信机器人" value="webhook_wechat" />
             <t-option label="钉钉机器人" value="webhook_dingtalk" />
             <t-option label="自定义 Webhook" value="custom" />
@@ -322,7 +322,10 @@ onMounted(async () => {
 .title-actions {
   display: flex;
   align-items: center;
+  gap: 8px;
 }
+
+.full-width { width: 100%; }
 
 .pagination-row {
   display: flex;

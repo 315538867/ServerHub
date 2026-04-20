@@ -182,11 +182,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.title-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--sh-text-primary);
-}
 .desc-wrap {
   padding: 16px 20px 20px;
 }
@@ -200,12 +195,6 @@ onMounted(async () => {
 }
 .table-wrap {
   padding: 0 20px 16px;
-}
-:deep(.t-table th) {
-  background: #FAFAFA;
-  font-size: 12px;
-  color: var(--sh-text-secondary);
-  font-weight: 500;
 }
 :deep(.t-table td) {
   font-size: 13px;

@@ -82,7 +82,7 @@
           <t-input v-model="createForm.name" placeholder="my-site" />
         </t-form-item>
         <t-form-item label="类型">
-          <t-select v-model="createForm.type" style="width:100%">
+          <t-select v-model="createForm.type" class="full-width">
             <t-option label="静态文件" value="static" />
             <t-option label="反向代理" value="proxy" />
             <t-option label="PHP" value="php" />
@@ -92,7 +92,7 @@
           <t-input v-model="createForm.domain" placeholder="example.com" />
         </t-form-item>
         <t-form-item label="监听端口">
-          <t-input-number v-model="createForm.port" :min="1" :max="65535" style="width:100%" />
+          <t-input-number v-model="createForm.port" :min="1" :max="65535" class="full-width" />
         </t-form-item>
         <t-form-item v-if="createForm.type !== 'proxy'" label="根目录">
           <t-input v-model="createForm.root" placeholder="/var/www/html" />
@@ -387,11 +387,6 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy(); certWs?.close() })
 </script>
 
 <style scoped>
-.title-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--sh-text-primary);
-}
 .table-wrap {
   padding: 0 20px 16px;
 }
@@ -399,12 +394,6 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy(); certWs?.close() })
   padding: 40px 20px;
   display: flex;
   justify-content: center;
-}
-:deep(.t-table th) {
-  background: #FAFAFA;
-  font-size: 12px;
-  color: var(--sh-text-secondary);
-  font-weight: 500;
 }
 :deep(.t-table td) {
   font-size: 13px;
@@ -414,4 +403,5 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy(); certWs?.close() })
 :deep(.cm-scroller) { overflow: auto; }
 .logs-terminal { width: 100%; height: calc(100vh - 240px); background: #1a2332; border-radius: 4px; overflow: hidden; margin-top: 12px; }
 .cert-output { background: #1a2332; color: #e0e0e0; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 280px; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
+.full-width { width: 100%; }
 </style>

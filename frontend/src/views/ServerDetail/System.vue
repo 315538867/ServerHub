@@ -69,7 +69,7 @@
         <t-tab-panel value="services" label="系统服务">
           <div class="tab-toolbar">
             <div class="toolbar-left">
-              <t-input v-model="svcFilter" placeholder="过滤服务名" size="small" style="width:200px" clearable />
+              <t-input v-model="svcFilter" placeholder="过滤服务名" size="small" class="filter-input" clearable />
               <t-button size="small" variant="outline" @click="loadServices">
                 <template #icon><refresh-icon /></template>
               </t-button>
@@ -108,13 +108,13 @@
           <t-input v-model="ruleForm.port" placeholder="如 80 或 8000:8100" />
         </t-form-item>
         <t-form-item label="协议">
-          <t-select v-model="ruleForm.proto" style="width:100%">
+          <t-select v-model="ruleForm.proto" class="full-width">
             <t-option label="tcp" value="tcp" />
             <t-option label="udp" value="udp" />
           </t-select>
         </t-form-item>
         <t-form-item label="动作">
-          <t-select v-model="ruleForm.action" style="width:100%">
+          <t-select v-model="ruleForm.action" class="full-width">
             <t-option label="允许 (allow)" value="allow" />
             <t-option label="拒绝 (deny)" value="deny" />
           </t-select>
@@ -337,9 +337,7 @@ onBeforeUnmount(() => { svcLogsWs?.close(); svcLogsTerm?.dispose() })
 </script>
 
 <style scoped>
-.toolbar {
-  margin-bottom: 4px;
-}
+.toolbar { margin-bottom: 4px; }
 
 .tab-toolbar {
   display: flex;
@@ -354,6 +352,9 @@ onBeforeUnmount(() => { svcLogsWs?.close(); svcLogsTerm?.dispose() })
   align-items: center;
 }
 
+.filter-input { width: 200px; }
+.full-width { width: 100%; }
+
 .logs-terminal {
   width: 100%;
   height: calc(100vh - 120px);
@@ -362,13 +363,5 @@ onBeforeUnmount(() => { svcLogsWs?.close(); svcLogsTerm?.dispose() })
   overflow: hidden;
 }
 
-:deep(.t-table) {
-  font-size: 13px;
-}
-
-:deep(.t-table th) {
-  background: #FAFAFA !important;
-  font-weight: 500;
-  color: var(--sh-text-secondary);
-}
+:deep(.t-table) { font-size: 13px; }
 </style>

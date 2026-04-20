@@ -197,3 +197,162 @@ html, body, #app {
 }
 .table-toolbar-left  { display: flex; align-items: center; gap: 8px; }
 .table-toolbar-right { display: flex; align-items: center; gap: 8px; }
+
+/* ---------- More TDesign overrides ---------- */
+
+/* Input — tighten focus ring */
+.t-input:focus-within {
+  border-color: var(--sh-blue) !important;
+  box-shadow: 0 0 0 2px rgba(0, 82, 217, 0.12) !important;
+}
+
+/* Select — same focus ring */
+.t-select .t-input:focus-within {
+  border-color: var(--sh-blue) !important;
+  box-shadow: 0 0 0 2px rgba(0, 82, 217, 0.12) !important;
+}
+
+/* Form item label */
+.t-form__label {
+  font-size: 13px !important;
+  color: var(--sh-text-secondary) !important;
+}
+
+/* Form item extra/help text */
+.t-form__controls-content {
+  font-size: 12px;
+}
+
+/* Descriptions */
+.t-descriptions__body td,
+.t-descriptions__body th {
+  font-size: 13px !important;
+  padding: 10px 16px !important;
+}
+.t-descriptions__header {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+}
+
+/* Dialog */
+.t-dialog__header {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  padding: 18px 24px 14px !important;
+}
+.t-dialog__body {
+  padding: 4px 24px 20px !important;
+  font-size: 13px !important;
+}
+.t-dialog__footer {
+  padding: 12px 24px 18px !important;
+  border-top: 1px solid var(--sh-border) !important;
+}
+
+/* Drawer */
+.t-drawer__header {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  padding: 16px 24px !important;
+  border-bottom: 1px solid var(--sh-border) !important;
+}
+.t-drawer__body {
+  padding: 16px 24px !important;
+  font-size: 13px !important;
+}
+
+/* Tabs */
+.t-tabs__nav-item {
+  font-size: 13px !important;
+}
+
+/* Pagination */
+.t-pagination {
+  font-size: 13px !important;
+}
+
+/* Switch */
+.t-switch--checked {
+  background-color: var(--sh-blue) !important;
+}
+
+/* Breadcrumb */
+.t-breadcrumb__item .t-link {
+  font-size: 13px !important;
+  color: var(--sh-text-secondary) !important;
+}
+.t-breadcrumb__item:last-child .t-link {
+  color: var(--sh-text-primary) !important;
+  font-weight: 500 !important;
+}
+
+/* Empty state */
+.t-empty__description {
+  font-size: 13px !important;
+  color: var(--sh-text-secondary) !important;
+}
+
+/* Alert */
+.t-alert {
+  border-radius: var(--sh-card-radius) !important;
+  font-size: 13px !important;
+}
+
+/* Log output blocks (shared) */
+.log-output {
+  background: #1a2332;
+  color: #e0e0e0;
+  font-family: 'JetBrains Mono', 'Cascadia Code', Menlo, monospace;
+  font-size: 12.5px;
+  line-height: 1.65;
+  padding: 14px 16px;
+  border-radius: 6px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 200px;
+  max-height: calc(100vh - 200px);
+}
+
+/* form-hint shared utility */
+.form-hint {
+  font-size: 12px;
+  color: var(--sh-text-secondary);
+  margin-left: 8px;
+}
+
+/* block-body (content inside section-block without section-title) */
+.block-body {
+  padding: 0 20px 16px;
+}
+
+/* block-body with top padding */
+.block-body--padded {
+  padding: 16px 20px;
+}
+
+/* pagination row */
+.pagination-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 0 4px;
+}
+
+/* tab-content inside drawer */
+.tab-content {
+  padding: 16px 0;
+}
+
+/* input-with-btn layout */
+.input-with-btn {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
+.input-with-btn .t-input { flex: 1; }
+
+/* section-block last child removes margin */
+.section-block:last-child {
+  margin-bottom: 0;
+}

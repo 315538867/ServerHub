@@ -19,7 +19,6 @@
             row-key="id"
             bordered
             size="small"
-            style="margin-top: 0"
           >
             <template #state="{ row }">
               <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ row.status }}</t-tag>
@@ -265,7 +264,7 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
 }
 
 .inspect-json {
-  background: #f5f7fa;
+  background: var(--sh-gray-bg);
   border-radius: 4px;
   padding: 12px;
   font-size: 12px;
@@ -295,11 +294,5 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
 
 :deep(.t-table) {
   font-size: 13px;
-}
-
-:deep(.t-table th) {
-  background: #FAFAFA !important;
-  font-weight: 500;
-  color: var(--sh-text-secondary);
 }
 </style>

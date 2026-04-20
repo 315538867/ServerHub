@@ -335,13 +335,5 @@ onBeforeUnmount(() => editorView?.destroy())
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
 
-:deep(.t-table) {
-  font-size: 13px;
-}
-
-:deep(.t-table th) {
-  background: #FAFAFA !important;
-  font-weight: 500;
-  color: var(--sh-text-secondary);
-}
+:deep(.t-table) { font-size: 13px; }
 </style>

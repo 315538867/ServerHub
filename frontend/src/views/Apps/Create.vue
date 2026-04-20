@@ -1,49 +1,72 @@
 <template>
-  <div class="page-container">
-    <div class="section-block" style="max-width: 720px;">
-      <div class="section-title">
-        <span class="title-text">新建应用</span>
+  <div class="page-container create-page">
+    <div class="create-card">
+
+      <!-- 页面标题 -->
+      <div class="create-header">
+        <h2 class="create-title">新建应用</h2>
+        <p class="create-subtitle">配置应用的基础信息、关联服务与部署资源</p>
       </div>
-      <div class="form-wrap">
-        <div class="form-section-label">基本信息</div>
-        <t-form :data="form" label-width="90px" colon>
-          <t-form-item label="应用名称" name="name">
-            <t-input v-model="form.name" placeholder="例如：my-blog" />
-          </t-form-item>
-          <t-form-item label="描述">
-            <t-textarea v-model="form.description" :autosize="{ minRows: 2 }" placeholder="应用描述（可选）" />
-          </t-form-item>
-          <t-form-item label="域名">
-            <t-input v-model="form.domain" placeholder="blog.example.com" />
-          </t-form-item>
-        </t-form>
 
-        <t-divider />
-        <div class="form-section-label">服务配置</div>
-        <t-form :data="form" label-width="90px" colon>
-          <t-form-item label="服务器" name="server_id">
-            <t-select v-model="form.server_id" placeholder="选择服务器" style="width:100%">
-              <t-option v-for="s in serverStore.servers" :key="s.id" :label="s.name" :value="s.id" />
-            </t-select>
-          </t-form-item>
-          <t-form-item label="容器名">
-            <t-input v-model="form.container_name" placeholder="Docker 容器名" />
-          </t-form-item>
-        </t-form>
+      <!-- 表单内容 -->
+      <div class="create-body">
 
-        <t-divider />
-        <div class="form-section-label">部署配置</div>
-        <t-form :data="form" label-width="90px" colon>
-          <t-form-item label="Nginx 站点">
-            <t-input v-model="form.site_name" placeholder="conf.d 中的文件名" />
-          </t-form-item>
-        </t-form>
-
-        <div class="form-footer">
-          <t-button theme="primary" :loading="saving" @click="handleCreate">创建应用</t-button>
-          <t-button variant="outline" @click="$router.back()">取消</t-button>
+        <!-- 基本信息 -->
+        <div class="form-section">
+          <div class="form-section-title">基本信息</div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label">应用名称 <span class="form-required">*</span></label>
+              <t-input v-model="form.name" placeholder="例如：my-blog" />
+              <span class="form-hint">唯一标识符，创建后不可修改</span>
+            </div>
+            <div class="form-field">
+              <label class="form-label">描述</label>
+              <t-input v-model="form.description" placeholder="简短描述该应用的用途（可选）" />
+            </div>
+            <div class="form-field">
+              <label class="form-label">域名</label>
+              <t-input v-model="form.domain" placeholder="blog.example.com（可选）" />
+            </div>
+          </div>
         </div>
+
+        <!-- 服务配置 -->
+        <div class="form-section">
+          <div class="form-section-title">服务配置</div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label">关联服务器 <span class="form-required">*</span></label>
+              <t-select v-model="form.server_id" placeholder="选择服务器">
+                <t-option v-for="s in serverStore.servers" :key="s.id" :label="s.name" :value="s.id" />
+              </t-select>
+            </div>
+            <div class="form-field">
+              <label class="form-label">Docker 容器名</label>
+              <t-input v-model="form.container_name" placeholder="关联的容器名（可选）" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 部署配置 -->
+        <div class="form-section form-section--last">
+          <div class="form-section-title">部署配置</div>
+          <div class="form-grid">
+            <div class="form-field">
+              <label class="form-label">Nginx 站点</label>
+              <t-input v-model="form.site_name" placeholder="conf.d 中的配置文件名（可选）" />
+            </div>
+          </div>
+        </div>
+
       </div>
+
+      <!-- 底部操作 -->
+      <div class="create-footer">
+        <t-button theme="primary" :loading="saving" @click="handleCreate">创建应用</t-button>
+        <t-button variant="outline" @click="$router.back()">取消</t-button>
+      </div>
+
     </div>
   </div>
 </template>
@@ -71,7 +94,7 @@ const form = reactive({
 onMounted(() => serverStore.fetch())
 
 async function handleCreate() {
-  if (!form.name || !form.server_id) { MessagePlugin.warning('请填写必填项'); return }
+  if (!form.name || !form.server_id) { MessagePlugin.warning('请填写应用名称和服务器'); return }
   saving.value = true
   try {
     const app = await createApp(form as any)
@@ -87,28 +110,101 @@ async function handleCreate() {
 </script>
 
 <style scoped>
-.title-text {
-  font-size: 14px;
+.create-page {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.create-card {
+  width: 100%;
+  max-width: 680px;
+  background: var(--sh-card-bg);
+  border: var(--sh-card-border);
+  border-radius: var(--sh-card-radius);
+  box-shadow: var(--sh-card-shadow);
+  overflow: hidden;
+}
+
+/* 页面标题 */
+.create-header {
+  padding: 24px 32px 22px;
+  border-bottom: 1px solid var(--sh-border);
+}
+.create-title {
+  margin: 0 0 5px;
+  font-size: 16px;
   font-weight: 600;
   color: var(--sh-text-primary);
 }
-.form-wrap {
-  padding: 20px 28px 28px;
+.create-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--sh-text-secondary);
 }
-.form-section-label {
+
+/* 表单主体 */
+.create-body {
+  padding: 4px 0;
+}
+
+/* 分区块 */
+.form-section {
+  padding: 22px 32px 20px;
+  border-bottom: 1px solid var(--sh-border);
+}
+.form-section--last {
+  border-bottom: none;
+}
+
+.form-section-title {
   font-size: 13px;
   font-weight: 600;
   color: var(--sh-text-primary);
-  margin-bottom: 16px;
+  border-left: 3px solid var(--sh-blue);
+  padding-left: 10px;
+  margin-bottom: 18px;
+  line-height: 1.4;
 }
-.form-footer {
+
+/* 表单网格 */
+.form-grid {
   display: flex;
-  gap: 12px;
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid var(--sh-border);
+  flex-direction: column;
+  gap: 16px;
 }
-:deep(.t-divider) {
-  margin: 20px 0;
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 13px;
+  color: var(--sh-text-primary);
+  font-weight: 500;
+  line-height: 1;
+}
+
+.form-required {
+  color: #e34d59;
+  margin-left: 2px;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--sh-text-secondary);
+  line-height: 1.4;
+}
+
+/* 底部操作 */
+.create-footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 32px;
+  border-top: 1px solid var(--sh-border);
+  background: var(--sh-page-bg);
 }
 </style>

@@ -90,11 +90,6 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.title-text {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--sh-text-primary);
-}
 .desc-wrap {
   padding: 16px 20px 20px;
 }

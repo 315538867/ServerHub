@@ -194,6 +194,12 @@ const breadcrumbs = computed(() => {
       ...(seg && segLabel[seg] ? [{ label: segLabel[seg], path: '' }] : []),
     ]
   }
+  if (path === '/apps/create') {
+    return [
+      { label: '应用', path: '/apps' },
+      { label: '新建应用', path: '' },
+    ]
+  }
   const topLabels: Record<string, string> = {
     '/servers': '服务器管理', '/deploy': '部署管理',
     '/database': '数据库', '/notifications': '通知',

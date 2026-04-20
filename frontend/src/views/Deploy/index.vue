@@ -17,7 +17,7 @@
     </div>
 
     <!-- 空状态 -->
-    <t-empty v-if="!loading && filteredApps.length === 0" description="暂无部署应用，点击右上角新建" style="margin-top:60px" />
+    <t-empty v-if="!loading && filteredApps.length === 0" description="暂无部署应用，点击右上角新建" class="empty-state" />
 
     <!-- 应用卡片网格 -->
     <div v-else class="app-grid" v-loading="loading">
@@ -31,7 +31,7 @@
         <div class="app-card__header">
           <div class="app-card__name-row">
             <span class="app-card__name">{{ app.name }}</span>
-            <t-tag size="small" :theme="typeTagTheme(app.type)" variant="light" style="margin-left:6px">{{ app.type }}</t-tag>
+            <t-tag size="small" :theme="typeTagTheme(app.type)" variant="light" class="name-tag">{{ app.type }}</t-tag>
           </div>
           <div class="app-card__header-right">
             <t-tag size="small" :theme="syncStatusTagTheme(app.sync_status)" variant="light">
@@ -161,7 +161,7 @@
 
         <t-tab-panel value="version" label="版本管理">
           <div class="tab-content">
-            <t-form :data="detailVersionForm" label-width="90px" colon style="max-width:480px">
+            <t-form :data="detailVersionForm" label-width="90px" colon class="drawer-form">
               <t-form-item label="期望版本">
                 <t-input v-model="detailVersionForm.desired_version" placeholder="v1.0 / latest" />
               </t-form-item>
@@ -192,7 +192,7 @@
 
         <t-tab-panel value="config" label="应用配置">
           <div class="tab-content">
-            <t-form :data="detailConfigForm" label-width="90px" colon style="max-width:480px">
+            <t-form :data="detailConfigForm" label-width="90px" colon class="drawer-form">
               <t-form-item label="服务器">
                 <t-select v-model="detailConfigForm.server_id" style="width:100%">
                   <t-option v-for="s in servers" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
@@ -273,7 +273,7 @@
 
         <t-tab-panel value="webhook" label="Webhook">
           <div class="tab-content">
-            <t-form label-width="110px" colon style="max-width:500px">
+            <t-form label-width="110px" colon class="drawer-form">
               <t-form-item label="Webhook URL">
                 <div class="input-with-btn">
                   <t-input v-model="webhookUrl" readonly />
@@ -284,7 +284,7 @@
                 <t-input v-model="webhookSecret" readonly type="password" />
               </t-form-item>
             </t-form>
-            <t-alert theme="info" message="Webhook 收到 POST 请求后将自动触发同步。支持 GitHub / GitLab 签名验证。" style="margin-top:8px" />
+            <t-alert theme="info" message="Webhook 收到 POST 请求后将自动触发同步。支持 GitHub / GitLab 签名验证。" class="mt-sm" />
           </div>
         </t-tab-panel>
       </t-tabs>
@@ -747,7 +747,7 @@ onMounted(loadAll)
   display: flex;
   align-items: center;
   justify-content: space-around;
-  background: #f7f8fa;
+  background: var(--sh-gray-bg);
   border-radius: 6px;
   padding: 8px 10px;
 }
@@ -784,12 +784,15 @@ onMounted(loadAll)
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  border-top: 1px solid #f5f5f5;
-  background: #fafafa;
+  border-top: 1px solid var(--sh-border);
+  background: var(--sh-gray-bg);
 }
 
 /* 抽屉内容 */
 .env-toolbar { margin-bottom: 10px; }
+.drawer-form { max-width: 480px; }
+.name-tag { margin-left: 6px; }
+.mt-sm { margin-top: 8px; }
 .form-section-label {
   font-size: 13px;
   font-weight: 600;
@@ -820,10 +823,12 @@ onMounted(loadAll)
 }
 .log-output--static { height: 400px; }
 
+.empty-state { margin-top: 60px; }
+
 .version-dialog__current {
   font-size: 13px;
   color: var(--sh-text-secondary);
-  background: #f7f8fa;
+  background: var(--sh-gray-bg);
   padding: 8px 12px;
   border-radius: 4px;
 }
