@@ -1,5 +1,8 @@
 <template>
   <div class="page-container">
+    <!-- 实时指标（仅当绑定容器时） -->
+    <app-metrics-card v-if="app?.container_name" :app-id="appId" class="metrics-wrap" />
+
     <!-- 应用信息 -->
     <div class="section-block">
       <div class="section-title">
@@ -79,7 +82,7 @@
         <span class="title-text">快捷操作</span>
       </div>
       <div class="actions-wrap">
-        <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/apps/${appId}/terminal`)">打开终端</t-button>
+        <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/apps/${appId}/ops/terminal`)">打开终端</t-button>
         <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/servers/${server.id}/files`)">文件管理</t-button>
         <t-button theme="danger" variant="outline" size="small" @click="handleDelete">删除应用</t-button>
       </div>
@@ -95,6 +98,7 @@ import { useAppStore } from '@/stores/app'
 import { useServerStore } from '@/stores/server'
 import { deleteApp, getAppDirs, initAppDirs } from '@/api/application'
 import type { AppDirEntry } from '@/types/api'
+import AppMetricsCard from '@/components/apps/AppMetricsCard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -177,7 +181,7 @@ onMounted(async () => {
 
 <style scoped>
 .desc-wrap {
-  padding: 16px 20px 20px;
+  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
 }
 :deep(.t-descriptions__label) {
   color: var(--sh-text-secondary);
@@ -189,15 +193,15 @@ onMounted(async () => {
 }
 .title-actions {
   display: flex;
-  gap: 8px;
+  gap: var(--sh-space-sm);
 }
 .dirs-wrap {
-  padding: 4px 20px 20px;
+  padding: var(--sh-space-xs) var(--sh-space-lg) var(--sh-space-lg);
 }
 .dirs-error {
   color: var(--sh-danger);
   font-size: 13px;
-  padding: 8px 0;
+  padding: var(--sh-space-sm) 0;
 }
 .dir-name {
   font-weight: 500;
@@ -213,8 +217,8 @@ onMounted(async () => {
 }
 .actions-wrap {
   display: flex;
-  gap: 10px;
-  padding: 12px 20px 20px;
+  gap: var(--sh-space-sm);
+  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
   flex-wrap: wrap;
 }
 .link {
@@ -222,4 +226,5 @@ onMounted(async () => {
   text-decoration: none;
 }
 .link:hover { text-decoration: underline; }
+.metrics-wrap { margin-bottom: var(--sh-space-sm); }
 </style>

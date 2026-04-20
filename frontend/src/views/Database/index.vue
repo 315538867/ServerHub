@@ -29,7 +29,7 @@
             <template #icon><delete-icon /></template>
           </t-button>
         </div>
-        <t-empty v-if="conns.length === 0" description="暂无连接" style="padding:24px 0" />
+        <t-empty v-if="conns.length === 0" description="暂无连接" style="padding: var(--sh-space-lg) 0" />
       </div>
     </div>
 
@@ -41,7 +41,7 @@
           <div class="section-title">
             <div class="db-main-title">
               <span>{{ selectedConn.name }}</span>
-              <t-tag :theme="selectedConn.type === 'redis' ? 'warning' : 'primary'" size="small" variant="light" style="margin-left:8px">
+              <t-tag :theme="selectedConn.type === 'redis' ? 'warning' : 'primary'" size="small" variant="light" style="margin-left: var(--sh-space-sm)">
                 {{ selectedConn.type.toUpperCase() }}
               </t-tag>
             </div>
@@ -101,7 +101,7 @@
 
               <t-tab-panel value="status" label="状态">
                 <div class="tab-content">
-                  <t-button size="small" variant="outline" :loading="statusLoading" @click="loadStatus" style="margin-bottom:12px">刷新</t-button>
+                  <t-button size="small" variant="outline" :loading="statusLoading" @click="loadStatus" style="margin-bottom: var(--sh-space-md)">刷新</t-button>
                   <t-table :data="statusRowsData" :columns="statusColumns" :loading="statusLoading" size="small" max-height="500" row-key="key" />
                 </div>
               </t-tab-panel>
@@ -115,7 +115,7 @@
             <t-tabs :value="redisTab" @change="val => (redisTab = val as string)">
               <t-tab-panel value="info" label="状态">
                 <div class="tab-content">
-                  <t-button size="small" variant="outline" :loading="infoLoading" @click="loadRedisInfo" style="margin-bottom:12px">刷新</t-button>
+                  <t-button size="small" variant="outline" :loading="infoLoading" @click="loadRedisInfo" style="margin-bottom: var(--sh-space-md)">刷新</t-button>
                   <div class="redis-info-grid">
                     <div v-for="(val, key) in redisInfo" :key="key" class="info-item">
                       <span class="info-key">{{ key }}</span>
@@ -556,8 +556,8 @@ init()
 /* 整体两栏布局 */
 .db-layout {
   display: flex;
-  gap: 16px;
-  padding: 20px 24px;
+  gap: var(--sh-space-md);
+  padding: var(--sh-space-lg);
   min-height: calc(100vh - 60px);
   align-items: flex-start;
 }
@@ -572,7 +572,7 @@ init()
   overflow: hidden;
 }
 .db-sidebar .section-title {
-  padding: 12px 14px;
+  padding: var(--sh-space-md);
   font-size: 13px;
   border-bottom: 1px solid var(--sh-border);
 }
@@ -585,8 +585,8 @@ init()
 .conn-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--sh-space-sm);
+  padding: var(--sh-space-sm) var(--sh-space-md);
   cursor: pointer;
   border-bottom: 1px solid #f5f5f5;
   transition: background 0.15s;
@@ -633,7 +633,7 @@ init()
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--sh-space-md);
 }
 
 .db-main-header {
@@ -641,7 +641,7 @@ init()
 }
 .db-main-header .section-title {
   border-bottom: none;
-  padding: 12px 16px;
+  padding: var(--sh-space-md);
 }
 .db-main-title {
   display: flex;
@@ -658,41 +658,41 @@ init()
 }
 
 /* Tabs 内容 */
-.tab-content { padding: 16px 0; }
-.tab-toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
-.query-toolbar { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+.tab-content { padding: var(--sh-space-md) 0; }
+.tab-toolbar { display: flex; gap: var(--sh-space-sm); margin-bottom: var(--sh-space-md); align-items: center; }
+.query-toolbar { display: flex; gap: var(--sh-space-sm); margin-bottom: var(--sh-space-sm); align-items: center; }
 
 .sql-editor {
   height: 200px;
   overflow: auto;
   border: 1px solid var(--sh-border);
   border-radius: 4px;
-  margin-bottom: 12px;
+  margin-bottom: var(--sh-space-md);
 }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
 
-.query-result { margin-top: 8px; }
-.result-meta { font-size: 12px; color: var(--sh-text-secondary); margin-top: 6px; }
+.query-result { margin-top: var(--sh-space-sm); }
+.result-meta { font-size: 12px; color: var(--sh-text-secondary); margin-top: var(--sh-space-sm); }
 .query-error {
   color: var(--sh-red);
   background: #fff0f0;
-  padding: 8px 12px;
+  padding: var(--sh-space-sm) var(--sh-space-md);
   border-radius: 4px;
   font-size: 13px;
-  margin-top: 8px;
+  margin-top: var(--sh-space-sm);
 }
 
 /* Redis */
 .redis-info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 6px;
+  gap: var(--sh-space-sm);
 }
 .info-item {
   display: flex;
-  gap: 8px;
-  padding: 5px 10px;
+  gap: var(--sh-space-sm);
+  padding: var(--sh-space-sm);
   background: #f7f8fa;
   border-radius: 4px;
   font-size: 12px;
@@ -700,7 +700,7 @@ init()
 .info-key { color: var(--sh-text-secondary); min-width: 180px; flex-shrink: 0; }
 .info-val { color: var(--sh-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.keys-layout { display: flex; gap: 12px; height: 400px; }
+.keys-layout { display: flex; gap: var(--sh-space-md); height: 400px; }
 .keys-list {
   width: 260px;
   flex-shrink: 0;
@@ -709,7 +709,7 @@ init()
   border-radius: 4px;
 }
 .key-item {
-  padding: 7px 10px;
+  padding: var(--sh-space-sm);
   font-size: 12px;
   font-family: monospace;
   cursor: pointer;
@@ -726,19 +726,19 @@ init()
   flex: 1;
   border: 1px solid var(--sh-border);
   border-radius: 4px;
-  padding: 12px;
+  padding: var(--sh-space-md);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sh-space-sm);
   overflow: auto;
 }
-.key-detail-header { display: flex; align-items: center; gap: 8px; }
+.key-detail-header { display: flex; align-items: center; gap: var(--sh-space-sm); }
 .key-ttl { font-size: 12px; color: var(--sh-text-secondary); }
 .key-value {
   flex: 1;
   background: #1a2332;
   color: #a0f0a0;
-  padding: 10px;
+  padding: var(--sh-space-sm);
   border-radius: 4px;
   font-size: 12px;
   font-family: monospace;

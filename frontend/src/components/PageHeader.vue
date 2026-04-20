@@ -19,7 +19,7 @@ defineProps<{ title: string; subtitle?: string }>()
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 24px 16px;
+  padding: var(--sh-space-lg) var(--sh-space-lg) var(--sh-space-md);
   background: var(--sh-card-bg);
   border-bottom: 1px solid var(--sh-border);
   margin-bottom: 0;
@@ -33,10 +33,10 @@ defineProps<{ title: string; subtitle?: string }>()
   line-height: 1.3;
 }
 .ph-subtitle {
-  margin: 3px 0 0;
+  margin: var(--sh-space-xs) 0 0;
   font-size: 13px;
   color: var(--sh-text-secondary);
   line-height: 1.5;
 }
-.ph-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.ph-actions { display: flex; align-items: center; gap: var(--sh-space-sm); flex-shrink: 0; }
 </style>

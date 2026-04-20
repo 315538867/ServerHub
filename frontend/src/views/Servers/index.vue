@@ -224,7 +224,7 @@ onMounted(loadServers)
 .server-name-cell {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sh-space-sm);
 }
 .server-name {
   font-weight: 500;

@@ -79,10 +79,10 @@ onMounted(async () => {
 .sl-info {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 24px 0;
+  gap: var(--sh-space-md);
+  padding: var(--sh-space-md) var(--sh-space-lg) 0;
 }
-.sl-name-row { display: flex; align-items: center; gap: 8px; }
+.sl-name-row { display: flex; align-items: center; gap: var(--sh-space-sm); }
 .sl-name {
   font-size: 16px;
   font-weight: 600;
@@ -91,8 +91,8 @@ onMounted(async () => {
 .sl-host { font-size: 13px; color: var(--sh-text-secondary); }
 
 .sl-tabs {
-  margin-top: 4px;
-  padding: 0 16px;
+  margin-top: var(--sh-space-xs);
+  padding: 0 var(--sh-space-md);
 }
 .sl-tabs :deep(.t-tabs__nav) { border-bottom: none; }
 

@@ -312,17 +312,17 @@ onMounted(async () => {
 .notifications-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sh-space-md);
 }
 
 .block-body {
-  padding: 16px 20px;
+  padding: var(--sh-space-md) var(--sh-space-lg);
 }
 
 .title-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sh-space-sm);
 }
 
 .full-width { width: 100%; }
@@ -330,12 +330,12 @@ onMounted(async () => {
 .pagination-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: 14px;
+  margin-top: var(--sh-space-md);
 }
 
 .form-hint {
   font-size: 11px;
   color: var(--sh-text-secondary);
-  margin-top: 4px;
+  margin-top: var(--sh-space-xs);
 }
 </style>

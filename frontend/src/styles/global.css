@@ -97,14 +97,14 @@ html, body, #app {
 }
 
 .card-body {
-  padding: 20px 24px;
+  padding: var(--sh-space-lg);
 }
 
 .card-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 24px;
+  padding: var(--sh-space-md) var(--sh-space-lg);
   border-bottom: 1px solid var(--sh-border);
 }
 
@@ -119,14 +119,14 @@ html, body, #app {
   border-radius: var(--sh-card-radius);
   border: var(--sh-card-border);
   box-shadow: var(--sh-card-shadow);
-  margin-bottom: 16px;
+  margin-bottom: var(--sh-space-md);
 }
 
 .section-title {
   font-size: 14px;
   font-weight: 600;
   color: var(--sh-text-primary);
-  padding: 14px 20px;
+  padding: var(--sh-space-md) var(--sh-space-lg);
   border-bottom: 1px solid var(--sh-border);
   display: flex;
   align-items: center;
@@ -136,8 +136,8 @@ html, body, #app {
 .section-divider {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 20px 0 16px;
+  gap: var(--sh-space-md);
+  margin: var(--sh-space-lg) 0 var(--sh-space-md);
   font-size: 13px;
   font-weight: 600;
   color: var(--sh-text-secondary);
@@ -192,11 +192,11 @@ html, body, #app {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 0 12px;
-  gap: 12px;
+  padding: var(--sh-space-md) 0 var(--sh-space-md);
+  gap: var(--sh-space-md);
 }
-.table-toolbar-left  { display: flex; align-items: center; gap: 8px; }
-.table-toolbar-right { display: flex; align-items: center; gap: 8px; }
+.table-toolbar-left  { display: flex; align-items: center; gap: var(--sh-space-sm); }
+.table-toolbar-right { display: flex; align-items: center; gap: var(--sh-space-sm); }
 
 /* ---------- More TDesign overrides ---------- */
 
@@ -227,7 +227,7 @@ html, body, #app {
 .t-descriptions__body td,
 .t-descriptions__body th {
   font-size: 13px !important;
-  padding: 10px 16px !important;
+  padding: var(--sh-space-sm) var(--sh-space-md) !important;
 }
 .t-descriptions__header {
   font-size: 13px !important;
@@ -244,30 +244,31 @@ html, body, #app {
 .t-dialog__header {
   font-size: 14px !important;
   font-weight: 600 !important;
-  padding: 12px 20px !important;
+  padding: var(--sh-space-md) var(--sh-space-lg) !important;
 }
 .t-dialog__body {
-  padding: 12px 20px 16px !important;
+  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-md) !important;
   font-size: 13px !important;
 }
 .t-dialog__footer {
-  padding: 10px 20px !important;
+  padding: var(--sh-space-sm) var(--sh-space-lg) !important;
   border-top: 1px solid var(--sh-border) !important;
 }
-/* Code editor dialogs — flush editor with no padding */
+/* Code editor dialogs — keep header/footer aligned padding,
+   let toolbar + editor sit in normal body area */
 .code-editor-dialog .t-dialog__body {
-  padding: 0 !important;
+  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-md) !important;
 }
 
 /* Drawer */
 .t-drawer__header {
   font-size: 15px !important;
   font-weight: 600 !important;
-  padding: 16px 24px !important;
+  padding: var(--sh-space-md) var(--sh-space-lg) !important;
   border-bottom: 1px solid var(--sh-border) !important;
 }
 .t-drawer__body {
-  padding: 16px 24px !important;
+  padding: var(--sh-space-md) var(--sh-space-lg) !important;
   font-size: 13px !important;
 }
 
@@ -283,7 +284,7 @@ html, body, #app {
   background-color: var(--sh-border);
 }
 .section-block .t-tabs__nav-container {
-  padding: 0 12px;
+  padding: 0 var(--sh-space-md);
 }
 .section-block .t-tabs__content {
   background: var(--sh-card-bg);
@@ -296,14 +297,14 @@ html, body, #app {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 20px;
+  padding: var(--sh-space-sm) var(--sh-space-lg);
   border-bottom: 1px solid var(--sh-border);
   background: var(--sh-card-bg);
 }
 .toolbar-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sh-space-sm);
 }
 
 /* Pagination */
@@ -345,7 +346,7 @@ html, body, #app {
   font-family: 'JetBrains Mono', 'Cascadia Code', Menlo, monospace;
   font-size: 12.5px;
   line-height: 1.65;
-  padding: 14px 16px;
+  padding: var(--sh-space-md);
   border-radius: 6px;
   overflow-y: auto;
   white-space: pre-wrap;
@@ -358,35 +359,35 @@ html, body, #app {
 .form-hint {
   font-size: 12px;
   color: var(--sh-text-secondary);
-  margin-left: 8px;
+  margin-left: var(--sh-space-sm);
 }
 
 /* block-body (content inside section-block without section-title) */
 .block-body {
-  padding: 0 20px 16px;
+  padding: 0 var(--sh-space-lg) var(--sh-space-md);
 }
 
 /* block-body with top padding */
 .block-body--padded {
-  padding: 16px 20px;
+  padding: var(--sh-space-md) var(--sh-space-lg);
 }
 
 /* pagination row */
 .pagination-row {
   display: flex;
   justify-content: flex-end;
-  padding: 12px 0 4px;
+  padding: var(--sh-space-md) 0 var(--sh-space-xs);
 }
 
 /* tab-content inside drawer */
 .tab-content {
-  padding: 16px 0;
+  padding: var(--sh-space-md) 0;
 }
 
 /* input-with-btn layout */
 .input-with-btn {
   display: flex;
-  gap: 8px;
+  gap: var(--sh-space-sm);
   align-items: center;
   width: 100%;
 }

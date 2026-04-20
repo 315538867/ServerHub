@@ -100,7 +100,7 @@
           <t-button
             variant="text"
             block
-            style="margin-top:8px;color:#666"
+            style="margin-top: var(--sh-space-sm);color:#666"
             @click="totpStep = false"
           >
             返回登录
@@ -178,7 +178,7 @@ async function handleTotpLogin() {
   background: linear-gradient(145deg, #001529 0%, #002a5c 60%, #003380 100%);
   display: flex;
   flex-direction: column;
-  padding: 48px 60px;
+  padding: var(--sh-space-xl);
   position: relative;
   overflow: hidden;
 }
@@ -186,7 +186,7 @@ async function handleTotpLogin() {
 .login-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sh-space-md);
   margin-bottom: auto;
 }
 .login-brand-icon {
@@ -208,13 +208,13 @@ async function handleTotpLogin() {
 }
 
 .login-tagline {
-  margin-bottom: 40px;
+  margin-bottom: var(--sh-space-xl);
 }
 .login-tagline h2 {
   font-size: 32px;
   font-weight: 700;
   color: #fff;
-  margin: 0 0 12px;
+  margin: 0 0 var(--sh-space-md);
   line-height: 1.3;
 }
 .login-tagline p {
@@ -223,11 +223,11 @@ async function handleTotpLogin() {
   margin: 0;
 }
 
-.login-features { display: flex; flex-direction: column; gap: 14px; }
+.login-features { display: flex; flex-direction: column; gap: var(--sh-space-md); }
 .login-feature-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sh-space-md);
   font-size: 13.5px;
   color: rgba(255,255,255,.55);
 }
@@ -258,7 +258,7 @@ async function handleTotpLogin() {
   align-items: center;
   justify-content: center;
   background: #f2f3f5;
-  padding: 40px;
+  padding: var(--sh-space-xl);
 }
 
 .login-box {
@@ -268,12 +268,12 @@ async function handleTotpLogin() {
   border-radius: 8px;
   border: 1px solid #e7e7e7;
   box-shadow: 0 2px 12px rgba(0,0,0,.08);
-  padding: 36px 32px 32px;
+  padding: var(--sh-space-xl) var(--sh-space-xl) var(--sh-space-xl);
 }
 
-.login-box-header { margin-bottom: 28px; }
+.login-box-header { margin-bottom: var(--sh-space-xl); }
 .login-box-title {
-  margin: 0 0 6px;
+  margin: 0 0 var(--sh-space-sm);
   font-size: 22px;
   font-weight: 700;
   color: #0d0d0d;
@@ -284,8 +284,8 @@ async function handleTotpLogin() {
   color: #666;
 }
 
-.login-submit-btn { margin-top: 20px; letter-spacing: .05em; }
+.login-submit-btn { margin-top: var(--sh-space-lg); letter-spacing: .05em; }
 
 .totp-area { display: flex; flex-direction: column; }
-.totp-code-wrap { margin-bottom: 4px; }
+.totp-code-wrap { margin-bottom: var(--sh-space-xs); }
 </style>

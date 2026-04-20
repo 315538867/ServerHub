@@ -24,7 +24,7 @@
         </div>
       </div>
       <div class="section-body">
-        <t-empty v-if="!loading && overview.length === 0" description="暂无服务器" style="padding:32px 0" />
+        <t-empty v-if="!loading && overview.length === 0" description="暂无服务器" style="padding: var(--sh-space-xl) 0" />
         <div v-else class="server-grid">
           <div
             v-for="item in overview"
@@ -106,7 +106,7 @@
         </div>
       </div>
       <div class="section-body">
-        <t-empty v-if="!appStore.apps.length" description="暂无应用，点击「新建应用」开始" style="padding:32px 0" />
+        <t-empty v-if="!appStore.apps.length" description="暂无应用，点击「新建应用」开始" style="padding: var(--sh-space-xl) 0" />
         <div v-else class="app-list">
           <router-link
             v-for="app in appStore.apps"
@@ -242,13 +242,13 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.dashboard { display: flex; flex-direction: column; gap: 16px; }
+.dashboard { display: flex; flex-direction: column; gap: var(--sh-space-md); }
 
 /* ── stat row ── */
 .stat-row {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
-  gap: 12px;
+  gap: var(--sh-space-md);
 }
 @media (max-width: 1400px) { .stat-row { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 768px)  { .stat-row { grid-template-columns: repeat(2, 1fr); } }
@@ -266,7 +266,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 20px;
+  padding: var(--sh-space-md) var(--sh-space-lg);
   border-bottom: 1px solid var(--sh-border);
   font-size: 14px;
   font-weight: 600;
@@ -275,18 +275,18 @@ onBeforeUnmount(() => {
 .section-title-left {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--sh-space-sm);
 }
-.section-title-right { display: flex; align-items: center; gap: 8px; }
+.section-title-right { display: flex; align-items: center; gap: var(--sh-space-sm); }
 .section-icon { font-size: 15px; color: var(--sh-blue); }
 
-.section-body { padding: 16px 20px; }
+.section-body { padding: var(--sh-space-md) var(--sh-space-lg); }
 
 /* ── server grid ── */
 .server-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: var(--sh-space-md);
 }
 @media (max-width: 1400px) { .server-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 900px)  { .server-grid { grid-template-columns: repeat(2, 1fr); } }
@@ -294,7 +294,7 @@ onBeforeUnmount(() => {
 .server-card {
   border: 1px solid var(--sh-border);
   border-radius: 6px;
-  padding: 14px 16px;
+  padding: var(--sh-space-md);
   cursor: pointer;
   transition: border-color .15s, box-shadow .15s;
   background: #fafafa;
@@ -306,13 +306,13 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 3px;
+  margin-bottom: var(--sh-space-xs);
 }
-.server-card-name-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.server-card-name-row { display: flex; align-items: center; gap: var(--sh-space-sm); min-width: 0; }
 .server-card-name { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.server-card-host { font-size: 12px; color: var(--sh-text-secondary); margin-bottom: 10px; }
+.server-card-host { font-size: 12px; color: var(--sh-text-secondary); margin-bottom: var(--sh-space-sm); }
 
-.metric-row { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.metric-row { display: flex; align-items: center; gap: var(--sh-space-sm); margin-bottom: var(--sh-space-sm); }
 .metric-label { font-size: 11px; color: var(--sh-text-secondary); width: 26px; flex-shrink: 0; }
 .metric-bar-wrap {
   flex: 1;
@@ -327,12 +327,12 @@ onBeforeUnmount(() => {
 .server-card-footer {
   font-size: 11px;
   color: var(--sh-text-secondary);
-  margin-top: 7px;
-  padding-top: 7px;
+  margin-top: var(--sh-space-sm);
+  padding-top: var(--sh-space-sm);
   border-top: 1px solid var(--sh-border);
 }
 .server-card-footer b { color: var(--sh-text-primary); }
-.no-metric { font-size: 12px; color: var(--sh-text-placeholder); padding: 16px 0; text-align: center; }
+.no-metric { font-size: 12px; color: var(--sh-text-placeholder); padding: var(--sh-space-md) 0; text-align: center; }
 
 /* ── trend chart ── */
 .trend-chart {
@@ -346,7 +346,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 11px 4px;
+  padding: var(--sh-space-sm) var(--sh-space-xs);
   border-bottom: 1px solid #f5f5f5;
   text-decoration: none;
   border-radius: 4px;
@@ -355,11 +355,11 @@ onBeforeUnmount(() => {
 .app-row:last-child { border-bottom: none; }
 .app-row:hover { background: #f7f8fc; }
 
-.app-row-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.app-row-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.app-row-left { display: flex; align-items: center; gap: var(--sh-space-sm); min-width: 0; }
+.app-row-info { display: flex; flex-direction: column; gap: var(--sh-space-xs); min-width: 0; }
 .app-row-name { font-size: 13.5px; font-weight: 500; color: var(--sh-text-primary); }
 .app-row-desc { font-size: 12px; color: var(--sh-text-secondary); }
 
-.app-row-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.app-row-right { display: flex; align-items: center; gap: var(--sh-space-sm); flex-shrink: 0; }
 .app-row-meta { font-size: 12px; color: var(--sh-text-secondary); }
 </style>

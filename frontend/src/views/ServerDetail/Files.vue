@@ -284,11 +284,11 @@ onBeforeUnmount(() => editorView?.destroy())
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 20px;
+  padding: var(--sh-space-md) var(--sh-space-lg);
   border-bottom: 1px solid var(--sh-border);
   margin-bottom: 0;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sh-space-sm);
 }
 
 .path-breadcrumb {
@@ -299,14 +299,14 @@ onBeforeUnmount(() => editorView?.destroy())
 
 .toolbar-right {
   display: flex;
-  gap: 8px;
+  gap: var(--sh-space-sm);
   flex-shrink: 0;
 }
 
 .file-name-cell {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sh-space-sm);
   cursor: pointer;
   user-select: none;
 }

@@ -144,10 +144,10 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose() })
 
 <style scoped>
 .table-wrap {
-  padding: 0 20px 16px;
+  padding: 0 var(--sh-space-lg) var(--sh-space-md);
 }
 .empty-block {
-  padding: 40px 20px;
+  padding: var(--sh-space-xl) var(--sh-space-lg);
   display: flex;
   justify-content: center;
 }
@@ -155,5 +155,5 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose() })
   font-size: 13px;
 }
 .logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a2332; border-radius: 4px; overflow: hidden; }
-.inspect-json { background: var(--td-bg-color-secondarycontainer); border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 70vh; margin: 0; white-space: pre-wrap; word-break: break-all; }
+.inspect-json { background: var(--td-bg-color-secondarycontainer); border-radius: 4px; padding: var(--sh-space-md); font-size: 12px; line-height: 1.6; overflow: auto; max-height: 70vh; margin: 0; white-space: pre-wrap; word-break: break-all; }
 </style>

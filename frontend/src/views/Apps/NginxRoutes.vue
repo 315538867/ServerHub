@@ -231,14 +231,14 @@ onMounted(async () => {
 
 <style scoped>
 .mode-wrap {
-  padding: 16px 20px 20px;
+  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
 }
 
 .mode-desc {
   display: flex;
   align-items: flex-start;
-  gap: 6px;
-  margin-top: 14px;
+  gap: var(--sh-space-sm);
+  margin-top: var(--sh-space-md);
   font-size: 13px;
   color: var(--sh-text-secondary);
   line-height: 1.6;
@@ -246,12 +246,12 @@ onMounted(async () => {
 
 .mode-desc-icon {
   flex-shrink: 0;
-  margin-top: 2px;
+  margin-top: var(--sh-space-xs);
   color: var(--sh-blue);
 }
 
 .table-wrap {
-  padding: 0 20px 16px;
+  padding: 0 var(--sh-space-lg) var(--sh-space-md);
 }
 
 .extra-text {
@@ -260,7 +260,7 @@ onMounted(async () => {
 }
 
 .output-block {
-  margin: 0 20px 20px;
+  margin: 0 var(--sh-space-lg) var(--sh-space-lg);
   font-size: 12.5px;
   min-height: 80px;
 }

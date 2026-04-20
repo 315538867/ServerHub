@@ -164,56 +164,56 @@ onMounted(async () => {
 .metrics-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: var(--sh-space-md);
+  margin-bottom: var(--sh-space-md);
 }
 
 .metric-card {
-  padding: 16px 20px;
+  padding: var(--sh-space-md) var(--sh-space-lg);
 }
 
 .metric-label {
   font-size: 13px;
   color: var(--sh-text-secondary);
-  margin-bottom: 8px;
+  margin-bottom: var(--sh-space-sm);
 }
 
 .metric-value {
   font-size: 28px;
   font-weight: 600;
   line-height: 1;
-  margin-bottom: 10px;
+  margin-bottom: var(--sh-space-sm);
 }
 
 .metric-unit {
   font-size: 14px;
   font-weight: 400;
-  margin-left: 2px;
+  margin-left: var(--sh-space-xs);
 }
 
 .metric-sub {
   font-size: 12px;
   color: var(--sh-text-secondary);
-  margin-top: 8px;
+  margin-top: var(--sh-space-sm);
 }
 
 .info-title {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sh-space-sm);
 }
 
 .info-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px 24px;
-  padding: 16px 20px 20px;
+  gap: var(--sh-space-md) var(--sh-space-lg);
+  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
 }
 
 .info-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sh-space-xs);
 }
 
 .info-label {

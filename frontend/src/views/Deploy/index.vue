@@ -5,7 +5,7 @@
       <div class="section-title">
         <span>部署管理</span>
         <div class="header-actions">
-          <t-select v-model="filterServerId" placeholder="全部服务器" clearable style="width:180px;margin-right:10px">
+          <t-select v-model="filterServerId" placeholder="全部服务器" clearable style="width:180px;margin-right: var(--sh-space-sm)">
             <t-option v-for="s in servers" :key="s.id" :label="s.name" :value="s.id" />
           </t-select>
           <t-button theme="primary" @click="openCreate">
@@ -35,11 +35,11 @@
           </div>
           <div class="app-card__header-right">
             <t-tag size="small" :theme="syncStatusTagTheme(app.sync_status)" variant="light">
-              <t-loading v-if="app.sync_status === 'syncing'" size="small" style="display:inline-flex;margin-right:4px" />
+              <t-loading v-if="app.sync_status === 'syncing'" size="small" style="display:inline-flex;margin-right: var(--sh-space-xs)" />
               {{ syncStatusText(app.sync_status) }}
             </t-tag>
             <t-dropdown :options="dropdownOptions(app)" trigger="click" @click="(item: any) => handleCommand(item.value, app)">
-              <t-button size="small" variant="text" shape="circle" style="margin-left:4px">
+              <t-button size="small" variant="text" shape="circle" style="margin-left: var(--sh-space-xs)">
                 <template #icon><ellipsis-icon /></template>
               </t-button>
             </t-dropdown>
@@ -96,7 +96,7 @@
       <div class="version-dialog__current">
         当前实际版本：<span class="version-value">{{ versionTarget?.actual_version || '未部署' }}</span>
       </div>
-      <t-form :data="versionForm" style="margin-top:16px">
+      <t-form :data="versionForm" style="margin-top: var(--sh-space-md)">
         <t-form-item label="期望版本">
           <t-input v-model="versionForm.desired_version" placeholder="v1.0 / latest / 20240101" autofocus />
         </t-form-item>
@@ -248,7 +248,7 @@
                 </t-button>
               </template>
             </t-table>
-            <div style="margin-top:12px">
+            <div style="margin-top: var(--sh-space-md)">
               <t-button theme="primary" :loading="envSaving" @click="saveEnv">保存环境变量</t-button>
             </div>
           </div>
@@ -656,7 +656,7 @@ onMounted(loadAll)
 .deploy-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sh-space-md);
 }
 
 /* 页面标题卡片 */
@@ -665,7 +665,7 @@ onMounted(loadAll)
 }
 .page-header-block .section-title {
   border-bottom: none;
-  padding: 14px 20px;
+  padding: var(--sh-space-md) var(--sh-space-lg);
 }
 .header-actions {
   display: flex;
@@ -676,7 +676,7 @@ onMounted(loadAll)
 .app-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
+  gap: var(--sh-space-md);
 }
 
 .app-card {
@@ -704,7 +704,7 @@ onMounted(loadAll)
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 14px 8px;
+  padding: var(--sh-space-md) var(--sh-space-md) var(--sh-space-sm);
   border-bottom: 1px solid #f5f5f5;
 }
 .app-card__name-row {
@@ -725,21 +725,21 @@ onMounted(loadAll)
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  margin-left: 8px;
+  margin-left: var(--sh-space-sm);
 }
 
 /* 卡片主体 */
 .app-card__body {
-  padding: 10px 14px;
+  padding: var(--sh-space-sm) var(--sh-space-md);
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sh-space-sm);
 }
 .app-card__server {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sh-space-xs);
   font-size: 12px;
   color: var(--sh-text-secondary);
 }
@@ -749,13 +749,13 @@ onMounted(loadAll)
   justify-content: space-around;
   background: var(--sh-gray-bg);
   border-radius: 6px;
-  padding: 8px 10px;
+  padding: var(--sh-space-sm);
 }
 .version-block {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: var(--sh-space-xs);
 }
 .version-label {
   font-size: 11px;
@@ -782,29 +782,29 @@ onMounted(loadAll)
 .app-card__footer {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
+  gap: var(--sh-space-sm);
+  padding: var(--sh-space-sm) var(--sh-space-md);
   border-top: 1px solid var(--sh-border);
   background: var(--sh-gray-bg);
 }
 
 /* 抽屉内容 */
-.env-toolbar { margin-bottom: 10px; }
+.env-toolbar { margin-bottom: var(--sh-space-sm); }
 .drawer-form { max-width: 480px; }
-.name-tag { margin-left: 6px; }
-.mt-sm { margin-top: 8px; }
+.name-tag { margin-left: var(--sh-space-sm); }
+.mt-sm { margin-top: var(--sh-space-sm); }
 .form-section-label {
   font-size: 13px;
   font-weight: 600;
   color: var(--sh-text-secondary);
-  padding: 8px 0 4px;
+  padding: var(--sh-space-sm) 0 var(--sh-space-xs);
   border-bottom: 1px solid var(--sh-border);
-  margin-bottom: 12px;
+  margin-bottom: var(--sh-space-md);
 }
-.form-hint { margin-left: 8px; font-size: 12px; color: var(--sh-text-secondary); }
-.tab-content { padding: 16px 0; }
-.log-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
-.input-with-btn { display: flex; gap: 8px; align-items: center; width: 100%; }
+.form-hint { margin-left: var(--sh-space-sm); font-size: 12px; color: var(--sh-text-secondary); }
+.tab-content { padding: var(--sh-space-md) 0; }
+.log-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sh-space-sm); }
+.input-with-btn { display: flex; gap: var(--sh-space-sm); align-items: center; width: 100%; }
 .input-with-btn .t-input { flex: 1; }
 
 .log-output {
@@ -813,7 +813,7 @@ onMounted(loadAll)
   font-family: 'Cascadia Code', 'JetBrains Mono', Menlo, monospace;
   font-size: 13px;
   line-height: 1.6;
-  padding: 12px;
+  padding: var(--sh-space-md);
   border-radius: 6px;
   overflow-y: auto;
   height: calc(100vh - 200px);
@@ -823,18 +823,18 @@ onMounted(loadAll)
 }
 .log-output--static { height: 400px; }
 
-.empty-state { margin-top: 60px; }
+.empty-state { margin-top: var(--sh-space-xl); }
 
 .version-dialog__current {
   font-size: 13px;
   color: var(--sh-text-secondary);
   background: var(--sh-gray-bg);
-  padding: 8px 12px;
+  padding: var(--sh-space-sm) var(--sh-space-md);
   border-radius: 4px;
 }
 .version-dialog__current .version-value {
   font-family: 'JetBrains Mono', monospace;
   color: var(--sh-text-primary);
-  margin-left: 4px;
+  margin-left: var(--sh-space-xs);
 }
 </style>

@@ -100,6 +100,13 @@
           <span v-else class="sh-header-title">工作台</span>
         </div>
         <div class="sh-header-right">
+          <t-tooltip content="命令面板 (⌘K / Ctrl+K)" placement="bottom">
+            <div class="sh-cmd-trigger" @click="cmdPaletteRef?.open()">
+              <span class="sh-cmd-icon">⌘</span>
+              <span class="sh-cmd-text">搜索或执行…</span>
+              <kbd class="sh-cmd-kbd">⌘K</kbd>
+            </div>
+          </t-tooltip>
           <t-tooltip content="通知" placement="bottom">
             <div class="sh-header-btn" @click="router.push('/notifications')">
               <notification-icon />
@@ -125,6 +132,7 @@
   </t-layout>
 
   <ChangeProfile v-model:visible="profileDialogVisible" />
+  <CommandPalette ref="cmdPaletteRef" />
 </template>
 
 <script setup lang="ts">
@@ -138,6 +146,9 @@ import {
   SwapIcon, ChevronRightIcon, ChevronDownIcon,
 } from 'tdesign-icons-vue-next'
 import ChangeProfile from '@/views/Profile/ChangeProfile.vue'
+import CommandPalette from '@/components/global/CommandPalette.vue'
+
+const cmdPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
 
 const route = useRoute()
 const router = useRouter()
@@ -257,8 +268,8 @@ onMounted(() => {
   height: var(--sh-header-height);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 18px;
+  gap: var(--sh-space-sm);
+  padding: 0 var(--sh-space-lg);
   border-bottom: 1px solid rgba(255,255,255,.06);
   flex-shrink: 0;
 }
@@ -285,7 +296,7 @@ onMounted(() => {
 .sh-nav {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0 20px;
+  padding: var(--sh-space-sm) 0 var(--sh-space-lg);
 }
 .sh-nav::-webkit-scrollbar { width: 0; }
 
@@ -294,15 +305,15 @@ onMounted(() => {
   color: var(--sh-sidebar-group);
   letter-spacing: .08em;
   text-transform: uppercase;
-  padding: 14px 18px 4px;
+  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-xs);
   font-weight: 500;
 }
 
 .sh-nav-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 18px;
+  gap: var(--sh-space-sm);
+  padding: 0 var(--sh-space-lg);
   height: 38px;
   color: var(--sh-sidebar-text);
   font-size: 13.5px;
@@ -330,11 +341,11 @@ onMounted(() => {
 
 .sh-nav-icon { font-size: 15px; flex-shrink: 0; }
 
-.sh-nav-item--sub    { padding-left: 28px; height: 34px; font-size: 13px; }
-.sh-nav-item--subsub { padding-left: 40px; height: 32px; font-size: 12.5px; }
-.sh-nav-item--server { cursor: pointer; padding-left: 28px; height: 34px; font-size: 13px; }
+.sh-nav-item--sub    { padding-left: var(--sh-space-xl); height: 34px; font-size: 13px; }
+.sh-nav-item--subsub { padding-left: var(--sh-space-xl); height: 32px; font-size: 12.5px; }
+.sh-nav-item--server { cursor: pointer; padding-left: var(--sh-space-xl); height: 34px; font-size: 13px; }
 .sh-nav-item--add {
-  padding-left: 28px;
+  padding-left: var(--sh-space-xl);
   height: 32px;
   font-size: 12.5px;
   opacity: .55;
@@ -364,7 +375,7 @@ onMounted(() => {
   min-width: 16px;
   height: 16px;
   border-radius: 8px;
-  padding: 0 4px;
+  padding: 0 var(--sh-space-xs);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -381,13 +392,45 @@ onMounted(() => {
   display: flex !important;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px !important;
+  padding: 0 var(--sh-space-lg) !important;
   flex-shrink: 0;
   box-shadow: 0 1px 4px rgba(0,0,0,.04);
 }
 
 .sh-header-left  { display: flex; align-items: center; }
-.sh-header-right { display: flex; align-items: center; gap: 4px; }
+.sh-header-right { display: flex; align-items: center; gap: var(--sh-space-xs); }
+
+.sh-cmd-trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--sh-space-sm);
+  padding: var(--sh-space-sm) var(--sh-space-sm) var(--sh-space-sm) var(--sh-space-md);
+  margin-right: var(--sh-space-sm);
+  border: 1px solid var(--sh-border);
+  border-radius: 8px;
+  background: var(--sh-bg);
+  color: var(--sh-text-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+  user-select: none;
+}
+.sh-cmd-trigger:hover {
+  border-color: var(--sh-blue);
+  color: var(--sh-text-primary);
+}
+.sh-cmd-icon { font-weight: 600; font-size: 13px; }
+.sh-cmd-text { font-size: 12px; }
+.sh-cmd-kbd {
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid var(--sh-border);
+  border-radius: 3px;
+  background: var(--sh-card-bg);
+  color: var(--sh-text-secondary);
+}
+@media (max-width: 720px) {
+  .sh-cmd-trigger .sh-cmd-text { display: none; }
+}
 .sh-header-title { font-size: 14px; font-weight: 600; color: var(--sh-text-primary); }
 .sh-breadcrumb :deep(.t-breadcrumb__item) { font-size: 13px; }
 
@@ -416,7 +459,7 @@ onMounted(() => {
   min-width: 14px;
   height: 14px;
   border-radius: 7px;
-  padding: 0 3px;
+  padding: 0 var(--sh-space-xs);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -425,12 +468,12 @@ onMounted(() => {
 .sh-user-btn {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 4px 10px 4px 6px;
+  gap: var(--sh-space-sm);
+  padding: var(--sh-space-xs) var(--sh-space-sm) var(--sh-space-xs) var(--sh-space-sm);
   border-radius: 20px;
   cursor: pointer;
   transition: background .12s;
-  margin-left: 4px;
+  margin-left: var(--sh-space-xs);
 }
 .sh-user-btn:hover { background: #f2f3f5; }
 

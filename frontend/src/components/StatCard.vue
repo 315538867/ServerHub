@@ -46,10 +46,10 @@ const iconColor = c.icon
   border: var(--sh-card-border);
   border-radius: var(--sh-card-radius);
   box-shadow: var(--sh-card-shadow);
-  padding: 20px;
+  padding: var(--sh-space-lg);
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--sh-space-md);
   transition: box-shadow .2s;
 }
 .sc-card:hover { box-shadow: var(--sh-card-shadow-hover); }
@@ -75,14 +75,14 @@ const iconColor = c.icon
 .sc-label {
   font-size: 13px;
   color: var(--sh-text-secondary);
-  margin-top: 4px;
+  margin-top: var(--sh-space-xs);
 }
 
 .sc-trend {
   font-size: 12px;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--sh-space-xs);
   font-weight: 500;
 }
 .sc-trend.up   { color: var(--sh-green); }

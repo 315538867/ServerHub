@@ -198,8 +198,8 @@ function searchPrev() {
 .tab-bar {
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 4px 8px;
+  gap: var(--sh-space-xs);
+  padding: var(--sh-space-xs) var(--sh-space-sm);
   background: #152030;
   border-bottom: 1px solid #243447;
   flex-shrink: 0;
@@ -209,8 +209,8 @@ function searchPrev() {
 .tab-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: var(--sh-space-sm);
+  padding: var(--sh-space-xs) var(--sh-space-sm);
   border-radius: 4px;
   cursor: pointer;
   color: #8a94a6;
@@ -243,15 +243,15 @@ function searchPrev() {
 .tab-close:hover { opacity: 1; }
 
 .tab-add {
-  margin-left: 4px;
+  margin-left: var(--sh-space-xs);
   flex-shrink: 0;
 }
 
 .search-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
+  gap: var(--sh-space-sm);
+  padding: var(--sh-space-sm) var(--sh-space-md);
   background: #152030;
   border-bottom: 1px solid #243447;
   flex-shrink: 0;
@@ -266,7 +266,7 @@ function searchPrev() {
 .terminal-container {
   width: 100%;
   height: 100%;
-  padding: 4px;
+  padding: var(--sh-space-xs);
 }
 
 .terminal-empty {

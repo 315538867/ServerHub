@@ -243,14 +243,14 @@ onMounted(async () => {
 .settings-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--sh-space-md);
 }
 
 .settings-body {
-  padding: 20px 24px;
+  padding: var(--sh-space-lg);
 }
 .settings-body--table {
-  padding: 0 20px 16px;
+  padding: 0 var(--sh-space-lg) var(--sh-space-md);
 }
 
 .settings-group-label {
@@ -259,16 +259,16 @@ onMounted(async () => {
   color: var(--sh-text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: 12px 0 8px;
+  padding: var(--sh-space-md) 0 var(--sh-space-sm);
   border-bottom: 1px solid var(--sh-border);
-  margin-bottom: 16px;
+  margin-bottom: var(--sh-space-md);
 }
 .settings-group-label:first-child { padding-top: 0; }
 
 .settings-desc {
   font-size: 13px;
   color: var(--sh-text-secondary);
-  margin: 0 0 16px;
+  margin: 0 0 var(--sh-space-md);
   line-height: 1.6;
 }
 
@@ -277,7 +277,7 @@ onMounted(async () => {
 
 /* TOTP */
 .totp-setup { max-width: 560px; }
-.totp-desc  { margin: 12px 0; }
+.totp-desc  { margin: var(--sh-space-md) 0; }
 .totp-secret {
   font-family: 'JetBrains Mono', monospace;
   word-break: break-all;
@@ -291,8 +291,8 @@ onMounted(async () => {
 .totp-confirm-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 8px;
+  gap: var(--sh-space-sm);
+  margin-top: var(--sh-space-sm);
 }
 .totp-input { width: 200px; }
 
@@ -300,7 +300,7 @@ onMounted(async () => {
 .audit-filters {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sh-space-sm);
   flex-wrap: wrap;
 }
 .filter-input-sm { width: 120px; }
@@ -309,6 +309,6 @@ onMounted(async () => {
 .pagination-row {
   display: flex;
   justify-content: flex-end;
-  padding: 12px 0 4px;
+  padding: var(--sh-space-md) 0 var(--sh-space-xs);
 }
 </style>
