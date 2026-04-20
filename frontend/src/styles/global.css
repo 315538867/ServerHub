@@ -85,7 +85,7 @@ html, body, #app {
 
 /* ---------- Utility classes ---------- */
 .page-container {
-  padding: 20px 24px;
+  padding: var(--sh-space-sm) var(--sh-space-lg);
   min-height: 100%;
 }
 
