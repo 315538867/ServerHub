@@ -7,8 +7,8 @@
           <span class="title-text">Nginx 站点</span>
           <t-space size="small">
             <t-button theme="primary" size="small" @click="openCreate">添加站点</t-button>
-            <t-button size="small" :loading="reloading" @click="doReload">Reload</t-button>
-            <t-button size="small" theme="warning" @click="doRestart">Restart</t-button>
+            <t-button size="small" :loading="reloading" @click="doReload">重载</t-button>
+            <t-button size="small" theme="warning" @click="doRestart">重启</t-button>
             <t-button size="small" variant="outline" :loading="loading" @click="loadSites">
               <template #icon><refresh-icon /></template>
               刷新

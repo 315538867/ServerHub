@@ -58,8 +58,8 @@
             <template #cpu="{ row }">{{ row.cpu.toFixed(1) }}%</template>
             <template #mem="{ row }">{{ row.mem.toFixed(1) }}%</template>
             <template #operations="{ row }">
-              <t-popconfirm :content="`确认 kill -9 PID ${row.pid}？`" @confirm="killProc(row)">
-                <t-button theme="danger" size="small" variant="text">Kill</t-button>
+              <t-popconfirm :content="`确认强制终止进程 ${row.pid}？`" @confirm="killProc(row)">
+                <t-button theme="danger" size="small" variant="text">终止</t-button>
               </t-popconfirm>
             </template>
           </t-table>
@@ -304,7 +304,7 @@ async function delCron(row: CronJob) {
 
 async function killProc(row: ProcessItem) {
   try { await killProcess(serverId.value, row.pid); MessagePlugin.success(`PID ${row.pid} 已终止`); await loadProcesses() }
-  catch { MessagePlugin.error('Kill 失败') }
+  catch { MessagePlugin.error('终止失败') }
 }
 
 async function svcAction(row: ServiceItem, action: string) {
