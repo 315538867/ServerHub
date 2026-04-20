@@ -96,12 +96,16 @@ func handler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// ── SSH client (reuse pool connection) ────────────────────
-		client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+		// ── SSH client (dedicated connection; not pooled) ────────
+		// Terminal sessions can live for hours, so we deliberately avoid
+		// reusing the pool client to prevent exhausting its MaxSessions
+		// budget (shared with scheduler, docker, nginx, metrics, etc).
+		client, err := sshpool.Dial(s.Host, s.Port, s.Username, s.AuthType, cred)
 		if err != nil {
 			c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "msg": "ssh: " + err.Error()})
 			return
 		}
+		defer client.Close()
 
 		// ── upgrade to WebSocket ──────────────────────────────────
 		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)

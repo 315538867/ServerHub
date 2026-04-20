@@ -58,16 +58,18 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-func getClient(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, bool) {
+// loadServerCred looks up the server by :id param, decrypts its credential,
+// and writes any error response itself. Returns (server, cred, ok).
+func loadServerCred(c *gin.Context, db *gorm.DB, cfg *config.Config) (*model.Server, string, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
-		return nil, false
+		return nil, "", false
 	}
 	var s model.Server
 	if err := db.First(&s, id).Error; err != nil {
 		resp.NotFound(c, "服务器不存在")
-		return nil, false
+		return nil, "", false
 	}
 	var cred string
 	switch s.AuthType {
@@ -82,9 +84,36 @@ func getClient(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, 
 	}
 	if err != nil {
 		resp.InternalError(c, "解密失败")
+		return nil, "", false
+	}
+	return &s, cred, true
+}
+
+// getClient returns a pooled SSH client for short-lived, frequent operations
+// (list, inspect, action). The pool reuses a single TCP connection and shares
+// a MaxSessions budget — do not use this for long-lived streams.
+func getClient(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, bool) {
+	s, cred, ok := loadServerCred(c, db, cfg)
+	if !ok {
 		return nil, false
 	}
 	client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+	if err != nil {
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
+		return nil, false
+	}
+	return client, true
+}
+
+// getDedicatedClient returns a fresh non-pooled SSH client for long-lived
+// WebSocket streams (container logs tail, image pull). The caller MUST
+// Close() it to release the TCP connection.
+func getDedicatedClient(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, bool) {
+	s, cred, ok := loadServerCred(c, db, cfg)
+	if !ok {
+		return nil, false
+	}
+	client, err := sshpool.Dial(s.Host, s.Port, s.Username, s.AuthType, cred)
 	if err != nil {
 		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
 		return nil, false
@@ -142,7 +171,11 @@ func listContainersHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		out, err := sshpool.Run(client,
 			`docker ps -a --format '{"id":"{{.ID}}","names":"{{.Names}}","image":"{{.Image}}","status":"{{.Status}}","state":"{{.State}}","ports":"{{.Ports}}","created_at":"{{.CreatedAt}}"}'`)
 		if err != nil {
-			resp.InternalError(c, "获取容器列表失败: "+out)
+			detail := strings.TrimSpace(out)
+			if detail == "" {
+				detail = err.Error()
+			}
+			resp.InternalError(c, "获取容器列表失败: "+detail)
 			return
 		}
 		var items []ContainerItem
@@ -202,10 +235,11 @@ func containerActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func containerLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getClient(c, db, cfg)
+		client, ok := getDedicatedClient(c, db, cfg)
 		if !ok {
 			return
 		}
+		defer client.Close()
 		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
@@ -252,7 +286,11 @@ func listImagesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		out, err := sshpool.Run(client,
 			`docker images --format '{"id":"{{.ID}}","repository":"{{.Repository}}","tag":"{{.Tag}}","size":"{{.Size}}","created_at":"{{.CreatedAt}}"}'`)
 		if err != nil {
-			resp.InternalError(c, "获取镜像列表失败: "+out)
+			detail := strings.TrimSpace(out)
+			if detail == "" {
+				detail = err.Error()
+			}
+			resp.InternalError(c, "获取镜像列表失败: "+detail)
 			return
 		}
 		var items []ImageItem
@@ -275,10 +313,11 @@ func listImagesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func pullImageHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getClient(c, db, cfg)
+		client, ok := getDedicatedClient(c, db, cfg)
 		if !ok {
 			return
 		}
+		defer client.Close()
 		image := strings.TrimSpace(c.Query("image"))
 		if image == "" {
 			resp.BadRequest(c, "镜像名称不能为空")
