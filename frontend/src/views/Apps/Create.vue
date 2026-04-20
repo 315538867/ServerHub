@@ -24,10 +24,6 @@
               <label class="form-label">描述</label>
               <t-input v-model="form.description" placeholder="简短描述该应用的用途（可选）" />
             </div>
-            <div class="form-field">
-              <label class="form-label">域名</label>
-              <t-input v-model="form.domain" placeholder="blog.example.com（可选）" />
-            </div>
           </div>
         </div>
 
@@ -72,7 +68,12 @@
               </t-radio-group>
               <span v-if="form.expose_mode === 'none'" class="form-hint">不通过 Nginx 暴露，「路由配置」Tab 将隐藏</span>
               <span v-else-if="form.expose_mode === 'path'" class="form-hint">将应用路径反代到已有 Nginx，创建后在「路由配置」Tab 配置路由</span>
-              <span v-else class="form-hint">为应用创建独立 Nginx 站点，需填写域名；创建后在「路由配置」Tab 配置路由</span>
+              <span v-else class="form-hint">为应用创建独立 Nginx 站点，创建后在「路由配置」Tab 配置路由</span>
+            </div>
+            <div v-if="form.expose_mode === 'site'" class="form-field">
+              <label class="form-label">域名 <span class="form-required">*</span></label>
+              <t-input v-model="form.domain" placeholder="blog.example.com" />
+              <span class="form-hint">独立站点的访问域名，Nginx 将以此域名生成 server_name 配置</span>
             </div>
           </div>
         </div>
@@ -191,6 +192,7 @@ onMounted(() => serverStore.fetch())
 
 async function handleCreate() {
   if (!form.name || !form.server_id) { MessagePlugin.warning('请填写应用名称和服务器'); return }
+  if (form.expose_mode === 'site' && !form.domain) { MessagePlugin.warning('独立站点模式需填写域名'); return }
   if (deployType.value === 'docker' && !deployForm.image_name) { MessagePlugin.warning('Docker 部署需填写镜像名'); return }
   if (deployType.value === 'native' && !deployForm.start_cmd) { MessagePlugin.warning('文件部署需填写启动命令'); return }
   saving.value = true
