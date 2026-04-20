@@ -408,6 +408,8 @@ import { oneDark } from '@codemirror/theme-one-dark'
 import { yaml } from '@codemirror/lang-yaml'
 import { json } from '@codemirror/lang-json'
 import { javascript } from '@codemirror/lang-javascript'
+import { xml } from '@codemirror/lang-xml'
+import { html } from '@codemirror/lang-html'
 
 // ── Local types ────────────────────────────────────────────────────────────
 
@@ -464,6 +466,9 @@ function getExtLang(filename: string) {
   if (['yml', 'yaml'].includes(ext)) return yaml()
   if (ext === 'json') return json()
   if (['js', 'ts', 'sh', 'bash'].includes(ext)) return javascript()
+  if (['xml'].includes(ext)) return xml()
+  if (['html', 'htm'].includes(ext)) return html()
+  // toml / properties / txt — no dedicated CM6 package, plain text
   return []
 }
 
