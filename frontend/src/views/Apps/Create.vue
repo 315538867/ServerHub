@@ -57,6 +57,11 @@
               <t-input v-model="form.site_name" placeholder="conf.d 中的配置文件名（可选）" />
             </div>
             <div class="form-field">
+              <label class="form-label">应用基础目录</label>
+              <t-input v-model="form.base_dir" placeholder="/srv/apps/my-blog" />
+              <span class="form-hint">在服务器上自动创建 data / logs / config / backup，留空按应用名自动填充</span>
+            </div>
+            <div class="form-field">
               <label class="form-label">Nginx 暴露方式</label>
               <t-radio-group v-model="form.expose_mode" variant="default-filled">
                 <t-radio-button value="none">不暴露</t-radio-button>
@@ -81,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { createApp } from '@/api/application'
@@ -97,8 +102,16 @@ const form = reactive({
   name: '', description: '',
   server_id: null as number | null,
   domain: '', site_name: '', container_name: '',
+  base_dir: '',
   expose_mode: 'none' as 'none' | 'path' | 'site',
   deploy_id: null as number | null, db_conn_id: null as number | null,
+})
+
+watch(() => form.name, (name, oldName) => {
+  const autoOld = oldName ? `/srv/apps/${oldName}` : ''
+  if (!form.base_dir || form.base_dir === autoOld) {
+    form.base_dir = name ? `/srv/apps/${name}` : ''
+  }
 })
 
 onMounted(() => serverStore.fetch())

@@ -125,12 +125,21 @@ export interface Application {
   site_name: string
   domain: string
   container_name: string
+  base_dir: string
   deploy_id: number | null
   db_conn_id: number | null
   expose_mode: 'none' | 'path' | 'site'
   status: 'online' | 'offline' | 'unknown' | 'error'
   created_at: string
   updated_at: string
+}
+
+export interface AppDirEntry {
+  name: string
+  path: string
+  status: 'ok' | 'missing'
+  size: string
+  mtime: string
 }
 
 export interface AppNginxRoute {
@@ -156,6 +165,7 @@ export interface ApplicationForm {
   site_name: string
   domain: string
   container_name: string
+  base_dir?: string
   expose_mode: 'none' | 'path' | 'site'
   deploy_id: number | null
   db_conn_id: number | null
