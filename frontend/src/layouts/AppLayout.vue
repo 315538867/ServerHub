@@ -102,5 +102,5 @@ onMounted(async () => {
 .al-tabs { margin-top: 4px; padding: 0 16px; }
 .al-tabs :deep(.t-tabs__nav) { border-bottom: none; }
 
-.al-content { flex: 1; overflow-y: auto; padding: 20px 24px; }
+.al-content { flex: 1; overflow-y: auto; padding: 12px 24px; }
 </style>
