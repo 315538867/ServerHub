@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            cc: gcc
+
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            cc: aarch64-linux-gnu-gcc
+            cross_pkg: gcc-aarch64-linux-gnu
+
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            cc: clang
+
+          - os: macos-13
+            goos: darwin
+            goarch: amd64
+            cc: clang
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: backend/go.sum
+
+      - name: Install cross-compiler (Linux arm64)
+        if: matrix.cross_pkg != ''
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.cross_pkg }}
+
+      - name: Build binary
+        working-directory: backend
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '1'
+          CC: ${{ matrix.cc }}
+        run: go build -ldflags="-s -w" -o serverhub .
+
+      - name: Package release archive
+        shell: bash
+        run: |
+          ARCHIVE="serverhub_${{ matrix.goos }}_${{ matrix.goarch }}"
+          mkdir -p "dist/${ARCHIVE}"
+          cp backend/serverhub "dist/${ARCHIVE}/"
+          cp backend/config.example.yaml "dist/${ARCHIVE}/"
+          cp README.md LICENSE "dist/${ARCHIVE}/"
+          cd dist
+          tar -czf "${ARCHIVE}.tar.gz" "${ARCHIVE}/"
+          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.tar.gz
+          generate_release_notes: true
