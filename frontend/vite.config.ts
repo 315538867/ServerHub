@@ -7,6 +7,20 @@ export default defineConfig({
   base: '/panel/',
   resolve: {
     alias: { '@': resolve(__dirname, 'src') },
+    // CodeMirror 6 的各子包都依赖 @codemirror/state 等核心包；
+    // 若 bun hoist 出多份会导致 `instanceof` 失败、抛出
+    // "Unrecognized extension value in extension set"。强制去重。
+    dedupe: [
+      '@codemirror/state',
+      '@codemirror/view',
+      '@codemirror/language',
+      '@codemirror/commands',
+      '@codemirror/search',
+      '@codemirror/autocomplete',
+      '@lezer/common',
+      '@lezer/highlight',
+      '@lezer/lr',
+    ],
   },
   server: {
     proxy: {
