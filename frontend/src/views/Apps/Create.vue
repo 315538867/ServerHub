@@ -44,7 +44,7 @@
             <div class="form-field">
               <label class="form-label">Docker 容器名</label>
               <t-input v-model="form.container_name" placeholder="关联的容器名（可选）" />
-              <span class="form-hint">填写后开启「服务」Tab，用于管理 Docker 容器</span>
+              <span class="form-hint">关联服务器上已存在的容器（如 my-nginx），填写后开启「服务」Tab，可查看容器状态、重启/停止并实时查看日志</span>
             </div>
           </div>
         </div>
