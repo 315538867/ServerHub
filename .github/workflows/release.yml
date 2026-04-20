@@ -40,23 +40,9 @@ jobs:
             build_tags: ''
             archive_suffix: ''
 
-          - os: macos-13
-            goos: darwin
-            goarch: amd64
-            cc: clang
-            build_tags: ''
-            archive_suffix: ''
-
           - os: macos-latest
             goos: darwin
             goarch: arm64
-            cc: clang
-            build_tags: desktop
-            archive_suffix: _desktop
-
-          - os: macos-13
-            goos: darwin
-            goarch: amd64
             cc: clang
             build_tags: desktop
             archive_suffix: _desktop
