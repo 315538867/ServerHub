@@ -92,7 +92,7 @@ onMounted(async () => {
 
 .sl-tabs {
   margin-top: var(--sh-space-xs);
-  padding: 0 var(--sh-space-md);
+  padding: 0 var(--sh-space-lg);
 }
 .sl-tabs :deep(.t-tabs__nav) { border-bottom: none; }
 

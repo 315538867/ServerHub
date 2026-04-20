@@ -110,7 +110,7 @@ onMounted(async () => {
 }
 .al-server-link { text-decoration: none; }
 
-.al-tabs { margin-top: var(--sh-space-xs); padding: 0 var(--sh-space-md); }
+.al-tabs { margin-top: var(--sh-space-xs); padding: 0 var(--sh-space-lg); }
 .al-tabs :deep(.t-tabs__nav) { border-bottom: none; }
 
 .al-content { flex: 1; overflow-y: auto; min-height: 0; }

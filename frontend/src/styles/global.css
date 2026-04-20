@@ -284,7 +284,7 @@ html, body, #app {
   background-color: var(--sh-border);
 }
 .section-block .t-tabs__nav-container {
-  padding: 0 var(--sh-space-md);
+  padding: 0 var(--sh-space-lg);
 }
 .section-block .t-tabs__content {
   background: var(--sh-card-bg);
@@ -297,7 +297,7 @@ html, body, #app {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--sh-space-sm) var(--sh-space-lg);
+  padding: var(--sh-space-md) var(--sh-space-lg);
   border-bottom: 1px solid var(--sh-border);
   background: var(--sh-card-bg);
 }
