@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}${{ matrix.archive_suffix }}
     runs-on: ${{ matrix.os }}
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -22,22 +22,44 @@ jobs:
             goos: linux
             goarch: amd64
             cc: gcc
+            build_tags: ''
+            archive_suffix: ''
 
           - os: ubuntu-latest
             goos: linux
             goarch: arm64
             cc: aarch64-linux-gnu-gcc
             cross_pkg: gcc-aarch64-linux-gnu
+            build_tags: ''
+            archive_suffix: ''
 
           - os: macos-latest
             goos: darwin
             goarch: arm64
             cc: clang
+            build_tags: ''
+            archive_suffix: ''
 
           - os: macos-13
             goos: darwin
             goarch: amd64
             cc: clang
+            build_tags: ''
+            archive_suffix: ''
+
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            cc: clang
+            build_tags: desktop
+            archive_suffix: _desktop
+
+          - os: macos-13
+            goos: darwin
+            goarch: amd64
+            cc: clang
+            build_tags: desktop
+            archive_suffix: _desktop
 
     steps:
       - name: Checkout
@@ -72,19 +94,24 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '1'
           CC: ${{ matrix.cc }}
-        run: go build -ldflags="-s -w" -o serverhub .
+        run: |
+          TAGS="${{ matrix.build_tags }}"
+          if [ -n "$TAGS" ]; then
+            go build -tags "$TAGS" -ldflags="-s -w" -o serverhub .
+          else
+            go build -ldflags="-s -w" -o serverhub .
+          fi
 
       - name: Package release archive
         shell: bash
         run: |
-          ARCHIVE="serverhub_${{ matrix.goos }}_${{ matrix.goarch }}"
+          ARCHIVE="serverhub_${{ matrix.goos }}_${{ matrix.goarch }}${{ matrix.archive_suffix }}"
           mkdir -p "dist/${ARCHIVE}"
           cp backend/serverhub "dist/${ARCHIVE}/"
           cp backend/config.example.yaml "dist/${ARCHIVE}/"
           cp README.md LICENSE "dist/${ARCHIVE}/"
           cd dist
           tar -czf "${ARCHIVE}.tar.gz" "${ARCHIVE}/"
-          echo "ARCHIVE=${ARCHIVE}" >> "$GITHUB_ENV"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
