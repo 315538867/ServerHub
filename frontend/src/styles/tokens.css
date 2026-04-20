@@ -1,0 +1,162 @@
+/* ============================================================
+   ServerHub – Design Tokens (Single Source of Truth)
+   Style basis: Vercel / Linear minimal + brand blue
+   ============================================================ */
+:root {
+  /* ---------- Color · Brand ---------- */
+  --ui-brand:            #2355e6;
+  --ui-brand-hover:      #3b6df0;
+  --ui-brand-active:     #1a46c7;
+  --ui-brand-soft:       #eaf0fe;
+  --ui-brand-ring:       rgba(35, 85, 230, 0.14);
+
+  /* ---------- Color · Neutral (text / surface / border) ---------- */
+  --ui-fg:               #0a0a0a;
+  --ui-fg-2:             #3a3a3a;
+  --ui-fg-3:             #6e6e6e;
+  --ui-fg-4:             #9a9a9a;
+  --ui-fg-placeholder:   #bfbfbf;
+  --ui-fg-inverse:       #ffffff;
+
+  --ui-bg:               #fafafa;
+  --ui-bg-elevated:      #ffffff;
+  --ui-bg-subtle:        #f5f5f5;
+  --ui-bg-hover:         #f2f2f2;
+
+  --ui-border:           #eaeaea;
+  --ui-border-strong:    #d4d4d4;
+  --ui-border-subtle:    #f0f0f0;
+
+  /* ---------- Color · Status ---------- */
+  --ui-success:          #17a673;
+  --ui-success-soft:     #e7f7f0;
+  --ui-warning:          #e98a2a;
+  --ui-warning-soft:     #fdf1e3;
+  --ui-danger:           #d64545;
+  --ui-danger-soft:      #fbeaea;
+  --ui-info:             #2355e6;
+  --ui-info-soft:        #eaf0fe;
+  --ui-muted:            #8a8a8a;
+  --ui-muted-soft:       #f0f0f0;
+
+  /* ---------- Color · Sidebar / Header ---------- */
+  --ui-sidebar-bg:       #0b1220;
+  --ui-sidebar-fg:       rgba(255, 255, 255, 0.72);
+  --ui-sidebar-fg-active:#ffffff;
+  --ui-sidebar-hover:    rgba(255, 255, 255, 0.06);
+  --ui-sidebar-active:   #2355e6;
+  --ui-sidebar-group:    rgba(255, 255, 255, 0.38);
+  --ui-header-bg:        #ffffff;
+  --ui-header-height:    56px;
+
+  /* ---------- Spacing scale (4/8/12/16/24/32/48) ---------- */
+  --ui-space-1:          4px;
+  --ui-space-2:          8px;
+  --ui-space-3:          12px;
+  --ui-space-4:          16px;
+  --ui-space-6:          24px;
+  --ui-space-8:          32px;
+  --ui-space-12:         48px;
+
+  /* ---------- Radius ---------- */
+  --ui-radius-sm:        4px;
+  --ui-radius-md:        6px;
+  --ui-radius-lg:        8px;
+  --ui-radius-xl:        12px;
+  --ui-radius-pill:      9999px;
+
+  /* ---------- Shadow (very subtle, Linear-like) ---------- */
+  --ui-shadow-none:      none;
+  --ui-shadow-xs:        0 1px 0 rgba(17, 17, 17, 0.04);
+  --ui-shadow-sm:        0 1px 2px rgba(17, 17, 17, 0.05);
+  --ui-shadow-md:        0 4px 12px rgba(17, 17, 17, 0.08);
+  --ui-shadow-lg:        0 12px 32px rgba(17, 17, 17, 0.12);
+
+  /* ---------- Typography ---------- */
+  --ui-font-sans:
+    -apple-system, BlinkMacSystemFont, 'Inter', 'PingFang SC',
+    'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  --ui-font-mono:
+    'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code',
+    Menlo, Consolas, monospace;
+
+  --ui-fs-xs:            12px;
+  --ui-fs-sm:            13px;
+  --ui-fs-md:            14px;
+  --ui-fs-lg:            15px;
+  --ui-fs-xl:            16px;
+  --ui-fs-2xl:           18px;
+  --ui-fs-3xl:           22px;
+
+  --ui-fw-regular:       400;
+  --ui-fw-medium:        500;
+  --ui-fw-semibold:      600;
+
+  --ui-lh-tight:         1.3;
+  --ui-lh-normal:        1.5;
+  --ui-lh-relaxed:       1.65;
+
+  /* ---------- Motion ---------- */
+  --ui-dur-fast:         120ms;
+  --ui-dur-base:         180ms;
+  --ui-dur-slow:         240ms;
+  --ui-ease-standard:    cubic-bezier(0.2, 0, 0, 1);
+  --ui-ease-emphasized:  cubic-bezier(0.2, 0, 0, 1.2);
+
+  /* ---------- Z-index stack ---------- */
+  --ui-z-sticky:         100;
+  --ui-z-drawer:         1000;
+  --ui-z-dialog:         1100;
+  --ui-z-toast:          1200;
+
+  /* ============================================================
+     Back-compat: legacy --sh-* aliases
+     Existing pages can keep using --sh-* until migrated.
+     ============================================================ */
+  --sh-page-bg:          var(--ui-bg);
+  --sh-card-bg:          var(--ui-bg-elevated);
+  --sh-card-radius:      var(--ui-radius-lg);
+  --sh-card-shadow:      var(--ui-shadow-xs);
+  --sh-card-shadow-hover:var(--ui-shadow-md);
+  --sh-card-border:      1px solid var(--ui-border);
+
+  --sh-sidebar-bg:       var(--ui-sidebar-bg);
+  --sh-sidebar-active:   var(--ui-sidebar-active);
+  --sh-sidebar-text:     var(--ui-sidebar-fg);
+  --sh-sidebar-text-active: var(--ui-sidebar-fg-active);
+  --sh-sidebar-hover:    var(--ui-sidebar-hover);
+  --sh-sidebar-group:    var(--ui-sidebar-group);
+
+  --sh-header-bg:        var(--ui-header-bg);
+  --sh-header-height:    var(--ui-header-height);
+  --sh-header-border:    1px solid var(--ui-border);
+
+  --sh-text-primary:     var(--ui-fg);
+  --sh-text-secondary:   var(--ui-fg-3);
+  --sh-text-placeholder: var(--ui-fg-placeholder);
+  --sh-border:           var(--ui-border);
+
+  --sh-green:            var(--ui-success);
+  --sh-orange:           var(--ui-warning);
+  --sh-red:              var(--ui-danger);
+  --sh-blue:             var(--ui-info);
+  --sh-gray:             var(--ui-muted);
+
+  --sh-green-bg:         var(--ui-success-soft);
+  --sh-orange-bg:        var(--ui-warning-soft);
+  --sh-red-bg:           var(--ui-danger-soft);
+  --sh-blue-bg:          var(--ui-info-soft);
+  --sh-gray-bg:          var(--ui-muted-soft);
+
+  --sh-space-xs:         var(--ui-space-1);
+  --sh-space-sm:         var(--ui-space-2);
+  --sh-space-md:         var(--ui-space-4);
+  --sh-space-lg:         var(--ui-space-6);
+  --sh-space-xl:         var(--ui-space-8);
+
+  /* TDesign brand remap */
+  --td-brand-color:        var(--ui-brand);
+  --td-brand-color-hover:  var(--ui-brand-hover);
+  --td-brand-color-active: var(--ui-brand-active);
+  --td-brand-color-light:  var(--ui-brand-soft);
+}
