@@ -25,15 +25,38 @@ const router = createRouter({
           component: () => import('@/layouts/AppLayout.vue'),
           redirect: (to) => `${to.path}/overview`,
           children: [
+            // ── 5 Tab 新结构 ──
             { path: 'overview', name: 'AppOverview', component: () => import('@/views/Apps/Overview.vue') },
-            { path: 'nginx', name: 'AppNginx', component: () => import('@/views/Apps/NginxRoutes.vue') },
-            { path: 'domain', name: 'AppDomain', component: () => import('@/views/Apps/Domain.vue') },
-            { path: 'service', name: 'AppService', component: () => import('@/views/Apps/Service.vue') },
             { path: 'deploy', name: 'AppDeploy', component: () => import('@/views/Apps/Deploy.vue') },
-            { path: 'logs', name: 'AppLogs', component: () => import('@/views/Apps/Logs.vue') },
-            { path: 'database', name: 'AppDatabase', component: () => import('@/views/Apps/Database.vue') },
-            { path: 'env', name: 'AppEnv', component: () => import('@/views/Apps/Env.vue') },
-            { path: 'terminal', name: 'AppTerminal', component: () => import('@/views/Apps/Terminal.vue') },
+            {
+              path: 'network',
+              component: () => import('@/views/Apps/Network.vue'),
+              redirect: (to) => `${to.path}/routes`,
+              children: [
+                { path: 'routes', name: 'AppNetworkRoutes', component: () => import('@/views/Apps/NginxRoutes.vue') },
+                { path: 'domain', name: 'AppNetworkDomain', component: () => import('@/views/Apps/Domain.vue') },
+              ],
+            },
+            {
+              path: 'ops',
+              component: () => import('@/views/Apps/Ops.vue'),
+              redirect: (to) => `${to.path}/logs`,
+              children: [
+                { path: 'service', name: 'AppOpsService', component: () => import('@/views/Apps/Service.vue') },
+                { path: 'logs', name: 'AppOpsLogs', component: () => import('@/views/Apps/Logs.vue') },
+                { path: 'terminal', name: 'AppOpsTerminal', component: () => import('@/views/Apps/Terminal.vue') },
+              ],
+            },
+            { path: 'data', name: 'AppData', component: () => import('@/views/Apps/Database.vue') },
+
+            // ── 旧 URL 向后兼容（永久重定向，保护书签/历史链接） ──
+            { path: 'nginx', redirect: (to) => `/apps/${to.params.appId}/network/routes` },
+            { path: 'domain', redirect: (to) => `/apps/${to.params.appId}/network/domain` },
+            { path: 'service', redirect: (to) => `/apps/${to.params.appId}/ops/service` },
+            { path: 'logs', redirect: (to) => `/apps/${to.params.appId}/ops/logs` },
+            { path: 'terminal', redirect: (to) => `/apps/${to.params.appId}/ops/terminal` },
+            { path: 'database', redirect: (to) => `/apps/${to.params.appId}/data` },
+            { path: 'env', redirect: (to) => `/apps/${to.params.appId}/deploy` },
           ],
         },
 
