@@ -2,3 +2,4 @@ node_modules/
 .playwright-mcp/
 .spec-workflow/
 .zcf/
+dist/
