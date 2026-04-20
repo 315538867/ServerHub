@@ -1,62 +1,73 @@
 <template>
-  <div class="files-page">
-    <div class="page-toolbar">
-      <t-breadcrumb class="path-breadcrumb">
-        <t-breadcrumb-item @click="navigateTo('/')">根目录</t-breadcrumb-item>
-        <t-breadcrumb-item
-          v-for="(seg, i) in pathSegments"
-          :key="i"
-          @click="navigateTo('/' + pathSegments.slice(0, i + 1).join('/'))"
-        >{{ seg }}</t-breadcrumb-item>
-      </t-breadcrumb>
-      <div class="toolbar-right">
-        <t-button variant="outline" @click="triggerUpload">
-          <template #icon><upload-icon /></template>
-          上传文件
-        </t-button>
-        <t-button variant="outline" @click="openMkdir">
-          <template #icon><folder-add-icon /></template>
-          新建目录
-        </t-button>
-        <t-button variant="outline" :loading="loading" @click="reload">
-          <template #icon><refresh-icon /></template>
-          刷新
-        </t-button>
-      </div>
-    </div>
-
-    <t-table
-      :data="entries"
-      :columns="fileColumns"
-      :loading="loading"
-      row-key="name"
-      stripe
-      empty="目录为空"
-      @row-dblclick="onRowDblClick"
-    >
-      <template #name="{ row }">
-        <div class="file-name-cell">
-          <folder-icon v-if="row.is_dir" style="color:#0052d9" />
-          <file-icon v-else style="color:#8a94a6" />
-          <span>{{ row.name }}</span>
+  <div class="page-container">
+    <div class="section-block">
+      <!-- 路径面包屑 + 操作按钮 -->
+      <div class="toolbar">
+        <t-breadcrumb class="path-breadcrumb">
+          <t-breadcrumb-item @click="navigateTo('/')">根目录</t-breadcrumb-item>
+          <t-breadcrumb-item
+            v-for="(seg, i) in pathSegments"
+            :key="i"
+            @click="navigateTo('/' + pathSegments.slice(0, i + 1).join('/'))"
+          >{{ seg }}</t-breadcrumb-item>
+        </t-breadcrumb>
+        <div class="toolbar-right">
+          <t-button size="small" variant="outline" @click="triggerUpload">
+            <template #icon><upload-icon /></template>
+            上传文件
+          </t-button>
+          <t-button size="small" variant="outline" @click="openMkdir">
+            <template #icon><folder-add-icon /></template>
+            新建目录
+          </t-button>
+          <t-button size="small" variant="outline" :loading="loading" @click="reload">
+            <template #icon><refresh-icon /></template>
+            刷新
+          </t-button>
         </div>
-      </template>
-      <template #size="{ row }">{{ row.is_dir ? '—' : formatSize(row.size) }}</template>
-      <template #operations="{ row }">
-        <t-space size="small">
-          <t-button v-if="!row.is_dir" size="small" variant="text" @click="downloadEntry(row)">下载</t-button>
-          <t-button v-if="!row.is_dir && isEditable(row.name)" size="small" variant="text" @click="openEdit(row)">编辑</t-button>
-          <t-button size="small" variant="text" @click="openRename(row)">重命名</t-button>
-          <t-button size="small" variant="text" @click="openChmod(row)">权限</t-button>
-          <t-popconfirm :content="`确认删除 ${row.name}？`" @confirm="deleteEntry(row)">
-            <t-button theme="danger" size="small" variant="text">删除</t-button>
-          </t-popconfirm>
-        </t-space>
-      </template>
-    </t-table>
+      </div>
+
+      <!-- 文件列表 -->
+      <t-table
+        :data="entries"
+        :columns="fileColumns"
+        :loading="loading"
+        row-key="name"
+        bordered
+        size="small"
+        empty="目录为空"
+        @row-dblclick="onRowDblClick"
+      >
+        <template #name="{ row }">
+          <div class="file-name-cell">
+            <folder-icon v-if="row.is_dir" class="file-icon dir" />
+            <file-icon v-else class="file-icon file" />
+            <span>{{ row.name }}</span>
+          </div>
+        </template>
+        <template #size="{ row }">
+          <span class="mono-text">{{ row.is_dir ? '—' : formatSize(row.size) }}</span>
+        </template>
+        <template #mode="{ row }">
+          <span class="mono-text perm">{{ row.mode }}</span>
+        </template>
+        <template #operations="{ row }">
+          <t-space size="small">
+            <t-button v-if="!row.is_dir" size="small" variant="text" @click="downloadEntry(row)">下载</t-button>
+            <t-button v-if="!row.is_dir && isEditable(row.name)" size="small" variant="text" @click="openEdit(row)">编辑</t-button>
+            <t-button size="small" variant="text" @click="openRename(row)">重命名</t-button>
+            <t-button size="small" variant="text" @click="openChmod(row)">权限</t-button>
+            <t-popconfirm :content="`确认删除 ${row.name}？`" @confirm="deleteEntry(row)">
+              <t-button theme="danger" size="small" variant="text">删除</t-button>
+            </t-popconfirm>
+          </t-space>
+        </template>
+      </t-table>
+    </div>
 
     <input ref="uploadInput" type="file" multiple style="display:none" @change="onUploadChange" />
 
+    <!-- 新建目录 -->
     <t-dialog
       v-model:visible="mkdirVisible"
       header="新建目录"
@@ -68,6 +79,7 @@
       <t-input v-model="mkdirName" placeholder="目录名" @keydown.enter="confirmMkdir" />
     </t-dialog>
 
+    <!-- 重命名 -->
     <t-dialog
       v-model:visible="renameVisible"
       header="重命名 / 移动"
@@ -78,6 +90,7 @@
       <t-input v-model="renameTo" placeholder="新路径" />
     </t-dialog>
 
+    <!-- 修改权限 -->
     <t-dialog
       v-model:visible="chmodVisible"
       header="修改权限"
@@ -88,6 +101,7 @@
       <t-input v-model="chmodMode" placeholder="如 0644 或 755" />
     </t-dialog>
 
+    <!-- 编辑文件 (CodeMirror) -->
     <t-dialog
       v-model:visible="editVisible"
       :header="`编辑 — ${editPath}`"
@@ -264,12 +278,70 @@ onBeforeUnmount(() => editorView?.destroy())
 </script>
 
 <style scoped>
-.files-page { padding: 4px 0; }
-.page-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
-.path-breadcrumb { flex: 1; min-width: 200px; cursor: pointer; }
-.toolbar-right { display: flex; gap: 8px; }
-.file-name-cell { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
-.code-editor { height: 60vh; overflow: auto; border: 1px solid var(--td-component-border); border-radius: 4px; font-size: 13px; }
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.path-breadcrumb {
+  flex: 1;
+  min-width: 200px;
+  cursor: pointer;
+}
+
+.toolbar-right {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.file-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.file-icon {
+  flex-shrink: 0;
+  font-size: 16px;
+}
+
+.file-icon.dir { color: var(--sh-blue); }
+.file-icon.file { color: #8a94a6; }
+
+.mono-text {
+  font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+  font-size: 12px;
+}
+
+.perm {
+  color: var(--sh-text-secondary);
+}
+
+.code-editor {
+  height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--sh-border);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
+
+:deep(.t-table) {
+  font-size: 13px;
+}
+
+:deep(.t-table th) {
+  background: #FAFAFA !important;
+  font-weight: 500;
+  color: var(--sh-text-secondary);
+}
 </style>

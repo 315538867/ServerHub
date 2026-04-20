@@ -1,138 +1,138 @@
 <template>
-  <div class="dashboard">
-    <!-- Stat cards -->
-    <div class="stat-grid">
-      <div class="stat-card stat-card--blue">
-        <div class="stat-value">{{ total }}</div>
-        <div class="stat-label">总服务器</div>
-      </div>
-      <div class="stat-card stat-card--green">
-        <div class="stat-value">{{ online }}</div>
-        <div class="stat-label">服务器在线</div>
-      </div>
-      <div class="stat-card stat-card--red">
-        <div class="stat-value">{{ offline }}</div>
-        <div class="stat-label">服务器离线</div>
-      </div>
-      <div class="stat-card stat-card--gray">
-        <div class="stat-value">{{ unknown }}</div>
-        <div class="stat-label">服务器未知</div>
-      </div>
-      <div class="stat-card stat-card--blue">
-        <div class="stat-value">{{ appStore.apps.length }}</div>
-        <div class="stat-label">总应用</div>
-      </div>
-      <div class="stat-card stat-card--green">
-        <div class="stat-value">{{ appsOnline }}</div>
-        <div class="stat-label">应用在线</div>
-      </div>
-      <div class="stat-card stat-card--red">
-        <div class="stat-value">{{ appsOffline }}</div>
-        <div class="stat-label">应用异常</div>
-      </div>
-      <div class="stat-card stat-card--gray">
-        <div class="stat-value">{{ appsUnknown }}</div>
-        <div class="stat-label">应用未知</div>
-      </div>
+  <div class="page-container dashboard">
+
+    <!-- ── 顶部概览统计 ── -->
+    <div class="stat-row">
+      <stat-card label="服务器总数" :value="total"   :icon="ServerIcon"       color="blue"   />
+      <stat-card label="服务器在线" :value="online"  :icon="CheckCircleIcon"  color="green"  />
+      <stat-card label="服务器离线" :value="offline" :icon="CloseCircleIcon"  color="red"    />
+      <stat-card label="应用总数"   :value="appStore.apps.length" :icon="AppIcon" color="blue" />
+      <stat-card label="应用在线"   :value="appsOnline"  :icon="CheckCircleIcon" color="green" />
+      <stat-card label="应用异常"   :value="appsOffline" :icon="ErrorCircleIcon" color="red"   />
     </div>
 
-    <!-- Server cards grid -->
-    <div class="section-header">
-      <span class="section-title">服务器状态</span>
-      <t-tag size="small" variant="light">每 {{ refreshInterval / 1000 }}s 刷新</t-tag>
-    </div>
-    <div v-loading="loading" class="server-grid">
-      <div
-        v-for="item in overview"
-        :key="item.id"
-        class="server-card"
-        :class="{ 'server-card--active': selectedId === item.id }"
-        @click="selectServer(item)"
-      >
-        <div class="server-card-header">
-          <span class="server-name">{{ item.name }}</span>
-          <t-tag size="small" :theme="statusTheme(item.status)" variant="light">{{ statusText(item.status) }}</t-tag>
+    <!-- ── 服务器状态 ── -->
+    <div class="section-block">
+      <div class="section-title">
+        <div class="section-title-left">
+          <server-icon class="section-icon" />
+          服务器状态
         </div>
-        <div class="server-host">{{ item.host }}:{{ item.port }}</div>
-
-        <template v-if="item.metric">
-          <div class="metric-row">
-            <span class="metric-label">CPU</span>
-            <t-progress
-              :percentage="round(item.metric.cpu)"
-              :color="progressColor(item.metric.cpu)"
-              :stroke-width="6"
-              class="metric-bar"
-              size="small"
-              :label="false"
-            />
-            <span class="metric-val">{{ round(item.metric.cpu) }}%</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-label">内存</span>
-            <t-progress
-              :percentage="round(item.metric.mem)"
-              :color="progressColor(item.metric.mem)"
-              :stroke-width="6"
-              class="metric-bar"
-              size="small"
-              :label="false"
-            />
-            <span class="metric-val">{{ round(item.metric.mem) }}%</span>
-          </div>
-          <div class="metric-row">
-            <span class="metric-label">磁盘</span>
-            <t-progress
-              :percentage="round(item.metric.disk)"
-              :color="progressColor(item.metric.disk)"
-              :stroke-width="6"
-              class="metric-bar"
-              size="small"
-              :label="false"
-            />
-            <span class="metric-val">{{ round(item.metric.disk) }}%</span>
-          </div>
-          <div class="server-uptime">负载 {{ item.metric.load1.toFixed(2) }} · 运行 {{ formatUptime(item.metric.uptime) }}</div>
-        </template>
-        <div v-else class="no-metric">暂无指标数据</div>
+        <div class="section-title-right">
+          <t-tag size="small" variant="light" theme="default">每 {{ refreshInterval / 1000 }}s 刷新</t-tag>
+          <t-button size="small" variant="outline" :loading="loading" @click="loadOverview">刷新</t-button>
+        </div>
       </div>
-    </div>
-    <t-empty v-if="!loading && overview.length === 0" description="暂无服务器，请先在「服务器管理」中添加" />
+      <div class="section-body">
+        <t-empty v-if="!loading && overview.length === 0" description="暂无服务器" style="padding:32px 0" />
+        <div v-else class="server-grid">
+          <div
+            v-for="item in overview"
+            :key="item.id"
+            class="server-card"
+            :class="{ 'server-card--active': selectedId === item.id }"
+            @click="selectServer(item)"
+          >
+            <div class="server-card-top">
+              <div class="server-card-name-row">
+                <span class="status-dot" :class="item.status" />
+                <span class="server-card-name">{{ item.name }}</span>
+              </div>
+              <t-tag size="small" :theme="statusTheme(item.status)" variant="light">
+                {{ statusText(item.status) }}
+              </t-tag>
+            </div>
+            <div class="server-card-host">{{ item.host }}:{{ item.port }}</div>
 
-    <!-- Trend chart for selected server -->
-    <template v-if="selectedId">
-      <div class="section-header">
-        <span class="section-title">{{ selectedName }} — 趋势图（最近 {{ chartMetrics.length }} 个采样点）</span>
-      </div>
-      <div ref="chartEl" class="trend-chart" />
-    </template>
-
-    <!-- Applications section -->
-    <div class="section-header">
-      <span class="section-title">应用状态</span>
-      <router-link to="/apps/create" class="add-link">+ 新建应用</router-link>
-    </div>
-    <div v-if="appStore.apps.length" class="app-grid">
-      <router-link
-        v-for="app in appStore.apps"
-        :key="app.id"
-        :to="`/apps/${app.id}/overview`"
-        class="app-card-link"
-      >
-        <div class="app-card">
-          <div class="app-card-header">
-            <span class="server-name">{{ app.name }}</span>
-            <t-tag :theme="appStatusTheme(app.status)" variant="light" size="small">{{ appStatusText(app.status) }}</t-tag>
-          </div>
-          <div class="app-card-desc">{{ app.description || app.domain || '—' }}</div>
-          <div class="app-card-meta">
-            <span v-if="app.site_name">Nginx: {{ app.site_name }}</span>
-            <span v-if="app.container_name"> · 容器: {{ app.container_name }}</span>
+            <template v-if="item.metric">
+              <div class="metric-row">
+                <span class="metric-label">CPU</span>
+                <div class="metric-bar-wrap">
+                  <div class="metric-bar-inner" :style="{ width: round(item.metric.cpu) + '%', background: barColor(item.metric.cpu) }" />
+                </div>
+                <span class="metric-val" :style="{ color: barColor(item.metric.cpu) }">{{ round(item.metric.cpu) }}%</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">内存</span>
+                <div class="metric-bar-wrap">
+                  <div class="metric-bar-inner" :style="{ width: round(item.metric.mem) + '%', background: barColor(item.metric.mem) }" />
+                </div>
+                <span class="metric-val" :style="{ color: barColor(item.metric.mem) }">{{ round(item.metric.mem) }}%</span>
+              </div>
+              <div class="metric-row">
+                <span class="metric-label">磁盘</span>
+                <div class="metric-bar-wrap">
+                  <div class="metric-bar-inner" :style="{ width: round(item.metric.disk) + '%', background: barColor(item.metric.disk) }" />
+                </div>
+                <span class="metric-val" :style="{ color: barColor(item.metric.disk) }">{{ round(item.metric.disk) }}%</span>
+              </div>
+              <div class="server-card-footer">
+                负载 <b>{{ item.metric.load1.toFixed(2) }}</b> · 运行 <b>{{ formatUptime(item.metric.uptime) }}</b>
+              </div>
+            </template>
+            <div v-else class="no-metric">暂无指标数据</div>
           </div>
         </div>
-      </router-link>
+      </div>
     </div>
-    <t-empty v-else description="暂无应用，点击「新建应用」开始" style="margin-top:20px" />
+
+    <!-- ── 趋势图 ── -->
+    <div v-if="selectedId" class="section-block">
+      <div class="section-title">
+        <div class="section-title-left">
+          <chart-icon class="section-icon" />
+          {{ selectedName }} — 资源趋势（最近 {{ chartMetrics.length }} 个采样点）
+        </div>
+      </div>
+      <div class="section-body">
+        <div ref="chartEl" class="trend-chart" />
+      </div>
+    </div>
+
+    <!-- ── 应用状态 ── -->
+    <div class="section-block">
+      <div class="section-title">
+        <div class="section-title-left">
+          <app-icon class="section-icon" />
+          应用状态
+        </div>
+        <div class="section-title-right">
+          <router-link to="/apps/create">
+            <t-button size="small" theme="primary">
+              <template #icon><add-icon /></template>
+              新建应用
+            </t-button>
+          </router-link>
+        </div>
+      </div>
+      <div class="section-body">
+        <t-empty v-if="!appStore.apps.length" description="暂无应用，点击「新建应用」开始" style="padding:32px 0" />
+        <div v-else class="app-list">
+          <router-link
+            v-for="app in appStore.apps"
+            :key="app.id"
+            :to="`/apps/${app.id}/overview`"
+            class="app-row"
+          >
+            <div class="app-row-left">
+              <span class="status-dot" :class="app.status" />
+              <div class="app-row-info">
+                <span class="app-row-name">{{ app.name }}</span>
+                <span class="app-row-desc">{{ app.description || app.domain || '—' }}</span>
+              </div>
+            </div>
+            <div class="app-row-right">
+              <span v-if="app.site_name" class="app-row-meta">Nginx: {{ app.site_name }}</span>
+              <span v-if="app.container_name" class="app-row-meta">容器: {{ app.container_name }}</span>
+              <t-tag :theme="appStatusTheme(app.status)" variant="light" size="small">
+                {{ appStatusText(app.status) }}
+              </t-tag>
+            </div>
+          </router-link>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -143,44 +143,38 @@ import dayjs from 'dayjs'
 import { getOverview, getServerMetrics, type ServerOverview } from '@/api/metrics'
 import { useAppStore } from '@/stores/app'
 import type { Metric } from '@/types/api'
+import StatCard from '@/components/StatCard.vue'
+import {
+  ServerIcon, CheckCircleIcon, CloseCircleIcon, AppIcon, AddIcon,
+  ErrorCircleIcon, ChartIcon,
+} from 'tdesign-icons-vue-next'
 
 const appStore = useAppStore()
-
 const overview = ref<ServerOverview[]>([])
 const loading = ref(false)
 const refreshInterval = 30_000
 
-const total = computed(() => overview.value.length)
-const online = computed(() => overview.value.filter(s => s.status === 'online').length)
+const total   = computed(() => overview.value.length)
+const online  = computed(() => overview.value.filter(s => s.status === 'online').length)
 const offline = computed(() => overview.value.filter(s => s.status === 'offline').length)
-const unknown = computed(() => overview.value.filter(s => s.status === 'unknown').length)
 
-const appsOnline = computed(() => appStore.apps.filter(a => a.status === 'online').length)
+const appsOnline  = computed(() => appStore.apps.filter(a => a.status === 'online').length)
 const appsOffline = computed(() => appStore.apps.filter(a => a.status === 'offline' || a.status === 'error').length)
-const appsUnknown = computed(() => appStore.apps.filter(a => a.status === 'unknown').length)
 
 function appStatusTheme(s: string) {
-  return ({ online: 'success', offline: 'danger', error: 'danger', unknown: 'default' } as Record<string, string>)[s] ?? 'default'
+  return ({ online: 'success', offline: 'danger', error: 'danger', unknown: 'default' } as Record<string,string>)[s] ?? 'default'
 }
 function appStatusText(s: string) {
-  return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string, string>)[s] ?? s
+  return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string,string>)[s] ?? s
 }
-
-const selectedId = ref<number | null>(null)
-const selectedName = ref('')
-const chartMetrics = ref<Metric[]>([])
-const chartEl = ref<HTMLDivElement>()
-let chart: echarts.ECharts | null = null
-let timer: ReturnType<typeof setInterval> | null = null
-
 function statusTheme(s: string) {
-  return ({ online: 'success', offline: 'danger', unknown: 'default' } as Record<string, string>)[s] ?? 'default'
+  return ({ online: 'success', offline: 'danger', unknown: 'default' } as Record<string,string>)[s] ?? 'default'
 }
 function statusText(s: string) {
-  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string, string>)[s] ?? s
+  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string,string>)[s] ?? s
 }
 function round(n: number) { return Math.round(n) }
-function progressColor(pct: number) {
+function barColor(pct: number) {
   if (pct >= 90) return '#e34d59'
   if (pct >= 70) return '#ed7b2f'
   return '#00a870'
@@ -191,8 +185,15 @@ function formatUptime(sec: number) {
   return d > 0 ? `${d}天${h}时` : `${h}时`
 }
 
+const selectedId = ref<number | null>(null)
+const selectedName = ref('')
+const chartMetrics = ref<Metric[]>([])
+const chartEl = ref<HTMLDivElement>()
+let chart: echarts.ECharts | null = null
+let timer: ReturnType<typeof setInterval> | null = null
+
 async function loadOverview() {
-  if (!loading.value) loading.value = true
+  loading.value = true
   try { overview.value = await getOverview() }
   finally { loading.value = false }
 }
@@ -208,29 +209,22 @@ async function selectServer(item: ServerOverview) {
 function renderChart() {
   if (!chartEl.value) return
   if (!chart) {
-    chart = echarts.init(chartEl.value, 'dark')
+    chart = echarts.init(chartEl.value)
     window.addEventListener('resize', () => chart?.resize())
   }
   const metrics = [...chartMetrics.value].reverse()
-  const times = metrics.map(m => dayjs(m.created_at).format('HH:mm:ss'))
-  const cpu = metrics.map(m => +m.cpu.toFixed(1))
-  const mem = metrics.map(m => +m.mem.toFixed(1))
-  const disk = metrics.map(m => +m.disk.toFixed(1))
-
+  const times = metrics.map(m => dayjs(m.created_at).format('HH:mm'))
   chart.setOption({
     backgroundColor: 'transparent',
-    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
-    legend: { data: ['CPU', '内存', '磁盘'], top: 4 },
-    grid: { left: 50, right: 20, top: 40, bottom: 40 },
-    xAxis: { type: 'category', data: times, axisLabel: { rotate: 30, fontSize: 11 } },
-    yAxis: { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}%' } },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'line' } },
+    legend: { data: ['CPU', '内存', '磁盘'], top: 4, textStyle: { fontSize: 12 } },
+    grid: { left: 48, right: 16, top: 36, bottom: 32 },
+    xAxis: { type: 'category', data: times, axisLabel: { fontSize: 11, color: '#888' }, axisLine: { lineStyle: { color: '#e7e7e7' } } },
+    yAxis: { type: 'value', min: 0, max: 100, axisLabel: { formatter: '{value}%', fontSize: 11, color: '#888' }, splitLine: { lineStyle: { color: '#f0f0f0' } } },
     series: [
-      { name: 'CPU', type: 'line', data: cpu, smooth: true, symbol: 'none',
-        lineStyle: { width: 2 }, areaStyle: { opacity: 0.08 }, color: '#0052d9' },
-      { name: '内存', type: 'line', data: mem, smooth: true, symbol: 'none',
-        lineStyle: { width: 2 }, areaStyle: { opacity: 0.08 }, color: '#00a870' },
-      { name: '磁盘', type: 'line', data: disk, smooth: true, symbol: 'none',
-        lineStyle: { width: 2 }, areaStyle: { opacity: 0.08 }, color: '#ed7b2f' },
+      { name: 'CPU',  type: 'line', data: metrics.map(m => +m.cpu.toFixed(1)),  smooth: true, symbol: 'none', lineStyle: { width: 2 }, areaStyle: { opacity: 0.06 }, color: '#0052d9' },
+      { name: '内存', type: 'line', data: metrics.map(m => +m.mem.toFixed(1)),  smooth: true, symbol: 'none', lineStyle: { width: 2 }, areaStyle: { opacity: 0.06 }, color: '#00a870' },
+      { name: '磁盘', type: 'line', data: metrics.map(m => +m.disk.toFixed(1)), smooth: true, symbol: 'none', lineStyle: { width: 2 }, areaStyle: { opacity: 0.06 }, color: '#ed7b2f' },
     ],
   }, true)
 }
@@ -241,7 +235,6 @@ onMounted(async () => {
   await Promise.all([loadOverview(), appStore.fetch()])
   timer = setInterval(loadOverview, refreshInterval)
 })
-
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
   chart?.dispose()
@@ -249,113 +242,124 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.dashboard {}
+.dashboard { display: flex; flex-direction: column; gap: 16px; }
 
-.stat-grid {
+/* ── stat row ── */
+.stat-row {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 12px;
-  margin-bottom: 20px;
 }
-@media (max-width: 1200px) { .stat-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (max-width: 640px) { .stat-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 1400px) { .stat-row { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 768px)  { .stat-row { grid-template-columns: repeat(2, 1fr); } }
 
-.stat-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px 16px;
-  text-align: center;
-  box-shadow: 0 1px 4px rgba(0,0,0,.06);
-  border-top: 3px solid #0052d9;
+/* ── section block ── */
+.section-block {
+  background: var(--sh-card-bg);
+  border: var(--sh-card-border);
+  border-radius: var(--sh-card-radius);
+  box-shadow: var(--sh-card-shadow);
+  overflow: hidden;
 }
-.stat-card--green { border-top-color: #00a870; }
-.stat-card--red   { border-top-color: #e34d59; }
-.stat-card--gray  { border-top-color: #8a94a6; }
-.stat-card--blue  { border-top-color: #0052d9; }
-.stat-value { font-size: 28px; font-weight: 700; color: var(--td-text-color-primary); line-height: 1.2; }
-.stat-label { font-size: 12px; color: var(--td-text-color-secondary); margin-top: 4px; }
 
-.section-header {
+.section-title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 20px 0 12px;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--sh-border);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sh-text-primary);
 }
-.section-title { font-size: 15px; font-weight: 600; color: var(--td-text-color-primary); }
+.section-title-left {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.section-title-right { display: flex; align-items: center; gap: 8px; }
+.section-icon { font-size: 15px; color: var(--sh-blue); }
 
+.section-body { padding: 16px 20px; }
+
+/* ── server grid ── */
 .server-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  margin-bottom: 4px;
 }
-@media (max-width: 1200px) { .server-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 900px) { .server-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 600px) { .server-grid { grid-template-columns: 1fr; } }
+@media (max-width: 1400px) { .server-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px)  { .server-grid { grid-template-columns: repeat(2, 1fr); } }
 
 .server-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
+  border: 1px solid var(--sh-border);
+  border-radius: 6px;
+  padding: 14px 16px;
   cursor: pointer;
-  border: 2px solid transparent;
-  box-shadow: 0 1px 4px rgba(0,0,0,.06);
-  transition: border-color .2s, box-shadow .2s;
+  transition: border-color .15s, box-shadow .15s;
+  background: #fafafa;
 }
-.server-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.1); }
-.server-card--active { border-color: #0052d9; }
-.server-card-header {
+.server-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.08); border-color: #c5cfe8; background: #fff; }
+.server-card--active { border-color: var(--sh-blue) !important; background: var(--sh-blue-bg) !important; }
+
+.server-card-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
-.server-name { font-weight: 600; font-size: 14px; }
-.server-host { font-size: 12px; color: var(--td-text-color-secondary); margin-bottom: 10px; }
+.server-card-name-row { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.server-card-name { font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.server-card-host { font-size: 12px; color: var(--sh-text-secondary); margin-bottom: 10px; }
 
-.metric-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
+.metric-row { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.metric-label { font-size: 11px; color: var(--sh-text-secondary); width: 26px; flex-shrink: 0; }
+.metric-bar-wrap {
+  flex: 1;
+  height: 4px;
+  background: #ebebeb;
+  border-radius: 2px;
+  overflow: hidden;
 }
-.metric-label { font-size: 12px; color: var(--td-text-color-secondary); width: 28px; flex-shrink: 0; }
-.metric-bar { flex: 1; }
-.metric-val { font-size: 12px; color: var(--td-text-color-primary); width: 36px; text-align: right; flex-shrink: 0; }
-.server-uptime { font-size: 11px; color: var(--td-text-color-placeholder); margin-top: 6px; }
-.no-metric { font-size: 12px; color: var(--td-text-color-placeholder); padding: 12px 0; text-align: center; }
+.metric-bar-inner { height: 100%; border-radius: 2px; transition: width .4s; }
+.metric-val { font-size: 11px; width: 34px; text-align: right; font-weight: 600; flex-shrink: 0; }
 
+.server-card-footer {
+  font-size: 11px;
+  color: var(--sh-text-secondary);
+  margin-top: 7px;
+  padding-top: 7px;
+  border-top: 1px solid var(--sh-border);
+}
+.server-card-footer b { color: var(--sh-text-primary); }
+.no-metric { font-size: 12px; color: var(--sh-text-placeholder); padding: 16px 0; text-align: center; }
+
+/* ── trend chart ── */
 .trend-chart {
   width: 100%;
-  height: 280px;
-  background: #1a2332;
-  border-radius: 8px;
-  margin-bottom: 20px;
+  height: 260px;
 }
 
-.add-link { font-size: 13px; font-weight: 400; color: var(--td-brand-color); text-decoration: none; }
-.add-link:hover { text-decoration: underline; }
-
-.app-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+/* ── app list ── */
+.app-list { display: flex; flex-direction: column; gap: 0; }
+.app-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 4px;
+  border-bottom: 1px solid #f5f5f5;
+  text-decoration: none;
+  border-radius: 4px;
+  transition: background .12s;
 }
-@media (max-width: 1200px) { .app-grid { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 900px) { .app-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 600px) { .app-grid { grid-template-columns: 1fr; } }
+.app-row:last-child { border-bottom: none; }
+.app-row:hover { background: #f7f8fc; }
 
-.app-card-link { text-decoration: none; display: block; }
-.app-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 16px;
-  border: 2px solid transparent;
-  box-shadow: 0 1px 4px rgba(0,0,0,.06);
-  transition: border-color .2s, box-shadow .2s;
-}
-.app-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.1); border-color: #0052d9; }
-.app-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.app-card-desc { font-size: 12px; color: var(--td-text-color-secondary); margin-bottom: 6px; }
-.app-card-meta { font-size: 11px; color: var(--td-text-color-placeholder); }
+.app-row-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.app-row-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.app-row-name { font-size: 13.5px; font-weight: 500; color: var(--sh-text-primary); }
+.app-row-desc { font-size: 12px; color: var(--sh-text-secondary); }
+
+.app-row-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.app-row-meta { font-size: 12px; color: var(--sh-text-secondary); }
 </style>

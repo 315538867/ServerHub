@@ -1,33 +1,49 @@
 <template>
-  <div class="deploy-page">
+  <div class="page-container">
     <template v-if="deploy">
-      <t-descriptions :column="2" bordered style="margin-bottom:20px">
-        <t-descriptions-item label="名称">{{ deploy.name }}</t-descriptions-item>
-        <t-descriptions-item label="类型"><t-tag size="small" variant="light">{{ deploy.type }}</t-tag></t-descriptions-item>
-        <t-descriptions-item label="工作目录">{{ deploy.work_dir }}</t-descriptions-item>
-        <t-descriptions-item label="镜像">{{ deploy.image_name || '—' }}</t-descriptions-item>
-        <t-descriptions-item label="期望版本">{{ deploy.desired_version || '—' }}</t-descriptions-item>
-        <t-descriptions-item label="实际版本">{{ deploy.actual_version || '—' }}</t-descriptions-item>
-        <t-descriptions-item label="同步状态">
-          <t-tag :theme="syncTheme(deploy.sync_status)" variant="light" size="small">{{ deploy.sync_status || 'idle' }}</t-tag>
-        </t-descriptions-item>
-        <t-descriptions-item label="最后运行">{{ deploy.last_run_at || '—' }}</t-descriptions-item>
-      </t-descriptions>
+      <!-- 部署信息 -->
+      <div class="section-block">
+        <div class="section-title">
+          <span class="title-text">部署信息</span>
+          <t-space size="small">
+            <t-button theme="primary" size="small" :loading="running" @click="doRun('run')">立即同步</t-button>
+            <t-button size="small" :disabled="!deploy.previous_version" :loading="running" @click="doRun('rollback')">回滚到上个版本</t-button>
+          </t-space>
+        </div>
+        <div class="desc-wrap">
+          <t-descriptions :column="2">
+            <t-descriptions-item label="名称">{{ deploy.name }}</t-descriptions-item>
+            <t-descriptions-item label="类型"><t-tag size="small" variant="light">{{ deploy.type }}</t-tag></t-descriptions-item>
+            <t-descriptions-item label="工作目录">{{ deploy.work_dir }}</t-descriptions-item>
+            <t-descriptions-item label="镜像">{{ deploy.image_name || '—' }}</t-descriptions-item>
+            <t-descriptions-item label="期望版本">{{ deploy.desired_version || '—' }}</t-descriptions-item>
+            <t-descriptions-item label="实际版本">{{ deploy.actual_version || '—' }}</t-descriptions-item>
+            <t-descriptions-item label="同步状态">
+              <t-tag :theme="syncTheme(deploy.sync_status)" variant="light" size="small">{{ deploy.sync_status || 'idle' }}</t-tag>
+            </t-descriptions-item>
+            <t-descriptions-item label="最后运行">{{ deploy.last_run_at || '—' }}</t-descriptions-item>
+          </t-descriptions>
+        </div>
+      </div>
 
-      <t-space style="margin-bottom:20px">
-        <t-button theme="primary" :loading="running" @click="doRun('run')">立即同步</t-button>
-        <t-button :disabled="!deploy.previous_version" :loading="running" @click="doRun('rollback')">回滚到上个版本</t-button>
-      </t-space>
-
-      <div class="section-divider"><span>部署历史</span></div>
-      <t-table :data="logs" :columns="logColumns" :loading="logsLoading" row-key="id" stripe>
-        <template #status="{ row }">
-          <t-tag :theme="row.status === 'success' ? 'success' : 'danger'" variant="light" size="small">{{ row.status }}</t-tag>
-        </template>
-        <template #duration="{ row }">{{ row.duration }}s</template>
-      </t-table>
+      <!-- 部署历史 -->
+      <div class="section-block">
+        <div class="section-title">
+          <span class="title-text">部署历史</span>
+        </div>
+        <div class="table-wrap">
+          <t-table :data="logs" :columns="logColumns" :loading="logsLoading" row-key="id" stripe size="small">
+            <template #status="{ row }">
+              <t-tag :theme="row.status === 'success' ? 'success' : 'danger'" variant="light" size="small">{{ row.status }}</t-tag>
+            </template>
+            <template #duration="{ row }">{{ row.duration }}s</template>
+          </t-table>
+        </div>
+      </div>
     </template>
-    <t-empty v-else-if="!loading" description="该应用未关联部署配置，请先在应用设置中配置 deploy_id" />
+    <div v-else-if="!loading" class="section-block empty-block">
+      <t-empty description="该应用未关联部署配置，请先在应用设置中配置 deploy_id" />
+    </div>
 
     <t-drawer v-model:visible="runDrawerVisible" header="部署输出" size="60%">
       <div class="run-status">
@@ -162,21 +178,38 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.deploy-page { padding: 4px 0; }
-.section-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 20px 0 16px;
-  font-size: 13px;
+.title-text {
+  font-size: 14px;
   font-weight: 600;
-  color: var(--td-text-color-secondary);
+  color: var(--sh-text-primary);
 }
-.section-divider::before, .section-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--td-component-border);
+.desc-wrap {
+  padding: 16px 20px 20px;
+}
+:deep(.t-descriptions__label) {
+  color: var(--sh-text-secondary);
+  font-size: 13px;
+  width: 90px;
+}
+:deep(.t-descriptions__content) {
+  font-size: 13px;
+}
+.table-wrap {
+  padding: 0 20px 16px;
+}
+:deep(.t-table th) {
+  background: #FAFAFA;
+  font-size: 12px;
+  color: var(--sh-text-secondary);
+  font-weight: 500;
+}
+:deep(.t-table td) {
+  font-size: 13px;
+}
+.empty-block {
+  padding: 40px 20px;
+  display: flex;
+  justify-content: center;
 }
 .run-status { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .run-output { background: #1a2332; color: #e0e0e0; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; height: calc(100vh - 140px); white-space: pre-wrap; word-break: break-all; margin: 0; }

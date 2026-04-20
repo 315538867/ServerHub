@@ -186,22 +186,94 @@ function searchPrev() {
 </script>
 
 <style scoped>
-.terminal-page { display: flex; flex-direction: column; height: 100%; background: #1a2332; }
-.tab-bar { display: flex; align-items: center; gap: 2px; padding: 4px 8px; background: #152030; border-bottom: 1px solid #243447; flex-shrink: 0; overflow-x: auto; }
-.tab-item { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; cursor: pointer; color: #8a94a6; font-size: 13px; white-space: nowrap; transition: background 0.15s; }
+.terminal-page {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #1a2332;
+}
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 8px;
+  background: #152030;
+  border-bottom: 1px solid #243447;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.tab-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #8a94a6;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
 .tab-item:hover { background: #1e2d3d; }
 .tab-item.active { background: #1a2332; color: #e0e0e0; }
-.tab-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.tab-dot.connecting { background: #ed7b2f; }
-.tab-dot.connected { background: #00a870; }
-.tab-dot.disconnected { background: #e34d59; }
-.tab-close { opacity: 0.4; font-size: 12px; transition: opacity 0.15s; cursor: pointer; }
+
+.tab-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tab-dot.connecting { background: var(--sh-orange); }
+.tab-dot.connected { background: var(--sh-green); }
+.tab-dot.disconnected { background: var(--sh-red); }
+
+.tab-close {
+  opacity: 0.4;
+  font-size: 12px;
+  transition: opacity 0.15s;
+  cursor: pointer;
+}
+
 .tab-close:hover { opacity: 1; }
-.tab-add { margin-left: 4px; flex-shrink: 0; }
-.search-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #152030; border-bottom: 1px solid #243447; flex-shrink: 0; }
-.terminals-wrapper { flex: 1; overflow: hidden; position: relative; }
-.terminal-container { width: 100%; height: 100%; padding: 4px; }
-.terminal-empty { display: flex; align-items: center; justify-content: center; height: 100%; }
+
+.tab-add {
+  margin-left: 4px;
+  flex-shrink: 0;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: #152030;
+  border-bottom: 1px solid #243447;
+  flex-shrink: 0;
+}
+
+.terminals-wrapper {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.terminal-container {
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+}
+
+.terminal-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
 :deep(.xterm) { height: 100%; }
 :deep(.xterm-viewport) { background-color: #1a2332 !important; }
 </style>

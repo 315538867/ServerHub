@@ -1,87 +1,101 @@
 <template>
-  <div class="system-page">
-    <div class="page-toolbar">
-      <t-button variant="outline" :loading="loading" @click="refreshAll">
-        <template #icon><refresh-icon /></template>
-        刷新
-      </t-button>
-    </div>
+  <div class="page-container">
+    <div class="section-block">
+      <!-- 顶部工具栏 -->
+      <div class="toolbar">
+        <t-button size="small" variant="outline" :loading="loading" @click="refreshAll">
+          <template #icon><refresh-icon /></template>
+          刷新
+        </t-button>
+      </div>
 
-    <t-tabs :value="activeTab" @change="val => { activeTab = val as string; onTabChange(val as string) }">
-      <t-tab-panel value="firewall" label="防火墙">
-        <div class="tab-toolbar">
-          <t-tag v-if="firewallType" theme="default" variant="light">{{ firewallType }}</t-tag>
-          <t-button theme="primary" size="small" @click="openAddRule">添加规则</t-button>
-        </div>
-        <t-table :data="firewallRules" :columns="fwColumns" :loading="loading" row-key="index" stripe>
-          <template #operations="{ row }">
-            <t-popconfirm content="确认删除该规则？" @confirm="delRule(row)">
-              <t-button theme="danger" size="small" variant="text">删除</t-button>
-            </t-popconfirm>
-          </template>
-        </t-table>
-      </t-tab-panel>
-
-      <t-tab-panel value="cron" label="Cron 任务">
-        <div class="tab-toolbar">
-          <t-button theme="primary" size="small" @click="openCronAdd">添加任务</t-button>
-        </div>
-        <t-table :data="cronJobs" :columns="cronColumns" :loading="loading" row-key="index" stripe>
-          <template #operations="{ row }">
-            <t-space size="small">
-              <t-button size="small" variant="text" @click="openCronEdit(row)">编辑</t-button>
-              <t-popconfirm content="确认删除该任务？" @confirm="delCron(row)">
+      <t-tabs :value="activeTab" @change="val => { activeTab = val as string; onTabChange(val as string) }">
+        <!-- 防火墙 -->
+        <t-tab-panel value="firewall" label="防火墙">
+          <div class="tab-toolbar">
+            <div class="toolbar-left">
+              <t-tag v-if="firewallType" theme="default" variant="light" size="small">{{ firewallType }}</t-tag>
+            </div>
+            <t-button theme="primary" size="small" @click="openAddRule">添加规则</t-button>
+          </div>
+          <t-table :data="firewallRules" :columns="fwColumns" :loading="loading" row-key="index" bordered size="small">
+            <template #operations="{ row }">
+              <t-popconfirm content="确认删除该规则？" @confirm="delRule(row)">
                 <t-button theme="danger" size="small" variant="text">删除</t-button>
               </t-popconfirm>
-            </t-space>
-          </template>
-        </t-table>
-      </t-tab-panel>
+            </template>
+          </t-table>
+        </t-tab-panel>
 
-      <t-tab-panel value="processes" label="进程">
-        <div class="tab-toolbar">
-          <t-button size="small" variant="outline" @click="loadProcesses">
-            <template #icon><refresh-icon /></template>
-            刷新
-          </t-button>
-        </div>
-        <t-table :data="processes" :columns="procColumns" :loading="procLoading" row-key="pid" stripe>
-          <template #cpu="{ row }">{{ row.cpu.toFixed(1) }}%</template>
-          <template #mem="{ row }">{{ row.mem.toFixed(1) }}%</template>
-          <template #operations="{ row }">
-            <t-popconfirm :content="`确认 kill -9 PID ${row.pid}？`" @confirm="killProc(row)">
-              <t-button theme="danger" size="small" variant="text">Kill</t-button>
-            </t-popconfirm>
-          </template>
-        </t-table>
-      </t-tab-panel>
+        <!-- Cron 任务 -->
+        <t-tab-panel value="cron" label="Cron 任务">
+          <div class="tab-toolbar">
+            <div class="toolbar-left" />
+            <t-button theme="primary" size="small" @click="openCronAdd">添加任务</t-button>
+          </div>
+          <t-table :data="cronJobs" :columns="cronColumns" :loading="loading" row-key="index" bordered size="small">
+            <template #operations="{ row }">
+              <t-space size="small">
+                <t-button size="small" variant="text" @click="openCronEdit(row)">编辑</t-button>
+                <t-popconfirm content="确认删除该任务？" @confirm="delCron(row)">
+                  <t-button theme="danger" size="small" variant="text">删除</t-button>
+                </t-popconfirm>
+              </t-space>
+            </template>
+          </t-table>
+        </t-tab-panel>
 
-      <t-tab-panel value="services" label="系统服务">
-        <div class="tab-toolbar">
-          <t-input v-model="svcFilter" placeholder="过滤服务名" style="width:200px" clearable />
-          <t-button size="small" variant="outline" @click="loadServices">
-            <template #icon><refresh-icon /></template>
-          </t-button>
-        </div>
-        <t-table :data="filteredServices" :columns="svcColumns" :loading="svcLoading" row-key="unit" stripe>
-          <template #active="{ row }">
-            <t-tag :theme="activeTheme(row.active)" variant="light" size="small">{{ row.active }}</t-tag>
-          </template>
-          <template #load="{ row }">
-            <t-tag :theme="row.load === 'loaded' ? 'success' : 'default'" variant="light" size="small">{{ row.load }}</t-tag>
-          </template>
-          <template #operations="{ row }">
-            <t-space size="small">
-              <t-button theme="success" size="small" variant="text" @click="svcAction(row, 'start')">启动</t-button>
-              <t-button theme="warning" size="small" variant="text" @click="svcAction(row, 'stop')">停止</t-button>
-              <t-button size="small" variant="text" @click="svcAction(row, 'restart')">重启</t-button>
-              <t-button size="small" variant="text" @click="openSvcLogs(row)">日志</t-button>
-            </t-space>
-          </template>
-        </t-table>
-      </t-tab-panel>
-    </t-tabs>
+        <!-- 进程 -->
+        <t-tab-panel value="processes" label="进程">
+          <div class="tab-toolbar">
+            <div class="toolbar-left" />
+            <t-button size="small" variant="outline" @click="loadProcesses">
+              <template #icon><refresh-icon /></template>
+              刷新
+            </t-button>
+          </div>
+          <t-table :data="processes" :columns="procColumns" :loading="procLoading" row-key="pid" bordered size="small">
+            <template #cpu="{ row }">{{ row.cpu.toFixed(1) }}%</template>
+            <template #mem="{ row }">{{ row.mem.toFixed(1) }}%</template>
+            <template #operations="{ row }">
+              <t-popconfirm :content="`确认 kill -9 PID ${row.pid}？`" @confirm="killProc(row)">
+                <t-button theme="danger" size="small" variant="text">Kill</t-button>
+              </t-popconfirm>
+            </template>
+          </t-table>
+        </t-tab-panel>
 
+        <!-- 系统服务 -->
+        <t-tab-panel value="services" label="系统服务">
+          <div class="tab-toolbar">
+            <div class="toolbar-left">
+              <t-input v-model="svcFilter" placeholder="过滤服务名" size="small" style="width:200px" clearable />
+              <t-button size="small" variant="outline" @click="loadServices">
+                <template #icon><refresh-icon /></template>
+              </t-button>
+            </div>
+          </div>
+          <t-table :data="filteredServices" :columns="svcColumns" :loading="svcLoading" row-key="unit" bordered size="small">
+            <template #active="{ row }">
+              <t-tag :theme="activeTheme(row.active)" variant="light" size="small">{{ row.active }}</t-tag>
+            </template>
+            <template #load="{ row }">
+              <t-tag :theme="row.load === 'loaded' ? 'success' : 'default'" variant="light" size="small">{{ row.load }}</t-tag>
+            </template>
+            <template #operations="{ row }">
+              <t-space size="small">
+                <t-button theme="success" size="small" variant="text" @click="svcAction(row, 'start')">启动</t-button>
+                <t-button theme="warning" size="small" variant="text" @click="svcAction(row, 'stop')">停止</t-button>
+                <t-button size="small" variant="text" @click="svcAction(row, 'restart')">重启</t-button>
+                <t-button size="small" variant="text" @click="openSvcLogs(row)">日志</t-button>
+              </t-space>
+            </template>
+          </t-table>
+        </t-tab-panel>
+      </t-tabs>
+    </div>
+
+    <!-- 添加防火墙规则对话框 -->
     <t-dialog
       v-model:visible="ruleVisible"
       header="添加防火墙规则"
@@ -111,6 +125,7 @@
       </t-form>
     </t-dialog>
 
+    <!-- Cron 对话框 -->
     <t-dialog
       v-model:visible="cronVisible"
       :header="cronEditIndex === -1 ? '添加 Cron 任务' : '编辑 Cron 任务'"
@@ -128,6 +143,7 @@
       </t-form>
     </t-dialog>
 
+    <!-- 服务日志抽屉 -->
     <t-drawer v-model:visible="svcLogsVisible" :header="`服务日志 — ${svcLogsName}`" size="60%" @close="onSvcLogsClosed">
       <div ref="svcLogsEl" class="logs-terminal" />
     </t-drawer>
@@ -321,8 +337,38 @@ onBeforeUnmount(() => { svcLogsWs?.close(); svcLogsTerm?.dispose() })
 </script>
 
 <style scoped>
-.system-page { padding: 4px 0; }
-.page-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
-.tab-toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
-.logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a2332; border-radius: 4px; overflow: hidden; }
+.toolbar {
+  margin-bottom: 4px;
+}
+
+.tab-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.toolbar-left {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.logs-terminal {
+  width: 100%;
+  height: calc(100vh - 120px);
+  background: #1a2332;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+:deep(.t-table) {
+  font-size: 13px;
+}
+
+:deep(.t-table th) {
+  background: #FAFAFA !important;
+  font-weight: 500;
+  color: var(--sh-text-secondary);
+}
 </style>

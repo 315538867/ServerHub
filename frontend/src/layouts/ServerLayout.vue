@@ -1,16 +1,23 @@
 <template>
-  <div class="server-layout" :class="{ 'server-layout--fullscreen': isTerminal }">
-    <div v-if="!isTerminal" class="server-layout-header">
-      <div class="server-info">
-        <h3 class="server-name">{{ server?.name }}</h3>
-        <t-tag v-if="server" :theme="statusTheme" variant="light" size="small">{{ statusLabel }}</t-tag>
-        <span v-if="server" class="server-host">{{ server.host }}:{{ server.port }}</span>
+  <div class="sl-wrap" :class="{ 'sl-wrap--fullscreen': isTerminal }">
+    <!-- 信息头（终端模式下隐藏） -->
+    <div v-if="!isTerminal" class="sl-header">
+      <div class="sl-info">
+        <div class="sl-name-row">
+          <span class="status-dot" :class="server?.status" />
+          <span class="sl-name">{{ server?.name }}</span>
+          <t-tag :theme="statusTheme" variant="light" size="small">{{ statusLabel }}</t-tag>
+        </div>
+        <span class="sl-host">{{ server?.host }}:{{ server?.port }}</span>
       </div>
+      <!-- Tab 导航 -->
+      <t-tabs class="sl-tabs" :value="activeTab" @change="onTabChange">
+        <t-tab-panel v-for="tab in tabs" :key="tab.value" :value="tab.value" :label="tab.label" />
+      </t-tabs>
     </div>
-    <t-tabs :value="activeTab" @change="onTabChange" :class="{ 'tabs-compact': isTerminal }">
-      <t-tab-panel v-for="tab in tabs" :key="tab.value" :value="tab.value" :label="tab.label" />
-    </t-tabs>
-    <div class="server-layout-content" :class="{ 'content--fullscreen': isTerminal }">
+
+    <!-- 内容区 -->
+    <div class="sl-content" :class="{ 'sl-content--fullscreen': isTerminal }">
       <router-view />
     </div>
   </div>
@@ -26,7 +33,9 @@ const router = useRouter()
 const serverStore = useServerStore()
 
 const serverId = computed(() => Number(route.params.serverId))
-const server = computed(() => serverStore.getById(serverId.value))
+const server   = computed(() => serverStore.getById(serverId.value))
+const activeTab  = computed(() => route.path.split('/').pop() || 'overview')
+const isTerminal = computed(() => activeTab.value === 'terminal')
 
 const statusTheme = computed(() => {
   const s = server.value?.status
@@ -36,20 +45,17 @@ const statusTheme = computed(() => {
 })
 const statusLabel = computed(() => {
   const s = server.value?.status ?? ''
-  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string, string>)[s] ?? s
+  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string,string>)[s] ?? s
 })
 
 const tabs = [
-  { value: 'overview', label: '概览' },
-  { value: 'nginx', label: 'Nginx 网关' },
-  { value: 'docker', label: 'Docker' },
-  { value: 'system', label: '系统' },
-  { value: 'files', label: '文件' },
-  { value: 'terminal', label: '终端' },
+  { value: 'overview',  label: '概览' },
+  { value: 'nginx',     label: 'Nginx 网关' },
+  { value: 'docker',    label: 'Docker' },
+  { value: 'system',    label: '系统' },
+  { value: 'files',     label: '文件' },
+  { value: 'terminal',  label: '终端' },
 ]
-
-const activeTab = computed(() => route.path.split('/').pop() || 'overview')
-const isTerminal = computed(() => activeTab.value === 'terminal')
 
 function onTabChange(val: string | number) {
   router.push(`/servers/${serverId.value}/${val}`)
@@ -61,13 +67,42 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.server-layout { height: 100%; }
-.server-layout--fullscreen { display: flex; flex-direction: column; }
-.server-layout-header { margin-bottom: 12px; }
-.server-info { display: flex; align-items: center; gap: 10px; }
-.server-name { margin: 0; font-size: 18px; font-weight: 600; color: var(--td-text-color-primary); }
-.server-host { color: var(--td-text-color-secondary); font-size: 13px; }
-.server-layout-content { margin-top: 12px; }
-.content--fullscreen { flex: 1; overflow: hidden; margin-top: 0; }
-.tabs-compact { margin-bottom: 0; }
+.sl-wrap { height: 100%; display: flex; flex-direction: column; }
+.sl-wrap--fullscreen { overflow: hidden; }
+
+.sl-header {
+  background: var(--sh-card-bg);
+  border-bottom: 1px solid var(--sh-border);
+  flex-shrink: 0;
+}
+
+.sl-info {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px 0;
+}
+.sl-name-row { display: flex; align-items: center; gap: 8px; }
+.sl-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--sh-text-primary);
+}
+.sl-host { font-size: 13px; color: var(--sh-text-secondary); }
+
+.sl-tabs {
+  margin-top: 4px;
+  padding: 0 16px;
+}
+.sl-tabs :deep(.t-tabs__nav) { border-bottom: none; }
+
+.sl-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+.sl-content--fullscreen {
+  overflow: hidden;
+  padding: 0;
+}
 </style>

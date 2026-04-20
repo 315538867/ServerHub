@@ -1,9 +1,9 @@
 <template>
-  <div class="db-page">
-    <!-- Left sidebar -->
-    <div class="db-sidebar">
-      <div class="sidebar-header">
-        <span class="sidebar-title">数据库连接</span>
+  <div class="db-layout">
+    <!-- 左侧边栏 -->
+    <div class="db-sidebar section-block">
+      <div class="section-title">
+        <span>数据库连接</span>
         <t-button :icon="() => h(AddIcon)" shape="circle" size="small" variant="outline" @click="openAddConn" />
       </div>
       <div class="sidebar-list">
@@ -14,142 +14,159 @@
           :class="{ active: selectedConn?.id === c.id }"
           @click="selectConn(c)"
         >
-          <component-grid-icon v-if="c.type !== 'redis'" class="conn-icon" />
-          <star-icon v-else class="conn-icon" />
+          <div class="conn-item__icon" :class="c.type === 'redis' ? 'conn-item__icon--redis' : 'conn-item__icon--mysql'">
+            <component-grid-icon v-if="c.type !== 'redis'" />
+            <star-icon v-else />
+          </div>
           <div class="conn-info">
             <div class="conn-name">{{ c.name }}</div>
             <div class="conn-meta">{{ c.type.toUpperCase() }} · {{ c.host }}:{{ c.port }}</div>
           </div>
-          <t-button shape="circle" size="small" theme="danger" variant="text" @click.stop="deleteConnItem(c)">
+          <t-tag size="small" :theme="c.type === 'redis' ? 'warning' : 'primary'" variant="light" class="conn-type-badge">
+            {{ c.type.toUpperCase() }}
+          </t-tag>
+          <t-button shape="circle" size="small" theme="danger" variant="text" @click.stop="deleteConnItem(c)" class="conn-delete-btn">
             <template #icon><delete-icon /></template>
           </t-button>
         </div>
-        <t-empty v-if="conns.length === 0" description="暂无连接" style="padding:20px 0" />
+        <t-empty v-if="conns.length === 0" description="暂无连接" style="padding:24px 0" />
       </div>
     </div>
 
-    <!-- Right content -->
-    <div class="db-content" v-if="selectedConn">
-      <div class="content-header">
-        <span class="content-title">{{ selectedConn.name }}</span>
-        <t-tag :theme="selectedConn.type === 'redis' ? 'warning' : 'primary'" size="small" variant="light">
-          {{ selectedConn.type.toUpperCase() }}
-        </t-tag>
-        <t-button size="small" variant="outline" @click="testConnection">测试连接</t-button>
-      </div>
-
-      <!-- MySQL view -->
-      <template v-if="selectedConn.type === 'mysql'">
-        <t-tabs :value="mysqlTab" @change="val => (mysqlTab = val as string)">
-          <t-tab-panel value="databases" label="数据库">
-            <div class="tab-content">
-              <div class="tab-toolbar">
-                <t-button theme="primary" size="small" @click="openCreateDb">建库</t-button>
-                <t-button size="small" variant="outline" :loading="dbLoading" @click="loadDatabases">刷新</t-button>
-              </div>
-              <t-table :data="databaseRows" :columns="dbTableColumns" :loading="dbLoading" size="small" row-key="name">
-                <template #operations="{ row }">
-                  <t-space size="small">
-                    <t-button size="small" variant="text" @click="exportDatabase(row.name)">导出</t-button>
-                    <t-popconfirm :content="`确认删除数据库 ${row.name}？不可恢复！`" @confirm="dropDatabase(row.name)">
-                      <t-button theme="danger" size="small" variant="text">删除</t-button>
-                    </t-popconfirm>
-                  </t-space>
-                </template>
-              </t-table>
+    <!-- 右侧主面板 -->
+    <div class="db-main">
+      <template v-if="selectedConn">
+        <!-- 连接头部信息 -->
+        <div class="section-block db-main-header">
+          <div class="section-title">
+            <div class="db-main-title">
+              <span>{{ selectedConn.name }}</span>
+              <t-tag :theme="selectedConn.type === 'redis' ? 'warning' : 'primary'" size="small" variant="light" style="margin-left:8px">
+                {{ selectedConn.type.toUpperCase() }}
+              </t-tag>
             </div>
-          </t-tab-panel>
+            <t-button size="small" variant="outline" @click="testConnection">测试连接</t-button>
+          </div>
+        </div>
 
-          <t-tab-panel value="users" label="用户">
-            <div class="tab-content">
-              <div class="tab-toolbar">
-                <t-button theme="primary" size="small" @click="openCreateUser">添加用户</t-button>
-                <t-button size="small" variant="outline" :loading="userLoading" @click="loadUsers">刷新</t-button>
-              </div>
-              <t-table :data="users" :columns="userColumns" :loading="userLoading" size="small" row-key="user" />
-            </div>
-          </t-tab-panel>
-
-          <t-tab-panel value="query" label="SQL 执行器">
-            <div class="tab-content">
-              <div class="query-toolbar">
-                <t-select v-model="queryDb" placeholder="选择数据库" size="small" style="width:180px" clearable>
-                  <t-option v-for="d in databases" :key="d" :label="d" :value="d" />
-                </t-select>
-                <t-button theme="primary" size="small" :loading="queryLoading" @click="runQuery">执行</t-button>
-              </div>
-              <div ref="sqlEditorEl" class="sql-editor" />
-              <div v-if="queryResult" class="query-result">
-                <t-table :data="queryRowsData" :columns="queryColumnsData" size="small" max-height="300" row-key="_idx" />
-                <div class="result-meta">共 {{ queryResult.rows.length }} 行</div>
-              </div>
-              <div v-if="queryError" class="query-error">{{ queryError }}</div>
-            </div>
-          </t-tab-panel>
-
-          <t-tab-panel value="status" label="状态">
-            <div class="tab-content">
-              <t-button size="small" variant="outline" :loading="statusLoading" @click="loadStatus" style="margin-bottom:12px">刷新</t-button>
-              <t-table :data="statusRowsData" :columns="statusColumns" :loading="statusLoading" size="small" max-height="500" row-key="key" />
-            </div>
-          </t-tab-panel>
-        </t-tabs>
-      </template>
-
-      <!-- Redis view -->
-      <template v-else-if="selectedConn.type === 'redis'">
-        <t-tabs :value="redisTab" @change="val => (redisTab = val as string)">
-          <t-tab-panel value="info" label="状态">
-            <div class="tab-content">
-              <t-button size="small" variant="outline" :loading="infoLoading" @click="loadRedisInfo" style="margin-bottom:12px">刷新</t-button>
-              <div class="redis-info-grid">
-                <div v-for="(val, key) in redisInfo" :key="key" class="info-item">
-                  <span class="info-key">{{ key }}</span>
-                  <span class="info-val">{{ val }}</span>
-                </div>
-              </div>
-            </div>
-          </t-tab-panel>
-
-          <t-tab-panel value="keys" label="Key 浏览">
-            <div class="tab-content">
-              <div class="tab-toolbar">
-                <t-input v-model="keyPattern" placeholder="搜索 Pattern（默认 *）" size="small" style="width:220px" />
-                <t-button size="small" variant="outline" :loading="keysLoading" @click="loadKeys">搜索</t-button>
-                <t-popconfirm content="确认 FLUSHDB？所有数据将被清空！" @confirm="doFlushDB">
-                  <t-button size="small" theme="danger" variant="outline">FLUSHDB</t-button>
-                </t-popconfirm>
-              </div>
-              <div class="keys-layout">
-                <div class="keys-list">
-                  <div
-                    v-for="k in redisKeys"
-                    :key="k"
-                    class="key-item"
-                    :class="{ active: selectedKey === k }"
-                    @click="viewKey(k)"
-                  >{{ k }}</div>
-                </div>
-                <div class="key-detail" v-if="keyDetail">
-                  <div class="key-detail-header">
-                    <t-tag size="small" variant="light">{{ keyDetail.type }}</t-tag>
-                    <span class="key-ttl">TTL: {{ keyDetail.ttl }}s</span>
-                    <t-button size="small" theme="danger" variant="outline" @click="deleteKey(selectedKey!)">删除</t-button>
+        <!-- MySQL 视图 -->
+        <template v-if="selectedConn.type === 'mysql'">
+          <div class="section-block">
+            <t-tabs :value="mysqlTab" @change="val => (mysqlTab = val as string)">
+              <t-tab-panel value="databases" label="数据库">
+                <div class="tab-content">
+                  <div class="tab-toolbar">
+                    <t-button theme="primary" size="small" @click="openCreateDb">建库</t-button>
+                    <t-button size="small" variant="outline" :loading="dbLoading" @click="loadDatabases">刷新</t-button>
                   </div>
-                  <pre class="key-value">{{ keyDetail.value }}</pre>
+                  <t-table :data="databaseRows" :columns="dbTableColumns" :loading="dbLoading" size="small" row-key="name">
+                    <template #operations="{ row }">
+                      <t-space size="small">
+                        <t-button size="small" variant="text" @click="exportDatabase(row.name)">导出</t-button>
+                        <t-popconfirm :content="`确认删除数据库 ${row.name}？不可恢复！`" @confirm="dropDatabase(row.name)">
+                          <t-button theme="danger" size="small" variant="text">删除</t-button>
+                        </t-popconfirm>
+                      </t-space>
+                    </template>
+                  </t-table>
                 </div>
-              </div>
-            </div>
-          </t-tab-panel>
-        </t-tabs>
+              </t-tab-panel>
+
+              <t-tab-panel value="users" label="用户">
+                <div class="tab-content">
+                  <div class="tab-toolbar">
+                    <t-button theme="primary" size="small" @click="openCreateUser">添加用户</t-button>
+                    <t-button size="small" variant="outline" :loading="userLoading" @click="loadUsers">刷新</t-button>
+                  </div>
+                  <t-table :data="users" :columns="userColumns" :loading="userLoading" size="small" row-key="user" />
+                </div>
+              </t-tab-panel>
+
+              <t-tab-panel value="query" label="SQL 执行器">
+                <div class="tab-content">
+                  <div class="query-toolbar">
+                    <t-select v-model="queryDb" placeholder="选择数据库" size="small" style="width:180px" clearable>
+                      <t-option v-for="d in databases" :key="d" :label="d" :value="d" />
+                    </t-select>
+                    <t-button theme="primary" size="small" :loading="queryLoading" @click="runQuery">执行</t-button>
+                  </div>
+                  <div ref="sqlEditorEl" class="sql-editor" />
+                  <div v-if="queryResult" class="query-result">
+                    <t-table :data="queryRowsData" :columns="queryColumnsData" size="small" max-height="300" row-key="_idx" />
+                    <div class="result-meta">共 {{ queryResult.rows.length }} 行</div>
+                  </div>
+                  <div v-if="queryError" class="query-error">{{ queryError }}</div>
+                </div>
+              </t-tab-panel>
+
+              <t-tab-panel value="status" label="状态">
+                <div class="tab-content">
+                  <t-button size="small" variant="outline" :loading="statusLoading" @click="loadStatus" style="margin-bottom:12px">刷新</t-button>
+                  <t-table :data="statusRowsData" :columns="statusColumns" :loading="statusLoading" size="small" max-height="500" row-key="key" />
+                </div>
+              </t-tab-panel>
+            </t-tabs>
+          </div>
+        </template>
+
+        <!-- Redis 视图 -->
+        <template v-else-if="selectedConn.type === 'redis'">
+          <div class="section-block">
+            <t-tabs :value="redisTab" @change="val => (redisTab = val as string)">
+              <t-tab-panel value="info" label="状态">
+                <div class="tab-content">
+                  <t-button size="small" variant="outline" :loading="infoLoading" @click="loadRedisInfo" style="margin-bottom:12px">刷新</t-button>
+                  <div class="redis-info-grid">
+                    <div v-for="(val, key) in redisInfo" :key="key" class="info-item">
+                      <span class="info-key">{{ key }}</span>
+                      <span class="info-val">{{ val }}</span>
+                    </div>
+                  </div>
+                </div>
+              </t-tab-panel>
+
+              <t-tab-panel value="keys" label="Key 浏览">
+                <div class="tab-content">
+                  <div class="tab-toolbar">
+                    <t-input v-model="keyPattern" placeholder="搜索 Pattern（默认 *）" size="small" style="width:220px" />
+                    <t-button size="small" variant="outline" :loading="keysLoading" @click="loadKeys">搜索</t-button>
+                    <t-popconfirm content="确认 FLUSHDB？所有数据将被清空！" @confirm="doFlushDB">
+                      <t-button size="small" theme="danger" variant="outline">FLUSHDB</t-button>
+                    </t-popconfirm>
+                  </div>
+                  <div class="keys-layout">
+                    <div class="keys-list">
+                      <div
+                        v-for="k in redisKeys"
+                        :key="k"
+                        class="key-item"
+                        :class="{ active: selectedKey === k }"
+                        @click="viewKey(k)"
+                      >{{ k }}</div>
+                    </div>
+                    <div class="key-detail" v-if="keyDetail">
+                      <div class="key-detail-header">
+                        <t-tag size="small" variant="light">{{ keyDetail.type }}</t-tag>
+                        <span class="key-ttl">TTL: {{ keyDetail.ttl }}s</span>
+                        <t-button size="small" theme="danger" variant="outline" @click="deleteKey(selectedKey!)">删除</t-button>
+                      </div>
+                      <pre class="key-value">{{ keyDetail.value }}</pre>
+                    </div>
+                  </div>
+                </div>
+              </t-tab-panel>
+            </t-tabs>
+          </div>
+        </template>
       </template>
+
+      <!-- 空状态 -->
+      <div class="db-empty section-block" v-else>
+        <t-empty description="选择或创建一个数据库连接" />
+      </div>
     </div>
 
-    <div class="db-content db-empty" v-else>
-      <t-empty description="选择或创建一个数据库连接" />
-    </div>
-
-    <!-- Add connection dialog -->
+    <!-- 添加连接弹窗 -->
     <t-dialog
       v-model:visible="addConnVisible"
       header="添加数据库连接"
@@ -190,7 +207,7 @@
       </t-form>
     </t-dialog>
 
-    <!-- Create database dialog -->
+    <!-- 创建数据库弹窗 -->
     <t-dialog
       v-model:visible="createDbVisible"
       header="创建数据库"
@@ -212,7 +229,7 @@
       </t-form>
     </t-dialog>
 
-    <!-- Create user dialog -->
+    <!-- 添加用户弹窗 -->
     <t-dialog
       v-model:visible="createUserVisible"
       header="添加用户"
@@ -536,69 +553,137 @@ init()
 </script>
 
 <style scoped>
-.db-page {
+/* 整体两栏布局 */
+.db-layout {
   display: flex;
-  height: 100%;
-  min-height: calc(100vh - 120px);
+  gap: 16px;
+  padding: 20px 24px;
+  min-height: calc(100vh - 60px);
+  align-items: flex-start;
 }
+
+/* 左侧边栏 */
 .db-sidebar {
-  width: 240px;
+  width: 220px;
   flex-shrink: 0;
-  border-right: 1px solid var(--td-component-border);
   display: flex;
   flex-direction: column;
-  background: var(--td-bg-color-secondarycontainer);
+  padding: 0;
+  overflow: hidden;
 }
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.db-sidebar .section-title {
   padding: 12px 14px;
-  border-bottom: 1px solid var(--td-component-border);
+  font-size: 13px;
+  border-bottom: 1px solid var(--sh-border);
 }
-.sidebar-title { font-weight: 600; font-size: 13px; color: var(--td-text-color-primary); }
-.sidebar-list { flex: 1; overflow-y: auto; }
+
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
 .conn-item {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
   cursor: pointer;
-  border-bottom: 1px solid var(--td-component-border);
+  border-bottom: 1px solid #f5f5f5;
   transition: background 0.15s;
+  position: relative;
 }
-.conn-item:hover { background: var(--td-bg-color-container-hover); }
-.conn-item.active { background: #e8f0fe; }
-.conn-icon { font-size: 16px; color: #0052d9; flex-shrink: 0; }
-.conn-info { flex: 1; overflow: hidden; }
-.conn-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--td-text-color-primary); }
-.conn-meta { font-size: 11px; color: var(--td-text-color-secondary); }
-.db-content { flex: 1; padding: 20px; overflow: auto; }
-.db-empty { display: flex; align-items: center; justify-content: center; }
-.content-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-.content-title { font-size: 16px; font-weight: 600; color: var(--td-text-color-primary); }
+.conn-item:hover { background: #f7f8fa; }
+.conn-item.active {
+  background: #EFF4FF;
+  border-left: 3px solid var(--sh-blue);
+}
+.conn-item.active .conn-name { color: var(--sh-blue); }
+
+.conn-item__icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.conn-item__icon--mysql { background: #EFF4FF; color: var(--sh-blue); }
+.conn-item__icon--redis { background: #FFF3E8; color: var(--sh-orange); }
+
+.conn-info { flex: 1; min-width: 0; }
+.conn-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--sh-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.conn-meta { font-size: 11px; color: var(--sh-text-secondary); margin-top: 1px; }
+
+.conn-type-badge { display: none; }
+.conn-delete-btn { opacity: 0; transition: opacity 0.15s; }
+.conn-item:hover .conn-delete-btn { opacity: 1; }
+
+/* 右侧主面板 */
+.db-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.db-main-header {
+  padding: 0;
+}
+.db-main-header .section-title {
+  border-bottom: none;
+  padding: 12px 16px;
+}
+.db-main-title {
+  display: flex;
+  align-items: center;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.db-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+}
+
+/* Tabs 内容 */
 .tab-content { padding: 16px 0; }
 .tab-toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
 .query-toolbar { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
+
 .sql-editor {
   height: 200px;
   overflow: auto;
-  border: 1px solid var(--td-component-border);
+  border: 1px solid var(--sh-border);
   border-radius: 4px;
   margin-bottom: 12px;
 }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
+
 .query-result { margin-top: 8px; }
-.result-meta { font-size: 12px; color: var(--td-text-color-secondary); margin-top: 6px; }
+.result-meta { font-size: 12px; color: var(--sh-text-secondary); margin-top: 6px; }
 .query-error {
-  color: #e34d59;
+  color: var(--sh-red);
   background: #fff0f0;
   padding: 8px 12px;
   border-radius: 4px;
   font-size: 13px;
   margin-top: 8px;
 }
+
+/* Redis */
 .redis-info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -607,37 +692,39 @@ init()
 .info-item {
   display: flex;
   gap: 8px;
-  padding: 4px 8px;
-  background: var(--td-bg-color-secondarycontainer);
+  padding: 5px 10px;
+  background: #f7f8fa;
   border-radius: 4px;
   font-size: 12px;
 }
-.info-key { color: var(--td-text-color-secondary); min-width: 180px; flex-shrink: 0; }
-.info-val { color: var(--td-text-color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info-key { color: var(--sh-text-secondary); min-width: 180px; flex-shrink: 0; }
+.info-val { color: var(--sh-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .keys-layout { display: flex; gap: 12px; height: 400px; }
 .keys-list {
   width: 260px;
   flex-shrink: 0;
   overflow-y: auto;
-  border: 1px solid var(--td-component-border);
+  border: 1px solid var(--sh-border);
   border-radius: 4px;
 }
 .key-item {
-  padding: 6px 10px;
+  padding: 7px 10px;
   font-size: 12px;
   font-family: monospace;
   cursor: pointer;
-  border-bottom: 1px solid var(--td-component-border);
+  border-bottom: 1px solid #f5f5f5;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--td-text-color-primary);
+  color: var(--sh-text-primary);
 }
-.key-item:hover { background: var(--td-bg-color-container-hover); }
-.key-item.active { background: #e8f0fe; color: #0052d9; }
+.key-item:hover { background: #f7f8fa; }
+.key-item.active { background: #EFF4FF; color: var(--sh-blue); }
+
 .key-detail {
   flex: 1;
-  border: 1px solid var(--td-component-border);
+  border: 1px solid var(--sh-border);
   border-radius: 4px;
   padding: 12px;
   display: flex;
@@ -646,7 +733,7 @@ init()
   overflow: auto;
 }
 .key-detail-header { display: flex; align-items: center; gap: 8px; }
-.key-ttl { font-size: 12px; color: var(--td-text-color-secondary); }
+.key-ttl { font-size: 12px; color: var(--sh-text-secondary); }
 .key-value {
   flex: 1;
   background: #1a2332;

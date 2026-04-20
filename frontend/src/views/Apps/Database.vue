@@ -1,42 +1,66 @@
 <template>
-  <div class="database-page">
+  <div class="page-container">
     <template v-if="conn">
-      <t-descriptions :column="2" bordered style="margin-bottom:16px">
-        <t-descriptions-item label="名称">{{ conn.name }}</t-descriptions-item>
-        <t-descriptions-item label="类型"><t-tag size="small" variant="light">{{ conn.type.toUpperCase() }}</t-tag></t-descriptions-item>
-        <t-descriptions-item label="主机">{{ conn.host }}:{{ conn.port }}</t-descriptions-item>
-        <t-descriptions-item label="用户">{{ conn.username || '—' }}</t-descriptions-item>
-        <t-descriptions-item label="数据库">{{ conn.database || '—' }}</t-descriptions-item>
-        <t-descriptions-item label="状态">
-          <t-tag :theme="testTheme" variant="light" size="small">
-            {{ testResult === 'ok' ? '连接正常' : testResult === 'fail' ? '连接失败' : '未检测' }}
-          </t-tag>
-        </t-descriptions-item>
-      </t-descriptions>
-      <t-button :loading="testing" @click="doTest" style="margin-bottom:16px">连接测试</t-button>
-
-      <template v-if="conn.type === 'mysql'">
-        <div class="section-divider"><span>数据库列表</span></div>
-        <div class="db-toolbar">
-          <t-button size="small" theme="primary" @click="openCreateDB">新建</t-button>
-          <t-button size="small" variant="outline" @click="loadDBs">刷新</t-button>
+      <!-- 连接信息 -->
+      <div class="section-block">
+        <div class="section-title">
+          <span class="title-text">连接信息</span>
+          <t-button size="small" :loading="testing" @click="doTest">连接测试</t-button>
         </div>
-        <t-table :data="databases" :columns="dbColumns" :loading="dbLoading" row-key="name" stripe>
-          <template #operations="{ row }">
-            <t-popconfirm :content="`确认删除数据库 ${row.name}？此操作不可恢复`" @confirm="dropDB(row.name)">
-              <t-button theme="danger" size="small" variant="text">删除</t-button>
-            </t-popconfirm>
-          </template>
-        </t-table>
+        <div class="desc-wrap">
+          <t-descriptions :column="2">
+            <t-descriptions-item label="名称">{{ conn.name }}</t-descriptions-item>
+            <t-descriptions-item label="类型"><t-tag size="small" variant="light">{{ conn.type.toUpperCase() }}</t-tag></t-descriptions-item>
+            <t-descriptions-item label="主机">{{ conn.host }}:{{ conn.port }}</t-descriptions-item>
+            <t-descriptions-item label="用户">{{ conn.username || '—' }}</t-descriptions-item>
+            <t-descriptions-item label="数据库">{{ conn.database || '—' }}</t-descriptions-item>
+            <t-descriptions-item label="连接状态">
+              <t-tag :theme="testTheme" variant="light" size="small">
+                {{ testResult === 'ok' ? '连接正常' : testResult === 'fail' ? '连接失败' : '未检测' }}
+              </t-tag>
+            </t-descriptions-item>
+          </t-descriptions>
+        </div>
+      </div>
+
+      <!-- MySQL 数据库列表 -->
+      <template v-if="conn.type === 'mysql'">
+        <div class="section-block">
+          <div class="section-title">
+            <span class="title-text">数据库列表</span>
+            <t-space size="small">
+              <t-button size="small" theme="primary" @click="openCreateDB">新建</t-button>
+              <t-button size="small" variant="outline" @click="loadDBs">刷新</t-button>
+            </t-space>
+          </div>
+          <div class="table-wrap">
+            <t-table :data="databases" :columns="dbColumns" :loading="dbLoading" row-key="name" stripe size="small">
+              <template #operations="{ row }">
+                <t-popconfirm :content="`确认删除数据库 ${row.name}？此操作不可恢复`" @confirm="dropDB(row.name)">
+                  <t-button theme="danger" size="small" variant="text">删除</t-button>
+                </t-popconfirm>
+              </template>
+            </t-table>
+          </div>
+        </div>
       </template>
 
+      <!-- Redis 状态 -->
       <template v-if="conn.type === 'redis'">
-        <div class="section-divider"><span>Redis 状态</span></div>
-        <t-button size="small" variant="outline" @click="loadRedisInfo" style="margin-bottom:12px">刷新</t-button>
-        <t-table :data="redisInfoRows" :columns="redisColumns" :loading="redisLoading" row-key="key" stripe />
+        <div class="section-block">
+          <div class="section-title">
+            <span class="title-text">Redis 状态</span>
+            <t-button size="small" variant="outline" @click="loadRedisInfo">刷新</t-button>
+          </div>
+          <div class="table-wrap">
+            <t-table :data="redisInfoRows" :columns="redisColumns" :loading="redisLoading" row-key="key" stripe size="small" />
+          </div>
+        </div>
       </template>
     </template>
-    <t-empty v-else-if="!loading" description="该应用未关联数据库连接，请先在应用设置中配置 db_conn_id" />
+    <div v-else-if="!loading" class="section-block empty-block">
+      <t-empty description="该应用未关联数据库连接，请先在应用设置中配置 db_conn_id" />
+    </div>
 
     <t-dialog
       v-model:visible="createDBVisible"
@@ -158,21 +182,37 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.database-page { padding: 4px 0; }
-.section-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 20px 0 12px;
-  font-size: 13px;
+.title-text {
+  font-size: 14px;
   font-weight: 600;
-  color: var(--td-text-color-secondary);
+  color: var(--sh-text-primary);
 }
-.section-divider::before, .section-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--td-component-border);
+.desc-wrap {
+  padding: 16px 20px 20px;
 }
-.db-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+:deep(.t-descriptions__label) {
+  color: var(--sh-text-secondary);
+  font-size: 13px;
+  width: 80px;
+}
+:deep(.t-descriptions__content) {
+  font-size: 13px;
+}
+.table-wrap {
+  padding: 0 20px 16px;
+}
+:deep(.t-table th) {
+  background: #FAFAFA;
+  font-size: 12px;
+  color: var(--sh-text-secondary);
+  font-weight: 500;
+}
+:deep(.t-table td) {
+  font-size: 13px;
+}
+.empty-block {
+  padding: 40px 20px;
+  display: flex;
+  justify-content: center;
+}
 </style>

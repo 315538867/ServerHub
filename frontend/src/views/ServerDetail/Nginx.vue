@@ -1,32 +1,43 @@
 <template>
-  <div class="nginx-page">
-    <div class="page-toolbar">
-      <t-button theme="primary" @click="openCreate">添加站点</t-button>
-      <t-button variant="outline" :loading="reloading" @click="doReload">Nginx Reload</t-button>
-      <t-button theme="warning" variant="outline" @click="doRestart">Nginx Restart</t-button>
-      <t-button variant="outline" :loading="loading" @click="loadSites">
-        <template #icon><refresh-icon /></template>
-        刷新
-      </t-button>
+  <div class="page-container">
+    <div class="section-block">
+      <!-- 工具栏 -->
+      <div class="toolbar">
+        <div class="toolbar-left">
+          <t-button size="small" variant="outline" :loading="loading" @click="loadSites">
+            <template #icon><refresh-icon /></template>
+            刷新
+          </t-button>
+        </div>
+        <div class="toolbar-right">
+          <t-button size="small" variant="outline" :loading="reloading" @click="doReload">Nginx Reload</t-button>
+          <t-button size="small" theme="warning" variant="outline" @click="doRestart">Nginx Restart</t-button>
+          <t-button size="small" theme="primary" @click="openCreate">添加站点</t-button>
+        </div>
+      </div>
+
+      <!-- 站点表格 -->
+      <t-table :data="sites" :columns="siteColumns" :loading="loading" row-key="name" bordered size="small">
+        <template #enabled="{ row }">
+          <t-tag :theme="row.enabled ? 'success' : 'default'" variant="light" size="small">
+            {{ row.enabled ? '启用' : '禁用' }}
+          </t-tag>
+        </template>
+        <template #operations="{ row }">
+          <t-space size="small">
+            <t-button v-if="!row.enabled" theme="success" size="small" variant="text" @click="toggleSite(row, true)">启用</t-button>
+            <t-button v-if="row.enabled" theme="warning" size="small" variant="text" @click="toggleSite(row, false)">禁用</t-button>
+            <t-button size="small" variant="text" @click="openEdit(row)">编辑配置</t-button>
+            <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
+            <t-popconfirm :content="`确认删除站点 ${row.name}？`" @confirm="delSite(row)">
+              <t-button theme="danger" size="small" variant="text">删除</t-button>
+            </t-popconfirm>
+          </t-space>
+        </template>
+      </t-table>
     </div>
 
-    <t-table :data="sites" :columns="siteColumns" :loading="loading" row-key="name" stripe>
-      <template #enabled="{ row }">
-        <t-tag :theme="row.enabled ? 'success' : 'default'" variant="light" size="small">{{ row.enabled ? '启用' : '禁用' }}</t-tag>
-      </template>
-      <template #operations="{ row }">
-        <t-space size="small">
-          <t-button v-if="!row.enabled" theme="success" size="small" variant="text" @click="toggleSite(row, true)">启用</t-button>
-          <t-button v-if="row.enabled" theme="warning" size="small" variant="text" @click="toggleSite(row, false)">禁用</t-button>
-          <t-button size="small" variant="text" @click="openEdit(row)">编辑配置</t-button>
-          <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
-          <t-popconfirm :content="`确认删除站点 ${row.name}？`" @confirm="delSite(row)">
-            <t-button theme="danger" size="small" variant="text">删除</t-button>
-          </t-popconfirm>
-        </t-space>
-      </template>
-    </t-table>
-
+    <!-- 添加站点对话框 -->
     <t-dialog
       v-model:visible="createVisible"
       header="添加站点"
@@ -60,6 +71,7 @@
       </t-form>
     </t-dialog>
 
+    <!-- 编辑配置对话框 (CodeMirror) -->
     <t-dialog
       v-model:visible="editVisible"
       :header="`编辑配置 — ${editName}`"
@@ -72,6 +84,7 @@
       <div ref="editorEl" class="code-editor" />
     </t-dialog>
 
+    <!-- 日志抽屉 -->
     <t-drawer v-model:visible="logsVisible" :header="`日志 — ${logsSite}`" size="60%" @opened="initLogs" @close="closeLogs">
       <t-tabs :value="logsTab" @change="switchLogsTab">
         <t-tab-panel value="access" label="访问日志" />
@@ -251,10 +264,47 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy() })
 </script>
 
 <style scoped>
-.nginx-page { padding: 4px 0; }
-.page-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-.code-editor { height: 60vh; overflow: auto; border: 1px solid var(--td-component-border); border-radius: 4px; font-size: 13px; }
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.code-editor {
+  height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--sh-border);
+  border-radius: 4px;
+  font-size: 13px;
+}
+
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
-.logs-terminal { width: 100%; height: calc(100vh - 220px); background: #1a2332; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+
+.logs-terminal {
+  width: 100%;
+  height: calc(100vh - 220px);
+  background: #1a2332;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+:deep(.t-table) {
+  font-size: 13px;
+}
+
+:deep(.t-table th) {
+  background: #FAFAFA !important;
+  font-weight: 500;
+  color: var(--sh-text-secondary);
+}
 </style>

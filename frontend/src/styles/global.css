@@ -1,0 +1,199 @@
+/* ============================================================
+   ServerHub – Global Design Tokens & Base Styles
+   Reference: Tencent Cloud Lighthouse Console
+   ============================================================ */
+
+/* ---------- Override TDesign tokens ---------- */
+:root {
+  --td-brand-color: #0052d9;
+  --td-brand-color-hover: #1a66e8;
+  --td-brand-color-active: #003eb8;
+  --td-brand-color-light: #e8f0fd;
+
+  --sh-page-bg: #f2f3f5;
+  --sh-card-bg: #ffffff;
+  --sh-card-radius: 6px;
+  --sh-card-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  --sh-card-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.12);
+  --sh-card-border: 1px solid #e7e7e7;
+
+  --sh-sidebar-bg: #001529;
+  --sh-sidebar-active: #0052d9;
+  --sh-sidebar-text: rgba(255, 255, 255, 0.72);
+  --sh-sidebar-text-active: #ffffff;
+  --sh-sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sh-sidebar-group: rgba(255, 255, 255, 0.35);
+
+  --sh-header-bg: #ffffff;
+  --sh-header-height: 56px;
+  --sh-header-border: 1px solid #e7e7e7;
+
+  --sh-text-primary: #0d0d0d;
+  --sh-text-secondary: #666666;
+  --sh-text-placeholder: #bfbfbf;
+  --sh-border: #e7e7e7;
+
+  --sh-green: #00a870;
+  --sh-orange: #ed7b2f;
+  --sh-red: #e34d59;
+  --sh-blue: #0052d9;
+  --sh-gray: #8a94a6;
+
+  --sh-green-bg: #e8faf4;
+  --sh-orange-bg: #fdf3e8;
+  --sh-red-bg: #fdecea;
+  --sh-blue-bg: #e8f0fd;
+  --sh-gray-bg: #f2f3f5;
+
+  /* spacing scale */
+  --sh-space-xs: 4px;
+  --sh-space-sm: 8px;
+  --sh-space-md: 16px;
+  --sh-space-lg: 24px;
+  --sh-space-xl: 32px;
+}
+
+/* ---------- Base reset ---------- */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue',
+    'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--sh-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ---------- Scrollbar ---------- */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.28); }
+
+/* ---------- Utility classes ---------- */
+.page-container {
+  padding: 20px 24px;
+  min-height: 100%;
+}
+
+.content-card {
+  background: var(--sh-card-bg);
+  border-radius: var(--sh-card-radius);
+  border: var(--sh-card-border);
+  box-shadow: var(--sh-card-shadow);
+}
+
+.card-body {
+  padding: 20px 24px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--sh-border);
+}
+
+.card-header-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sh-text-primary);
+}
+
+.section-block {
+  background: var(--sh-card-bg);
+  border-radius: var(--sh-card-radius);
+  border: var(--sh-card-border);
+  box-shadow: var(--sh-card-shadow);
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sh-text-primary);
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--sh-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sh-text-secondary);
+}
+.section-divider::before,
+.section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--sh-border);
+}
+
+/* ---------- Status dots ---------- */
+.status-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sh-gray);
+  flex-shrink: 0;
+}
+.status-dot.online  { background: var(--sh-green); box-shadow: 0 0 0 2px rgba(0,168,112,.2); }
+.status-dot.offline { background: var(--sh-red); }
+.status-dot.error   { background: var(--sh-orange); }
+.status-dot.unknown { background: var(--sh-gray); }
+
+/* ---------- Mono font for code/versions ---------- */
+.mono {
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', Menlo, monospace;
+  font-size: 13px;
+}
+
+/* ---------- TDesign overrides ---------- */
+.t-table__header th {
+  background: #fafafa !important;
+  font-weight: 500 !important;
+  color: var(--sh-text-secondary) !important;
+  font-size: 13px !important;
+}
+
+.t-table__row td {
+  font-size: 13px;
+}
+
+.t-tag {
+  font-size: 12px !important;
+  border-radius: 3px !important;
+}
+
+/* Page-level table toolbar */
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 0 12px;
+  gap: 12px;
+}
+.table-toolbar-left  { display: flex; align-items: center; gap: 8px; }
+.table-toolbar-right { display: flex; align-items: center; gap: 8px; }

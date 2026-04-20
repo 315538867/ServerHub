@@ -1,28 +1,35 @@
 <template>
-  <div class="service-page">
+  <div class="page-container">
     <template v-if="app?.container_name && app?.server_id">
-      <div class="page-toolbar">
-        <t-button variant="outline" :loading="loading" @click="loadContainers">
-          <template #icon><refresh-icon /></template>
-          刷新
-        </t-button>
+      <div class="section-block">
+        <div class="section-title">
+          <span class="title-text">容器管理</span>
+          <t-button variant="outline" size="small" :loading="loading" @click="loadContainers">
+            <template #icon><refresh-icon /></template>
+            刷新
+          </t-button>
+        </div>
+        <div class="table-wrap">
+          <t-table :data="containers" :columns="containerColumns" :loading="loading" row-key="id" stripe size="small">
+            <template #status="{ row }">
+              <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ row.status }}</t-tag>
+            </template>
+            <template #operations="{ row }">
+              <t-space size="small">
+                <t-button v-if="row.state !== 'running'" theme="success" size="small" variant="text" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</t-button>
+                <t-button v-if="row.state === 'running'" theme="warning" size="small" variant="text" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</t-button>
+                <t-button size="small" variant="text" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</t-button>
+                <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
+                <t-button size="small" variant="text" @click="openInspect(row)">详情</t-button>
+              </t-space>
+            </template>
+          </t-table>
+        </div>
       </div>
-      <t-table :data="containers" :columns="containerColumns" :loading="loading" row-key="id" stripe>
-        <template #status="{ row }">
-          <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ row.status }}</t-tag>
-        </template>
-        <template #operations="{ row }">
-          <t-space size="small">
-            <t-button v-if="row.state !== 'running'" theme="success" size="small" variant="text" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</t-button>
-            <t-button v-if="row.state === 'running'" theme="warning" size="small" variant="text" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</t-button>
-            <t-button size="small" variant="text" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</t-button>
-            <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
-            <t-button size="small" variant="text" @click="openInspect(row)">详情</t-button>
-          </t-space>
-        </template>
-      </t-table>
     </template>
-    <t-empty v-else description="该应用未关联 Docker 容器，请先在应用设置中配置 container_name" />
+    <div v-else class="section-block empty-block">
+      <t-empty description="该应用未关联 Docker 容器，请先在应用设置中配置 container_name" />
+    </div>
 
     <t-drawer v-model:visible="logsVisible" :header="`容器日志 — ${logsContainer}`" size="60%" @closed="onLogsClosed">
       <div ref="logsEl" class="logs-terminal" />
@@ -136,8 +143,28 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose() })
 </script>
 
 <style scoped>
-.service-page { padding: 4px 0; }
-.page-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.title-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sh-text-primary);
+}
+.table-wrap {
+  padding: 0 20px 16px;
+}
+.empty-block {
+  padding: 40px 20px;
+  display: flex;
+  justify-content: center;
+}
+:deep(.t-table th) {
+  background: #FAFAFA;
+  font-size: 12px;
+  color: var(--sh-text-secondary);
+  font-weight: 500;
+}
+:deep(.t-table td) {
+  font-size: 13px;
+}
 .logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a2332; border-radius: 4px; overflow: hidden; }
 .inspect-json { background: var(--td-bg-color-secondarycontainer); border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 70vh; margin: 0; white-space: pre-wrap; word-break: break-all; }
 </style>

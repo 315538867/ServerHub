@@ -1,58 +1,75 @@
 <template>
-  <div class="domain-page">
+  <div class="page-container">
     <template v-if="app?.site_name && app?.server_id">
-      <div class="page-toolbar">
-        <t-button theme="primary" @click="openCreate">添加站点</t-button>
-        <t-button :loading="reloading" @click="doReload">Nginx Reload</t-button>
-        <t-button theme="warning" @click="doRestart">Nginx Restart</t-button>
-        <t-button variant="outline" :loading="loading" @click="loadSites">
-          <template #icon><refresh-icon /></template>
-          刷新
-        </t-button>
+      <!-- Nginx 站点 -->
+      <div class="section-block">
+        <div class="section-title">
+          <span class="title-text">Nginx 站点</span>
+          <t-space size="small">
+            <t-button theme="primary" size="small" @click="openCreate">添加站点</t-button>
+            <t-button size="small" :loading="reloading" @click="doReload">Reload</t-button>
+            <t-button size="small" theme="warning" @click="doRestart">Restart</t-button>
+            <t-button size="small" variant="outline" :loading="loading" @click="loadSites">
+              <template #icon><refresh-icon /></template>
+              刷新
+            </t-button>
+          </t-space>
+        </div>
+        <div class="table-wrap">
+          <t-table :data="sites" :columns="siteColumns" :loading="loading" row-key="name" stripe size="small">
+            <template #status="{ row }">
+              <t-tag :theme="row.enabled ? 'success' : 'default'" variant="light" size="small">
+                {{ row.enabled ? '启用' : '禁用' }}
+              </t-tag>
+            </template>
+            <template #operations="{ row }">
+              <t-space size="small">
+                <t-button v-if="!row.enabled" theme="success" size="small" variant="text" @click="toggleSite(row, true)">启用</t-button>
+                <t-button v-if="row.enabled" theme="warning" size="small" variant="text" @click="toggleSite(row, false)">禁用</t-button>
+                <t-button size="small" variant="text" @click="openEdit(row)">编辑配置</t-button>
+                <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
+                <t-popconfirm :content="`确认删除站点 ${row.name}？`" @confirm="delSite(row)">
+                  <t-button theme="danger" size="small" variant="text">删除</t-button>
+                </t-popconfirm>
+              </t-space>
+            </template>
+          </t-table>
+        </div>
       </div>
 
-      <t-table :data="sites" :columns="siteColumns" :loading="loading" row-key="name" stripe>
-        <template #status="{ row }">
-          <t-tag :theme="row.enabled ? 'success' : 'default'" variant="light" size="small">
-            {{ row.enabled ? '启用' : '禁用' }}
-          </t-tag>
-        </template>
-        <template #operations="{ row }">
+      <!-- SSL 证书 -->
+      <div class="section-block">
+        <div class="section-title">
+          <span class="title-text">SSL 证书</span>
           <t-space size="small">
-            <t-button v-if="!row.enabled" theme="success" size="small" variant="text" @click="toggleSite(row, true)">启用</t-button>
-            <t-button v-if="row.enabled" theme="warning" size="small" variant="text" @click="toggleSite(row, false)">禁用</t-button>
-            <t-button size="small" variant="text" @click="openEdit(row)">编辑配置</t-button>
-            <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
-            <t-popconfirm :content="`确认删除站点 ${row.name}？`" @confirm="delSite(row)">
-              <t-button theme="danger" size="small" variant="text">删除</t-button>
-            </t-popconfirm>
+            <t-button size="small" theme="primary" @click="openRequestCert">申请证书 (Let's Encrypt)</t-button>
+            <t-button size="small" variant="outline" @click="loadCerts">刷新</t-button>
           </t-space>
-        </template>
-      </t-table>
-
-      <div class="section-divider"><span>SSL 证书</span></div>
-      <div class="ssl-toolbar">
-        <t-button theme="primary" size="small" @click="openRequestCert">申请证书 (Let's Encrypt)</t-button>
-        <t-button size="small" variant="outline" @click="loadCerts">刷新</t-button>
+        </div>
+        <div class="table-wrap">
+          <t-table :data="certs" :columns="certColumns" :loading="certLoading" row-key="id" stripe size="small">
+            <template #days_left="{ row }">
+              <t-tag :theme="row.days_left < 14 ? 'danger' : row.days_left < 30 ? 'warning' : 'success'" variant="light" size="small">
+                {{ row.days_left }}天
+              </t-tag>
+            </template>
+            <template #operations="{ row }">
+              <t-space size="small">
+                <t-button size="small" variant="text" @click="openRenew(row)">续签</t-button>
+                <t-popconfirm content="确认删除该证书？" @confirm="delCert(row)">
+                  <t-button theme="danger" size="small" variant="text">删除</t-button>
+                </t-popconfirm>
+              </t-space>
+            </template>
+          </t-table>
+        </div>
       </div>
-      <t-table :data="certs" :columns="certColumns" :loading="certLoading" row-key="id" stripe>
-        <template #days_left="{ row }">
-          <t-tag :theme="row.days_left < 14 ? 'danger' : row.days_left < 30 ? 'warning' : 'success'" variant="light" size="small">
-            {{ row.days_left }}天
-          </t-tag>
-        </template>
-        <template #operations="{ row }">
-          <t-space size="small">
-            <t-button size="small" variant="text" @click="openRenew(row)">续签</t-button>
-            <t-popconfirm content="确认删除该证书？" @confirm="delCert(row)">
-              <t-button theme="danger" size="small" variant="text">删除</t-button>
-            </t-popconfirm>
-          </t-space>
-        </template>
-      </t-table>
     </template>
-    <t-empty v-else description="该应用未关联 Nginx 站点，请先在应用设置中配置 site_name" />
+    <div v-else class="section-block empty-block">
+      <t-empty description="该应用未关联 Nginx 站点，请先在应用设置中配置 site_name" />
+    </div>
 
+    <!-- 添加站点 Dialog -->
     <t-dialog
       v-model:visible="createVisible"
       header="添加站点"
@@ -86,6 +103,7 @@
       </t-form>
     </t-dialog>
 
+    <!-- 编辑配置 Dialog -->
     <t-dialog
       v-model:visible="editVisible"
       :header="`编辑配置 — ${editName}`"
@@ -98,6 +116,7 @@
       <div ref="editorEl" class="code-editor" />
     </t-dialog>
 
+    <!-- 日志 Drawer -->
     <t-drawer v-model:visible="logsVisible" :header="`日志 — ${logsSite}`" size="60%" @closed="closeLogs">
       <t-tabs :value="logsTab" @change="onLogsTabChange">
         <t-tab-panel value="access" label="访问日志" />
@@ -106,6 +125,7 @@
       <div ref="logsEl" class="logs-terminal" />
     </t-drawer>
 
+    <!-- 申请证书 Dialog -->
     <t-dialog
       v-model:visible="certReqVisible"
       header="申请 Let's Encrypt 证书"
@@ -367,25 +387,29 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy(); certWs?.close() })
 </script>
 
 <style scoped>
-.domain-page { padding: 4px 0; }
-.page-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
-.ssl-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-.section-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 24px 0 16px;
-  font-size: 13px;
+.title-text {
+  font-size: 14px;
   font-weight: 600;
-  color: var(--td-text-color-secondary);
+  color: var(--sh-text-primary);
 }
-.section-divider::before, .section-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--td-component-border);
+.table-wrap {
+  padding: 0 20px 16px;
 }
-.code-editor { height: 60vh; overflow: auto; border: 1px solid var(--td-component-border); border-radius: 4px; font-size: 13px; }
+.empty-block {
+  padding: 40px 20px;
+  display: flex;
+  justify-content: center;
+}
+:deep(.t-table th) {
+  background: #FAFAFA;
+  font-size: 12px;
+  color: var(--sh-text-secondary);
+  font-weight: 500;
+}
+:deep(.t-table td) {
+  font-size: 13px;
+}
+.code-editor { height: 60vh; overflow: auto; border: 1px solid var(--sh-border); border-radius: 4px; font-size: 13px; }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
 .logs-terminal { width: 100%; height: calc(100vh - 240px); background: #1a2332; border-radius: 4px; overflow: hidden; margin-top: 12px; }

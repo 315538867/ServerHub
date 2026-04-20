@@ -1,18 +1,25 @@
 <template>
-  <div class="logs-page">
-    <div class="page-toolbar">
-      <t-radio-group v-model="activeSource" @change="switchSource">
-        <t-radio-button v-if="app?.container_name" value="container">容器日志</t-radio-button>
-        <t-radio-button v-if="app?.site_name" value="nginx_access">Nginx 访问</t-radio-button>
-        <t-radio-button v-if="app?.site_name" value="nginx_error">Nginx 错误</t-radio-button>
-      </t-radio-group>
-      <t-button size="small" variant="outline" @click="reconnect">
-        <template #icon><refresh-icon /></template>
-        重连
-      </t-button>
+  <div class="page-container">
+    <!-- 日志源选择工具栏 -->
+    <div class="section-block toolbar-block">
+      <div class="toolbar-inner">
+        <t-radio-group v-model="activeSource" @change="switchSource">
+          <t-radio-button v-if="app?.container_name" value="container">容器日志</t-radio-button>
+          <t-radio-button v-if="app?.site_name" value="nginx_access">Nginx 访问</t-radio-button>
+          <t-radio-button v-if="app?.site_name" value="nginx_error">Nginx 错误</t-radio-button>
+        </t-radio-group>
+        <t-button size="small" variant="outline" @click="reconnect">
+          <template #icon><refresh-icon /></template>
+          重连
+        </t-button>
+      </div>
     </div>
-    <div v-if="activeSource" ref="logsEl" class="logs-terminal" />
-    <t-empty v-else description="该应用未关联容器或 Nginx 站点，无日志可查看" />
+
+    <!-- 日志终端 -->
+    <div class="section-block terminal-block">
+      <div v-if="activeSource" ref="logsEl" class="logs-terminal" />
+      <t-empty v-else description="该应用未关联容器或 Nginx 站点，无日志可查看" style="padding: 40px 0;" />
+    </div>
   </div>
 </template>
 
@@ -96,7 +103,24 @@ onBeforeUnmount(() => cleanup())
 </script>
 
 <style scoped>
-.logs-page { padding: 4px 0; display: flex; flex-direction: column; height: 100%; }
-.page-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
-.logs-terminal { flex: 1; min-height: 400px; background: #1a2332; border-radius: 4px; overflow: hidden; }
+.toolbar-block {
+  margin-bottom: 12px !important;
+}
+.toolbar-inner {
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.terminal-block {
+  padding: 0;
+  overflow: hidden;
+}
+.logs-terminal {
+  min-height: 400px;
+  background: #1a2332;
+  border-radius: 6px;
+  overflow: hidden;
+}
 </style>

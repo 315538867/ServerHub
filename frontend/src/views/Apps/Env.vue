@@ -1,51 +1,65 @@
 <template>
-  <div class="env-page">
+  <div class="page-container">
     <template v-if="app?.deploy_id">
-      <div class="page-toolbar">
-        <t-button theme="primary" size="small" @click="addRow">添加变量</t-button>
-        <t-button size="small" :loading="saving" @click="saveEnv">保存</t-button>
-        <t-button size="small" variant="outline" @click="loadEnv">刷新</t-button>
+      <!-- 环境变量 -->
+      <div class="section-block">
+        <div class="section-title">
+          <span class="title-text">环境变量</span>
+          <t-space size="small">
+            <t-button size="small" theme="primary" @click="addRow">添加变量</t-button>
+            <t-button size="small" :loading="saving" @click="saveEnv">保存</t-button>
+            <t-button size="small" variant="outline" @click="loadEnv">刷新</t-button>
+          </t-space>
+        </div>
+        <div class="table-wrap">
+          <t-table :data="envVars" :columns="envColumns" :loading="loading" row-key="key" empty="暂无环境变量" stripe size="small">
+            <template #key="{ row }">
+              <t-input v-model="row.key" placeholder="ENV_KEY" size="small" />
+            </template>
+            <template #value="{ row }">
+              <t-input
+                v-model="row.value"
+                :type="row.secret && !row.revealed ? 'password' : 'text'"
+                :placeholder="row.secret ? '••••••••' : 'value'"
+                size="small"
+              />
+            </template>
+            <template #secret="{ row }">
+              <t-checkbox v-model="row.secret" />
+            </template>
+            <template #operations="{ rowIndex }">
+              <t-button theme="danger" size="small" variant="text" @click="removeRow(rowIndex)">删除</t-button>
+            </template>
+          </t-table>
+        </div>
       </div>
 
-      <t-table :data="envVars" :columns="envColumns" :loading="loading" row-key="key" empty="暂无环境变量" stripe>
-        <template #key="{ row }">
-          <t-input v-model="row.key" placeholder="ENV_KEY" size="small" />
-        </template>
-        <template #value="{ row }">
-          <t-input
-            v-model="row.value"
-            :type="row.secret && !row.revealed ? 'password' : 'text'"
-            :placeholder="row.secret ? '••••••••' : 'value'"
-            size="small"
-          />
-        </template>
-        <template #secret="{ row }">
-          <t-checkbox v-model="row.secret" />
-        </template>
-        <template #operations="{ rowIndex }">
-          <t-button theme="danger" size="small" variant="text" @click="removeRow(rowIndex)">删除</t-button>
-        </template>
-      </t-table>
-
-      <div class="webhook-block">
-        <div class="section-divider"><span>Webhook 触发部署</span></div>
-        <div v-if="webhook">
-          <t-form label-width="100px" colon>
-            <t-form-item label="Webhook URL">
-              <div class="input-with-btn">
-                <t-input :value="webhook.url" readonly />
-                <t-button size="small" @click="copyWebhook(webhook!.url)">复制</t-button>
-              </div>
-            </t-form-item>
-            <t-form-item label="Secret">
-              <t-input :value="webhook.secret" type="password" readonly />
-            </t-form-item>
-          </t-form>
+      <!-- Webhook -->
+      <div class="section-block">
+        <div class="section-title">
+          <span class="title-text">Webhook 触发部署</span>
         </div>
-        <t-button v-else size="small" @click="loadWebhook">查看 Webhook 配置</t-button>
+        <div class="webhook-wrap">
+          <div v-if="webhook">
+            <t-form label-width="100px" colon>
+              <t-form-item label="Webhook URL">
+                <div class="input-with-btn">
+                  <t-input :value="webhook.url" readonly />
+                  <t-button size="small" @click="copyWebhook(webhook!.url)">复制</t-button>
+                </div>
+              </t-form-item>
+              <t-form-item label="Secret">
+                <t-input :value="webhook.secret" type="password" readonly />
+              </t-form-item>
+            </t-form>
+          </div>
+          <t-button v-else size="small" variant="outline" @click="loadWebhook">查看 Webhook 配置</t-button>
+        </div>
       </div>
     </template>
-    <t-empty v-else description="该应用未关联部署配置，无法管理环境变量" />
+    <div v-else class="section-block empty-block">
+      <t-empty description="该应用未关联部署配置，无法管理环境变量" />
+    </div>
   </div>
 </template>
 
@@ -118,24 +132,36 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.env-page { padding: 4px 0; }
-.page-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
-.webhook-block { margin-top: 8px; }
-.section-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 20px 0 16px;
-  font-size: 13px;
+.title-text {
+  font-size: 14px;
   font-weight: 600;
-  color: var(--td-text-color-secondary);
+  color: var(--sh-text-primary);
 }
-.section-divider::before, .section-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--td-component-border);
+.table-wrap {
+  padding: 0 20px 16px;
 }
-.input-with-btn { display: flex; gap: 8px; align-items: center; width: 100%; }
+:deep(.t-table th) {
+  background: #FAFAFA;
+  font-size: 12px;
+  color: var(--sh-text-secondary);
+  font-weight: 500;
+}
+:deep(.t-table td) {
+  font-size: 13px;
+}
+.webhook-wrap {
+  padding: 16px 20px 20px;
+}
+.empty-block {
+  padding: 40px 20px;
+  display: flex;
+  justify-content: center;
+}
+.input-with-btn {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+}
 .input-with-btn .t-input { flex: 1; }
 </style>

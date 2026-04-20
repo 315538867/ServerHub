@@ -1,74 +1,90 @@
 <template>
-  <div class="apps-page">
-    <div class="page-header">
-      <h2 class="page-title">应用管理</h2>
-      <div class="header-right">
-        <t-select v-model="filterServerId" placeholder="全部服务器" clearable style="width:180px;margin-right:12px">
-          <t-option v-for="s in servers" :key="s.id" :label="s.name" :value="s.id" />
-        </t-select>
-        <t-button theme="primary" @click="openCreate">
-          <template #icon><add-icon /></template>
-          新建应用
-        </t-button>
+  <div class="page-container deploy-page">
+    <!-- 页面标题区 -->
+    <div class="section-block page-header-block">
+      <div class="section-title">
+        <span>部署管理</span>
+        <div class="header-actions">
+          <t-select v-model="filterServerId" placeholder="全部服务器" clearable style="width:180px;margin-right:10px">
+            <t-option v-for="s in servers" :key="s.id" :label="s.name" :value="s.id" />
+          </t-select>
+          <t-button theme="primary" @click="openCreate">
+            <template #icon><add-icon /></template>
+            新建部署
+          </t-button>
+        </div>
       </div>
     </div>
 
-    <t-empty v-if="!loading && filteredApps.length === 0" description="暂无应用，点击右上角新建" style="margin-top:60px" />
+    <!-- 空状态 -->
+    <t-empty v-if="!loading && filteredApps.length === 0" description="暂无部署应用，点击右上角新建" style="margin-top:60px" />
 
+    <!-- 应用卡片网格 -->
     <div v-else class="app-grid" v-loading="loading">
-      <div v-for="app in filteredApps" :key="app.id" class="app-card" :class="`app-card--${app.sync_status || 'idle'}`">
+      <div
+        v-for="app in filteredApps"
+        :key="app.id"
+        class="app-card"
+        :class="`app-card--${app.sync_status || 'idle'}`"
+      >
+        <!-- 卡片头部 -->
         <div class="app-card__header">
-          <div class="app-card__title">
+          <div class="app-card__name-row">
             <span class="app-card__name">{{ app.name }}</span>
-            <t-tag size="small" :theme="typeTagTheme(app.type)" variant="light">{{ app.type }}</t-tag>
+            <t-tag size="small" :theme="typeTagTheme(app.type)" variant="light" style="margin-left:6px">{{ app.type }}</t-tag>
           </div>
-          <t-tag size="small" :theme="syncStatusTagTheme(app.sync_status)" variant="light">
-            <t-loading v-if="app.sync_status === 'syncing'" size="small" style="display:inline-flex;margin-right:4px" />
-            {{ syncStatusText(app.sync_status) }}
-          </t-tag>
-        </div>
-
-        <div class="app-card__server">
-          <server-icon style="color:#8a94a6;font-size:14px" />
-          {{ serverName(app.server_id) }}
-        </div>
-
-        <div class="app-card__version">
-          <div class="version-block">
-            <span class="version-label">期望</span>
-            <span class="version-value" :class="{ 'version-value--drifted': isDrifted(app) }">
-              {{ app.desired_version || '—' }}
-            </span>
-          </div>
-          <div class="version-arrow" :class="{ 'version-arrow--drifted': isDrifted(app) }">→</div>
-          <div class="version-block">
-            <span class="version-label">实际</span>
-            <span class="version-value">{{ app.actual_version || '—' }}</span>
+          <div class="app-card__header-right">
+            <t-tag size="small" :theme="syncStatusTagTheme(app.sync_status)" variant="light">
+              <t-loading v-if="app.sync_status === 'syncing'" size="small" style="display:inline-flex;margin-right:4px" />
+              {{ syncStatusText(app.sync_status) }}
+            </t-tag>
+            <t-dropdown :options="dropdownOptions(app)" trigger="click" @click="(item: any) => handleCommand(item.value, app)">
+              <t-button size="small" variant="text" shape="circle" style="margin-left:4px">
+                <template #icon><ellipsis-icon /></template>
+              </t-button>
+            </t-dropdown>
           </div>
         </div>
 
-        <div v-if="isDrifted(app)" class="app-card__drift-hint">
-          版本未同步，{{ app.auto_sync ? '将自动更新' : '需手动触发' }}
+        <!-- 卡片主体：服务器 + 版本 -->
+        <div class="app-card__body">
+          <div class="app-card__server">
+            <server-icon style="font-size:13px;color:#8a94a6;flex-shrink:0" />
+            <span>{{ serverName(app.server_id) }}</span>
+          </div>
+          <div class="app-card__version">
+            <div class="version-block">
+              <span class="version-label">期望</span>
+              <span class="version-value" :class="{ 'version-value--drifted': isDrifted(app) }">
+                {{ app.desired_version || '—' }}
+              </span>
+            </div>
+            <span class="version-arrow" :class="{ 'version-arrow--drifted': isDrifted(app) }">→</span>
+            <div class="version-block">
+              <span class="version-label">实际</span>
+              <span class="version-value">{{ app.actual_version || '—' }}</span>
+            </div>
+          </div>
+          <div v-if="isDrifted(app)" class="app-card__drift-hint">
+            版本未同步，{{ app.auto_sync ? '将自动更新' : '需手动触发' }}
+          </div>
         </div>
 
-        <div class="app-card__actions">
-          <t-button theme="primary" size="small" @click="openSetVersion(app)">设置版本</t-button>
+        <!-- 卡片底部操作 -->
+        <div class="app-card__footer">
+          <t-button size="small" variant="outline" @click="openSetVersion(app)">设置版本</t-button>
           <t-button
             size="small"
-            :theme="isDrifted(app) ? 'warning' : 'default'"
+            :theme="isDrifted(app) ? 'warning' : 'primary'"
+            variant="outline"
             :loading="syncing === app.id"
             @click="handleSync(app)"
           >立即同步</t-button>
-          <t-dropdown :options="dropdownOptions(app)" trigger="click" @click="(item: any) => handleCommand(item.value, app)">
-            <t-button size="small" variant="outline" shape="circle">
-              <template #icon><ellipsis-icon /></template>
-            </t-button>
-          </t-dropdown>
         </div>
       </div>
     </div>
 
-    <!-- Set Version Dialog -->
+    <!-- 设置版本弹窗 -->
     <t-dialog
       v-model:visible="versionDialogVisible"
       header="设置期望版本"
@@ -87,10 +103,10 @@
       </t-form>
     </t-dialog>
 
-    <!-- Create App Dialog -->
+    <!-- 新建应用弹窗 -->
     <t-dialog
       v-model:visible="createVisible"
-      header="新建应用"
+      header="新建部署"
       width="600px"
       :confirm-btn="{ content: '创建', loading: createSaving }"
       @confirm="handleCreate"
@@ -139,7 +155,7 @@
       </t-form>
     </t-dialog>
 
-    <!-- App Detail Drawer -->
+    <!-- 应用详情抽屉 -->
     <t-drawer v-model:visible="detailVisible" :header="detailApp?.name" size="55%">
       <t-tabs v-if="detailApp" :value="detailTab" @change="val => (detailTab = val as string)">
 
@@ -274,7 +290,7 @@
       </t-tabs>
     </t-drawer>
 
-    <!-- Sync Log Drawer (SSE) -->
+    <!-- 同步日志抽屉 (SSE) -->
     <t-drawer v-model:visible="logDrawerVisible" :header="`同步日志 — ${logAppName}`" size="55%" @close="stopSync">
       <div class="log-toolbar">
         <t-tag :theme="runStatus === 'success' ? 'success' : runStatus === 'failed' ? 'danger' : 'default'" variant="light" size="small">
@@ -285,7 +301,7 @@
       <pre class="log-output" ref="logEl">{{ logLines.join('\n') }}</pre>
     </t-drawer>
 
-    <!-- Log Detail Dialog -->
+    <!-- 日志详情弹窗 -->
     <t-dialog v-model:visible="logDetailVisible" header="执行日志" width="720px" :footer="false">
       <pre class="log-output log-output--static">{{ selectedLog?.output }}</pre>
     </t-dialog>
@@ -637,97 +653,152 @@ onMounted(loadAll)
 </script>
 
 <style scoped>
-.apps-page { padding: 20px; }
-.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
-.page-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--td-text-color-primary); }
-.header-right { display: flex; align-items: center; }
-
-.app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
-
-.app-card {
-  background: var(--td-bg-color-container);
-  border: 1px solid var(--td-component-border);
-  border-left: 4px solid var(--td-component-border);
-  border-radius: 8px;
-  padding: 16px;
+.deploy-page {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  transition: box-shadow 0.2s, border-left-color 0.3s;
-  min-height: 180px;
+  gap: 16px;
 }
-.app-card:hover { box-shadow: var(--td-shadow-1); }
-.app-card--synced  { border-left-color: #00a870; }
-.app-card--drifted { border-left-color: #ed7b2f; }
-.app-card--syncing { border-left-color: #0052d9; }
-.app-card--error   { border-left-color: #e34d59; }
-.app-card--idle    { border-left-color: var(--td-component-border); }
 
-.app-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.app-card__title { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+/* 页面标题卡片 */
+.page-header-block {
+  margin-bottom: 0;
+}
+.page-header-block .section-title {
+  border-bottom: none;
+  padding: 14px 20px;
+}
+.header-actions {
+  display: flex;
+  align-items: center;
+}
+
+/* 卡片网格 */
+.app-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.app-card {
+  background: var(--sh-card-bg);
+  border: var(--sh-card-border);
+  border-left: 4px solid #e7e7e7;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  transition: box-shadow 0.2s, border-left-color 0.3s;
+  overflow: hidden;
+}
+.app-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10);
+}
+.app-card--synced  { border-left-color: var(--sh-green); }
+.app-card--drifted { border-left-color: var(--sh-orange); }
+.app-card--syncing { border-left-color: var(--sh-blue); }
+.app-card--error   { border-left-color: var(--sh-red); }
+.app-card--idle    { border-left-color: #d4d4d4; }
+
+/* 卡片头部 */
+.app-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid #f5f5f5;
+}
+.app-card__name-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
 .app-card__name {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
-  color: var(--td-text-color-primary);
-  white-space: nowrap;
+  color: var(--sh-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-card__header-right {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 
+/* 卡片主体 */
+.app-card__body {
+  padding: 10px 14px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
 .app-card__server {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 13px;
-  color: var(--td-text-color-secondary);
+  font-size: 12px;
+  color: var(--sh-text-secondary);
 }
-
 .app-card__version {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  background: var(--td-bg-color-secondarycontainer);
+  background: #f7f8fa;
   border-radius: 6px;
-  padding: 10px 12px;
+  padding: 8px 10px;
 }
-.version-block { display: flex; flex-direction: column; align-items: center; gap: 3px; }
-.version-label { font-size: 11px; color: var(--td-text-color-secondary); }
+.version-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.version-label {
+  font-size: 11px;
+  color: var(--sh-text-secondary);
+}
 .version-value {
   font-family: 'JetBrains Mono', 'Cascadia Code', Menlo, monospace;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--td-text-color-primary);
-}
-.version-value--drifted { color: #ed7b2f; }
-.version-arrow { color: var(--td-text-color-placeholder); font-size: 18px; display: flex; align-items: center; }
-.version-arrow--drifted { color: #ed7b2f; }
-
-.app-card__drift-hint {
-  display: flex;
-  align-items: center;
-  gap: 4px;
   font-size: 12px;
-  color: #ed7b2f;
+  font-weight: 500;
+  color: var(--sh-text-primary);
+}
+.version-value--drifted { color: var(--sh-orange); }
+.version-arrow {
+  color: #bbb;
+  font-size: 16px;
+}
+.version-arrow--drifted { color: var(--sh-orange); }
+.app-card__drift-hint {
+  font-size: 11px;
+  color: var(--sh-orange);
 }
 
-.app-card__actions {
+/* 卡片底部 */
+.app-card__footer {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 2px;
+  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid #f5f5f5;
+  background: #fafafa;
 }
 
+/* 抽屉内容 */
 .env-toolbar { margin-bottom: 10px; }
 .form-section-label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--td-text-color-secondary);
+  color: var(--sh-text-secondary);
   padding: 8px 0 4px;
-  border-bottom: 1px solid var(--td-component-border);
+  border-bottom: 1px solid var(--sh-border);
   margin-bottom: 12px;
 }
-.form-hint { margin-left: 8px; font-size: 12px; color: var(--td-text-color-secondary); }
+.form-hint { margin-left: 8px; font-size: 12px; color: var(--sh-text-secondary); }
 .tab-content { padding: 16px 0; }
 .log-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
 .input-with-btn { display: flex; gap: 8px; align-items: center; width: 100%; }
@@ -751,14 +822,14 @@ onMounted(loadAll)
 
 .version-dialog__current {
   font-size: 13px;
-  color: var(--td-text-color-secondary);
-  background: var(--td-bg-color-secondarycontainer);
+  color: var(--sh-text-secondary);
+  background: #f7f8fa;
   padding: 8px 12px;
   border-radius: 4px;
 }
 .version-dialog__current .version-value {
   font-family: 'JetBrains Mono', monospace;
-  color: var(--td-text-color-primary);
+  color: var(--sh-text-primary);
   margin-left: 4px;
 }
 </style>

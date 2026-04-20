@@ -1,45 +1,66 @@
 <template>
-  <div class="servers-page">
-    <div class="page-header">
-      <h2 class="page-title">服务器管理</h2>
+  <div class="page-container">
+    <!-- 页面头部 -->
+    <div class="section-block page-header-card">
+      <div class="header-left">
+        <div class="header-title">
+          <server-icon class="header-icon" />
+          <span>服务器管理</span>
+        </div>
+        <div class="header-subtitle">管理并监控所有服务器的连接状态</div>
+      </div>
       <t-button theme="primary" @click="openCreate">
         <template #icon><add-icon /></template>
         添加服务器
       </t-button>
     </div>
 
-    <t-table
-      :data="servers"
-      :columns="columns"
-      :loading="loading"
-      row-key="id"
-      stripe
-      bordered
-      size="medium"
-    >
-      <template #host="{ row }">{{ row.host }}:{{ row.port }}</template>
-      <template #auth_type="{ row }">
-        <t-tag :theme="row.auth_type === 'key' ? 'warning' : 'default'" variant="light" size="small">
-          {{ row.auth_type === 'key' ? '密钥' : '密码' }}
-        </t-tag>
-      </template>
-      <template #status="{ row }">
-        <t-tag :theme="statusTheme(row.status)" variant="light" size="small">{{ statusText(row.status) }}</t-tag>
-      </template>
-      <template #last_check_at="{ row }">
-        {{ row.last_check_at ? dayjs(row.last_check_at).format('MM-DD HH:mm:ss') : '-' }}
-      </template>
-      <template #operations="{ row }">
-        <t-space size="small">
-          <t-link theme="primary" :loading="testing === row.id" @click="handleTest(row)">测试</t-link>
-          <t-link theme="primary" @click="openEdit(row)">编辑</t-link>
-          <t-popconfirm content="确认删除此服务器?" @confirm="handleDelete(row)">
-            <t-link theme="danger">删除</t-link>
-          </t-popconfirm>
-        </t-space>
-      </template>
-    </t-table>
+    <!-- 服务器列表 -->
+    <div class="section-block">
+      <t-table
+        :data="servers"
+        :columns="columns"
+        :loading="loading"
+        row-key="id"
+        bordered
+        size="small"
+        :header-affixed-top="{ offsetTop: 0 }"
+        empty="暂无服务器，点击「添加服务器」开始"
+      >
+        <template #name="{ row }">
+          <div class="server-name-cell">
+            <span class="status-dot" :class="row.status" />
+            <span class="server-name">{{ row.name }}</span>
+            <span v-if="row.remark" class="server-remark">{{ row.remark }}</span>
+          </div>
+        </template>
+        <template #host="{ row }">
+          <span class="mono-text">{{ row.host }}:{{ row.port }}</span>
+        </template>
+        <template #auth_type="{ row }">
+          <t-tag :theme="row.auth_type === 'key' ? 'warning' : 'default'" variant="light" size="small">
+            {{ row.auth_type === 'key' ? '密钥' : '密码' }}
+          </t-tag>
+        </template>
+        <template #status="{ row }">
+          <t-tag :theme="statusTheme(row.status)" variant="light" size="small">{{ statusText(row.status) }}</t-tag>
+        </template>
+        <template #last_check_at="{ row }">
+          <span class="time-text">{{ row.last_check_at ? dayjs(row.last_check_at).format('MM-DD HH:mm:ss') : '—' }}</span>
+        </template>
+        <template #operations="{ row }">
+          <t-space size="small">
+            <t-button size="small" variant="text" theme="primary" :loading="testing === row.id" @click="handleTest(row)">连接测试</t-button>
+            <t-button size="small" variant="text" @click="openEdit(row)">编辑</t-button>
+            <t-popconfirm content="确认删除此服务器?" @confirm="handleDelete(row)">
+              <t-button size="small" variant="text" theme="danger">删除</t-button>
+            </t-popconfirm>
+          </t-space>
+        </template>
+      </t-table>
+    </div>
 
+    <!-- 添加/编辑对话框 -->
     <t-dialog
       v-model:visible="dialogVisible"
       :header="editId ? '编辑服务器' : '添加服务器'"
@@ -84,7 +105,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
-import { AddIcon } from 'tdesign-icons-vue-next'
+import { AddIcon, ServerIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import type { Server, ServerForm } from '@/types/api'
 import { getServers, createServer, updateServer, deleteServer, testServer } from '@/api/servers'
@@ -114,14 +135,13 @@ const rules = {
 }
 
 const columns = [
-  { colKey: 'name', title: '名称', minWidth: 120 },
-  { colKey: 'host', title: '主机', minWidth: 160 },
-  { colKey: 'username', title: '用户', width: 100 },
-  { colKey: 'auth_type', title: '认证', width: 90 },
+  { colKey: 'name', title: '名称', minWidth: 180 },
+  { colKey: 'host', title: '地址', minWidth: 160 },
+  { colKey: 'username', title: '用户', width: 90 },
+  { colKey: 'auth_type', title: '认证方式', width: 100 },
   { colKey: 'status', title: '状态', width: 90 },
   { colKey: 'last_check_at', title: '最后检测', width: 160 },
-  { colKey: 'remark', title: '备注', minWidth: 120, ellipsis: true },
-  { colKey: 'operations', title: '操作', width: 160, fixed: 'right' as const },
+  { colKey: 'operations', title: '操作', width: 200, fixed: 'right' as const },
 ]
 
 function statusTheme(s: string) {
@@ -203,12 +223,82 @@ onMounted(loadServers)
 </script>
 
 <style scoped>
-.servers-page { padding: 0; }
-.page-header {
+.page-header-card {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 16px 20px;
   margin-bottom: 16px;
 }
-.page-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--td-text-color-primary); }
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--sh-text-primary);
+}
+
+.header-icon {
+  color: var(--sh-blue);
+  font-size: 18px;
+}
+
+.header-subtitle {
+  font-size: 13px;
+  color: var(--sh-text-secondary);
+  margin-left: 26px;
+}
+
+.server-name-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-dot {
+  flex-shrink: 0;
+}
+
+.status-dot.online { background: var(--sh-green); }
+.status-dot.offline { background: var(--sh-red); }
+.status-dot.unknown { background: #c5c5c5; }
+
+.server-name {
+  font-weight: 500;
+  color: var(--sh-text-primary);
+}
+
+.server-remark {
+  font-size: 12px;
+  color: var(--sh-text-secondary);
+}
+
+.mono-text {
+  font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+  font-size: 12px;
+  color: var(--sh-text-primary);
+}
+
+.time-text {
+  font-size: 12px;
+  color: var(--sh-text-secondary);
+}
+
+:deep(.t-table) {
+  font-size: 13px;
+}
+
+:deep(.t-table th) {
+  background: #FAFAFA !important;
+  font-weight: 500;
+  color: var(--sh-text-secondary);
+}
 </style>

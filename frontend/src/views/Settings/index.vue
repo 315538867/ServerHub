@@ -1,127 +1,128 @@
 <template>
-  <div class="settings-page">
-    <t-tabs :value="activeTab" @change="activeTab = $event as string">
-      <t-tab-panel value="panel" label="面板设置">
-        <t-card title="系统设置" style="margin-top:12px">
-          <t-form :data="settingsForm" label-width="180px" colon>
-            <t-form-item label="面板名称">
-              <t-input v-model="settingsForm['panel_name']" placeholder="ServerHub" style="width:240px" />
-            </t-form-item>
-            <t-form-item label="指标采集间隔 (分钟)">
-              <t-input-number v-model="settingsForm['metrics_interval']" :min="1" :max="60" style="width:160px" />
-            </t-form-item>
-            <t-form-item label="告警冷却时间 (分钟)">
-              <t-input-number v-model="settingsForm['alert_cooldown_min']" :min="5" :max="1440" style="width:160px" />
-            </t-form-item>
-            <t-form-item label="CPU 告警阈值 (%)">
-              <t-input-number v-model="settingsForm['alert_cpu_threshold']" :min="1" :max="100" style="width:160px" />
-            </t-form-item>
-            <t-form-item label="内存告警阈值 (%)">
-              <t-input-number v-model="settingsForm['alert_mem_threshold']" :min="1" :max="100" style="width:160px" />
-            </t-form-item>
-            <t-form-item label="磁盘告警阈值 (%)">
-              <t-input-number v-model="settingsForm['alert_disk_threshold']" :min="1" :max="100" style="width:160px" />
-            </t-form-item>
-            <t-form-item label="SSL 到期预警 (天)">
-              <t-input-number v-model="settingsForm['alert_ssl_days']" :min="1" :max="90" style="width:160px" />
-            </t-form-item>
-            <t-form-item label="证书自动续签 (天前)">
-              <t-input-number v-model="settingsForm['cert_renew_days']" :min="1" :max="60" style="width:160px" />
-            </t-form-item>
-            <t-form-item label="部署日志保留 (天)">
-              <t-input-number v-model="settingsForm['deploy_log_keep_days']" :min="1" :max="365" style="width:160px" />
-            </t-form-item>
-            <t-form-item label="时区">
-              <t-input v-model="settingsForm['timezone']" placeholder="Asia/Shanghai" style="width:240px" />
-            </t-form-item>
-            <t-form-item>
-              <t-button theme="primary" :loading="savingSettings" @click="saveSettings">保存设置</t-button>
-            </t-form-item>
-          </t-form>
-        </t-card>
-      </t-tab-panel>
+  <div class="page-container settings-page">
+    <!-- 系统设置卡片 -->
+    <div class="section-block">
+      <div class="section-title">
+        <span>系统设置</span>
+      </div>
+      <div class="settings-body">
+        <t-form :data="settingsForm" label-width="200px" colon>
+          <div class="settings-group-label">基础配置</div>
+          <t-form-item label="面板名称">
+            <t-input v-model="settingsForm['panel_name']" placeholder="ServerHub" style="width:240px" />
+          </t-form-item>
+          <t-form-item label="时区">
+            <t-input v-model="settingsForm['timezone']" placeholder="Asia/Shanghai" style="width:240px" />
+          </t-form-item>
+          <t-form-item label="指标采集间隔 (分钟)">
+            <t-input-number v-model="settingsForm['metrics_interval']" :min="1" :max="60" style="width:160px" />
+          </t-form-item>
 
-      <t-tab-panel value="totp" label="两步验证">
-        <t-card title="两步验证（TOTP）" style="margin-top:12px">
-          <div v-if="!totpSetupMode">
-            <t-alert
-              v-if="meUser?.mfa_enabled"
-              theme="success"
-              message="两步验证已启用"
-              style="margin-bottom:16px"
-            />
-            <t-alert
-              v-else
-              theme="warning"
-              message="两步验证未启用"
-              style="margin-bottom:16px"
-            />
-            <t-button v-if="!meUser?.mfa_enabled" theme="primary" @click="startTotpSetup">
-              启用两步验证
-            </t-button>
-            <t-button v-else theme="danger" @click="disableTotp">
-              禁用两步验证
-            </t-button>
-          </div>
-          <div v-else>
-            <p class="totp-instruction">1. 使用 Google Authenticator 或 Authy 扫描下方信息</p>
-            <t-descriptions :column="1" bordered class="totp-desc" size="small">
-              <t-descriptions-item label="密钥（手动输入）">
-                <span style="font-family:monospace;word-break:break-all;color:var(--td-brand-color)">{{ totpSecret }}</span>
-              </t-descriptions-item>
-              <t-descriptions-item label="OTP URI">
-                <span style="font-size:11px;word-break:break-all">{{ totpUri }}</span>
-              </t-descriptions-item>
-            </t-descriptions>
-            <p class="totp-instruction">2. 扫描后输入 App 中显示的 6 位验证码以完成绑定</p>
-            <t-input v-model="confirmCode" placeholder="6 位验证码" :maxlength="6" style="width:200px;margin-bottom:12px" />
-            <br />
-            <t-space>
-              <t-button theme="primary" :loading="confirmingTotp" @click="confirmTotp">确认绑定</t-button>
-              <t-button variant="outline" @click="totpSetupMode = false">取消</t-button>
-            </t-space>
-          </div>
-        </t-card>
-      </t-tab-panel>
+          <div class="settings-group-label">告警阈值</div>
+          <t-form-item label="告警冷却时间 (分钟)">
+            <t-input-number v-model="settingsForm['alert_cooldown_min']" :min="5" :max="1440" style="width:160px" />
+          </t-form-item>
+          <t-form-item label="CPU 告警阈值 (%)">
+            <t-input-number v-model="settingsForm['alert_cpu_threshold']" :min="1" :max="100" style="width:160px" />
+          </t-form-item>
+          <t-form-item label="内存告警阈值 (%)">
+            <t-input-number v-model="settingsForm['alert_mem_threshold']" :min="1" :max="100" style="width:160px" />
+          </t-form-item>
+          <t-form-item label="磁盘告警阈值 (%)">
+            <t-input-number v-model="settingsForm['alert_disk_threshold']" :min="1" :max="100" style="width:160px" />
+          </t-form-item>
+          <t-form-item label="SSL 到期预警 (天)">
+            <t-input-number v-model="settingsForm['alert_ssl_days']" :min="1" :max="90" style="width:160px" />
+          </t-form-item>
 
-      <t-tab-panel value="audit" label="审计日志">
-        <t-card style="margin-top:12px">
-          <template #title>
-            <div class="audit-header">
-              <span>操作日志</span>
-              <t-space size="small">
-                <t-input v-model="auditFilter.username" placeholder="用户名" style="width:120px" clearable @change="loadAudit" />
-                <t-input v-model="auditFilter.path" placeholder="路径" style="width:160px" clearable @change="loadAudit" />
-                <t-select v-model="auditFilter.status" placeholder="状态" style="width:110px" clearable @change="loadAudit">
-                  <t-option label="成功 2xx" value="2" />
-                  <t-option label="客户端错误 4xx" value="4" />
-                  <t-option label="服务错误 5xx" value="5" />
-                </t-select>
-                <t-button variant="outline" size="small" @click="loadAudit">刷新</t-button>
-              </t-space>
-            </div>
+          <div class="settings-group-label">运维配置</div>
+          <t-form-item label="证书自动续签 (天前)">
+            <t-input-number v-model="settingsForm['cert_renew_days']" :min="1" :max="60" style="width:160px" />
+          </t-form-item>
+          <t-form-item label="部署日志保留 (天)">
+            <t-input-number v-model="settingsForm['deploy_log_keep_days']" :min="1" :max="365" style="width:160px" />
+          </t-form-item>
+
+          <t-form-item>
+            <t-button theme="primary" :loading="savingSettings" @click="saveSettings">保存设置</t-button>
+          </t-form-item>
+        </t-form>
+      </div>
+    </div>
+
+    <!-- 两步验证卡片 -->
+    <div class="section-block">
+      <div class="section-title">
+        <span>两步验证（TOTP）</span>
+        <t-tag v-if="meUser?.mfa_enabled" theme="success" variant="light" size="small">已启用</t-tag>
+        <t-tag v-else theme="warning" variant="light" size="small">未启用</t-tag>
+      </div>
+      <div class="settings-body">
+        <div v-if="!totpSetupMode">
+          <p class="settings-desc">两步验证可以为您的账号增加额外的安全保护。启用后，每次登录除密码外还需要提供验证码。</p>
+          <t-button v-if="!meUser?.mfa_enabled" theme="primary" @click="startTotpSetup">
+            启用两步验证
+          </t-button>
+          <t-button v-else theme="danger" variant="outline" @click="disableTotp">
+            禁用两步验证
+          </t-button>
+        </div>
+        <div v-else class="totp-setup">
+          <p class="settings-desc">1. 使用 Google Authenticator 或 Authy 扫描下方信息</p>
+          <t-descriptions :column="1" bordered class="totp-desc" size="small">
+            <t-descriptions-item label="密钥（手动输入）">
+              <span class="totp-secret">{{ totpSecret }}</span>
+            </t-descriptions-item>
+            <t-descriptions-item label="OTP URI">
+              <span style="font-size:11px;word-break:break-all">{{ totpUri }}</span>
+            </t-descriptions-item>
+          </t-descriptions>
+          <p class="settings-desc">2. 扫描后输入 App 中显示的 6 位验证码以完成绑定</p>
+          <div class="totp-confirm-row">
+            <t-input v-model="confirmCode" placeholder="6 位验证码" :maxlength="6" style="width:200px" />
+            <t-button theme="primary" :loading="confirmingTotp" @click="confirmTotp">确认绑定</t-button>
+            <t-button variant="outline" @click="totpSetupMode = false">取消</t-button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 审计日志卡片 -->
+    <div class="section-block">
+      <div class="section-title">
+        <span>操作日志</span>
+        <div class="audit-filters">
+          <t-input v-model="auditFilter.username" placeholder="用户名" style="width:120px" clearable @change="loadAudit" />
+          <t-input v-model="auditFilter.path" placeholder="路径" style="width:160px" clearable @change="loadAudit" />
+          <t-select v-model="auditFilter.status" placeholder="状态" style="width:120px" clearable @change="loadAudit">
+            <t-option label="成功 2xx" value="2" />
+            <t-option label="客户端错误 4xx" value="4" />
+            <t-option label="服务错误 5xx" value="5" />
+          </t-select>
+          <t-button variant="outline" size="small" @click="loadAudit">刷新</t-button>
+        </div>
+      </div>
+      <div class="settings-body">
+        <t-table :data="auditLogs" :columns="auditColumns" :loading="auditLoading" row-key="id" size="small" stripe>
+          <template #created_at="{ row }">{{ fmtTime(row.created_at) }}</template>
+          <template #method="{ row }">
+            <t-tag :theme="methodTheme(row.method)" variant="light" size="small">{{ row.method }}</t-tag>
           </template>
-          <t-table :data="auditLogs" :columns="auditColumns" :loading="auditLoading" row-key="id" size="small" stripe>
-            <template #created_at="{ row }">{{ fmtTime(row.created_at) }}</template>
-            <template #method="{ row }">
-              <t-tag :theme="methodTheme(row.method)" variant="light" size="small">{{ row.method }}</t-tag>
-            </template>
-            <template #status_code="{ row }">
-              <t-tag :theme="statusCodeTheme(row.status)" variant="light" size="small">{{ row.status }}</t-tag>
-            </template>
-          </t-table>
-          <div style="margin-top:12px; display:flex; justify-content:flex-end">
-            <t-pagination
-              v-model:current="auditPage"
-              :page-size="50"
-              :total="auditTotal"
-              show-total
-              @change="loadAudit"
-            />
-          </div>
-        </t-card>
-      </t-tab-panel>
-    </t-tabs>
+          <template #status_code="{ row }">
+            <t-tag :theme="statusCodeTheme(row.status)" variant="light" size="small">{{ row.status }}</t-tag>
+          </template>
+        </t-table>
+        <div class="pagination-row">
+          <t-pagination
+            v-model:current="auditPage"
+            :page-size="50"
+            :total="auditTotal"
+            show-total
+            @change="loadAudit"
+          />
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -253,8 +254,63 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.settings-page { padding: 0; }
-.audit-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; width: 100%; }
-.totp-instruction { color: var(--td-text-color-secondary); margin: 12px 0; }
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-body {
+  padding: 20px 24px;
+}
+
+.settings-group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--sh-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 12px 0 8px;
+  border-bottom: 1px solid var(--sh-border);
+  margin-bottom: 16px;
+}
+.settings-group-label:first-child {
+  padding-top: 0;
+}
+
+.settings-desc {
+  font-size: 13px;
+  color: var(--sh-text-secondary);
+  margin: 0 0 16px;
+  line-height: 1.6;
+}
+
+/* TOTP */
+.totp-setup { max-width: 560px; }
 .totp-desc { margin: 12px 0; }
+.totp-secret {
+  font-family: 'JetBrains Mono', monospace;
+  word-break: break-all;
+  color: var(--sh-blue);
+}
+.totp-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+/* 审计日志 */
+.audit-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pagination-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
 </style>

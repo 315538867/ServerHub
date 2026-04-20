@@ -1,11 +1,18 @@
 <template>
-  <div class="notifications-page">
-    <t-tabs :value="activeTab" @change="activeTab = $event as string">
-      <t-tab-panel value="rules" label="告警规则">
-        <div class="tab-toolbar">
-          <t-button theme="primary" size="small" @click="openCreateRule">添加规则</t-button>
-          <t-button variant="outline" size="small" :loading="rulesLoading" @click="loadRules">刷新</t-button>
+  <div class="page-container notifications-page">
+    <!-- 告警规则 -->
+    <div class="section-block">
+      <div class="section-title">
+        <span>告警规则</span>
+        <div class="title-actions">
+          <t-button theme="primary" size="small" @click="openCreateRule">
+            <template #icon><add-icon /></template>
+            添加规则
+          </t-button>
+          <t-button variant="outline" size="small" :loading="rulesLoading" @click="loadRules" style="margin-left:8px">刷新</t-button>
         </div>
+      </div>
+      <div class="block-body">
         <t-table :data="rules" :columns="ruleColumns" :loading="rulesLoading" row-key="id" size="small" stripe>
           <template #server="{ row }">{{ row.server_id ? serverName(row.server_id) : '所有服务器' }}</template>
           <template #metric="{ row }">
@@ -23,13 +30,22 @@
             </t-popconfirm>
           </template>
         </t-table>
-      </t-tab-panel>
+      </div>
+    </div>
 
-      <t-tab-panel value="channels" label="通知渠道">
-        <div class="tab-toolbar">
-          <t-button theme="primary" size="small" @click="openCreateChannel">添加渠道</t-button>
-          <t-button variant="outline" size="small" :loading="channelsLoading" @click="loadChannels">刷新</t-button>
+    <!-- 通知渠道 -->
+    <div class="section-block">
+      <div class="section-title">
+        <span>通知渠道</span>
+        <div class="title-actions">
+          <t-button theme="primary" size="small" @click="openCreateChannel">
+            <template #icon><add-icon /></template>
+            添加渠道
+          </t-button>
+          <t-button variant="outline" size="small" :loading="channelsLoading" @click="loadChannels" style="margin-left:8px">刷新</t-button>
         </div>
+      </div>
+      <div class="block-body">
         <t-table :data="channels" :columns="channelColumns" :loading="channelsLoading" row-key="id" size="small" stripe>
           <template #type="{ row }">
             <t-tag theme="default" variant="light" size="small">{{ channelTypeLabel(row.type) }}</t-tag>
@@ -46,21 +62,27 @@
             </t-space>
           </template>
         </t-table>
-      </t-tab-panel>
+      </div>
+    </div>
 
-      <t-tab-panel value="events" label="告警历史">
-        <div class="tab-toolbar">
+    <!-- 告警历史 -->
+    <div class="section-block">
+      <div class="section-title">
+        <span>告警历史</span>
+        <div class="title-actions">
           <t-button variant="outline" size="small" :loading="eventsLoading" @click="loadEvents">刷新</t-button>
           <t-popconfirm content="确认清理30天前的历史记录？" @confirm="doClearEvents">
-            <t-button theme="warning" variant="outline" size="small">清理旧记录</t-button>
+            <t-button theme="warning" variant="outline" size="small" style="margin-left:8px">清理旧记录</t-button>
           </t-popconfirm>
         </div>
+      </div>
+      <div class="block-body">
         <t-table :data="events" :columns="eventColumns" :loading="eventsLoading" row-key="id" size="small" stripe>
           <template #sent_at="{ row }">{{ formatTime(row.sent_at) }}</template>
           <template #server="{ row }">{{ serverName(row.server_id) }}</template>
           <template #value="{ row }">{{ row.value ? row.value.toFixed(1) : '—' }}</template>
         </t-table>
-        <div style="margin-top:12px; display:flex; justify-content:flex-end">
+        <div class="pagination-row">
           <t-pagination
             v-model:current="eventsPage"
             :page-size="50"
@@ -69,9 +91,10 @@
             @change="loadEvents"
           />
         </div>
-      </t-tab-panel>
-    </t-tabs>
+      </div>
+    </div>
 
+    <!-- 添加规则弹窗 -->
     <t-dialog
       v-model:visible="ruleVisible"
       header="添加告警规则"
@@ -111,6 +134,7 @@
       </t-form>
     </t-dialog>
 
+    <!-- 添加渠道弹窗 -->
     <t-dialog
       v-model:visible="channelVisible"
       header="添加通知渠道"
@@ -144,6 +168,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
+import { AddIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import { getServers } from '@/api/servers'
 import {
@@ -284,7 +309,30 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.notifications-page { padding: 0; }
-.tab-toolbar { display: flex; gap: 8px; margin: 12px 0; }
-.form-hint { font-size: 11px; color: var(--td-text-color-placeholder); margin-top: 4px; }
+.notifications-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.block-body {
+  padding: 16px 20px;
+}
+
+.title-actions {
+  display: flex;
+  align-items: center;
+}
+
+.pagination-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.form-hint {
+  font-size: 11px;
+  color: var(--sh-text-secondary);
+  margin-top: 4px;
+}
 </style>

@@ -1,56 +1,81 @@
 <template>
-  <div>
-    <div class="page-toolbar">
-      <t-button variant="outline" :loading="loading" @click="refresh">
-        <template #icon><refresh-icon /></template>
-        刷新
-      </t-button>
-    </div>
-    <t-tabs :value="activeTab" @change="activeTab = $event as string">
-      <t-tab-panel value="containers" label="容器">
-        <t-table :data="containers" :columns="containerColumns" :loading="loading" row-key="id" stripe style="margin-top:8px">
-          <template #state="{ row }">
-            <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ row.status }}</t-tag>
-          </template>
-          <template #operations="{ row }">
-            <t-space size="small">
-              <t-button v-if="row.state !== 'running'" theme="success" size="small" variant="text" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</t-button>
-              <t-button v-if="row.state === 'running'" theme="warning" size="small" variant="text" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</t-button>
-              <t-button size="small" variant="text" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</t-button>
-              <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
-              <t-button size="small" variant="text" @click="openInspect(row)">详情</t-button>
-              <t-popconfirm content="确认删除该容器？" @confirm="doAction(row, 'remove')">
-                <t-button theme="danger" size="small" variant="text" :loading="actionLoading === row.id + '_remove'">删除</t-button>
-              </t-popconfirm>
-            </t-space>
-          </template>
-        </t-table>
-      </t-tab-panel>
-      <t-tab-panel value="images" label="镜像">
-        <div class="tab-toolbar">
-          <t-button theme="primary" @click="openPull">
-            <template #icon><download-icon /></template>
-            拉取镜像
-          </t-button>
-        </div>
-        <t-table :data="images" :columns="imageColumns" :loading="imgLoading" row-key="id" stripe>
-          <template #operations="{ row }">
-            <t-popconfirm content="确认删除该镜像？" @confirm="rmImage(row)">
-              <t-button theme="danger" size="small" variant="text">删除</t-button>
-            </t-popconfirm>
-          </template>
-        </t-table>
-      </t-tab-panel>
-    </t-tabs>
+  <div class="page-container">
+    <div class="section-block">
+      <!-- 标签页 -->
+      <t-tabs :value="activeTab" @change="activeTab = $event as string">
+        <t-tab-panel value="containers" label="容器">
+          <div class="tab-toolbar">
+            <div class="toolbar-left">
+              <t-button size="small" variant="outline" :loading="loading" @click="refresh">
+                <template #icon><refresh-icon /></template>
+                刷新
+              </t-button>
+            </div>
+          </div>
+          <t-table
+            :data="containers"
+            :columns="containerColumns"
+            :loading="loading"
+            row-key="id"
+            bordered
+            size="small"
+            style="margin-top: 0"
+          >
+            <template #state="{ row }">
+              <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ row.status }}</t-tag>
+            </template>
+            <template #operations="{ row }">
+              <t-space size="small">
+                <t-button v-if="row.state !== 'running'" theme="success" size="small" variant="text" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</t-button>
+                <t-button v-if="row.state === 'running'" theme="warning" size="small" variant="text" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</t-button>
+                <t-button size="small" variant="text" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</t-button>
+                <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
+                <t-button size="small" variant="text" @click="openInspect(row)">详情</t-button>
+                <t-popconfirm content="确认删除该容器？" @confirm="doAction(row, 'remove')">
+                  <t-button theme="danger" size="small" variant="text" :loading="actionLoading === row.id + '_remove'">删除</t-button>
+                </t-popconfirm>
+              </t-space>
+            </template>
+          </t-table>
+        </t-tab-panel>
 
+        <t-tab-panel value="images" label="镜像">
+          <div class="tab-toolbar">
+            <div class="toolbar-left" />
+            <t-button theme="primary" size="small" @click="openPull">
+              <template #icon><download-icon /></template>
+              拉取镜像
+            </t-button>
+          </div>
+          <t-table
+            :data="images"
+            :columns="imageColumns"
+            :loading="imgLoading"
+            row-key="id"
+            bordered
+            size="small"
+          >
+            <template #operations="{ row }">
+              <t-popconfirm content="确认删除该镜像？" @confirm="rmImage(row)">
+                <t-button theme="danger" size="small" variant="text">删除</t-button>
+              </t-popconfirm>
+            </template>
+          </t-table>
+        </t-tab-panel>
+      </t-tabs>
+    </div>
+
+    <!-- 日志抽屉 -->
     <t-drawer v-model:visible="logsVisible" :header="`容器日志 — ${logsContainer}`" size="60%" @close="onLogsClosed">
       <div ref="logsEl" class="logs-terminal" />
     </t-drawer>
 
+    <!-- 详情对话框 -->
     <t-dialog v-model:visible="inspectVisible" header="容器详情" width="720px" :footer="false">
       <pre class="inspect-json">{{ inspectJson }}</pre>
     </t-dialog>
 
+    <!-- 拉取镜像对话框 -->
     <t-dialog
       v-model:visible="pullVisible"
       header="拉取镜像"
@@ -219,9 +244,62 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
 </script>
 
 <style scoped>
-.page-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
-.tab-toolbar { margin: 12px 0; }
-.logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a2332; border-radius: 4px; overflow: hidden; }
-.inspect-json { background: #f5f7fa; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 70vh; margin: 0; white-space: pre-wrap; word-break: break-all; }
-.pull-output { background: #1a2332; color: #e0e0e0; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 320px; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
+.tab-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+}
+
+.toolbar-left {
+  display: flex;
+  gap: 8px;
+}
+
+.logs-terminal {
+  width: 100%;
+  height: calc(100vh - 120px);
+  background: #1a2332;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.inspect-json {
+  background: #f5f7fa;
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: auto;
+  max-height: 70vh;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+}
+
+.pull-output {
+  background: #1a2332;
+  color: #e0e0e0;
+  border-radius: 4px;
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: auto;
+  max-height: 320px;
+  margin: 12px 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+}
+
+:deep(.t-table) {
+  font-size: 13px;
+}
+
+:deep(.t-table th) {
+  background: #FAFAFA !important;
+  font-weight: 500;
+  color: var(--sh-text-secondary);
+}
 </style>

@@ -1,32 +1,44 @@
 <template>
-  <div class="app-overview">
-    <t-descriptions :column="2" bordered style="margin-bottom:20px">
-      <t-descriptions-item label="描述">{{ app?.description || '—' }}</t-descriptions-item>
-      <t-descriptions-item label="状态">
+  <div class="page-container">
+    <!-- 状态信息卡片 -->
+    <div class="section-block">
+      <div class="section-title">
+        <span class="title-text">应用信息</span>
         <t-tag :theme="statusTheme" variant="light" size="small">{{ app?.status ?? '—' }}</t-tag>
-      </t-descriptions-item>
-      <t-descriptions-item label="域名">{{ app?.domain || '—' }}</t-descriptions-item>
-      <t-descriptions-item label="所属服务器">
-        <router-link v-if="server" :to="`/servers/${server.id}/overview`" class="link">{{ server.name }} ({{ server.host }})</router-link>
-        <span v-else>—</span>
-      </t-descriptions-item>
-      <t-descriptions-item label="Nginx 站点">
-        <router-link v-if="app?.site_name && server" :to="`/servers/${server.id}/nginx`" class="link">{{ app.site_name }}</router-link>
-        <span v-else>{{ app?.site_name || '未关联' }}</span>
-      </t-descriptions-item>
-      <t-descriptions-item label="容器名">
-        <router-link v-if="app?.container_name && server" :to="`/servers/${server.id}/docker`" class="link">{{ app.container_name }}</router-link>
-        <span v-else>{{ app?.container_name || '未关联' }}</span>
-      </t-descriptions-item>
-      <t-descriptions-item label="创建时间">{{ app?.created_at }}</t-descriptions-item>
-      <t-descriptions-item label="最后更新">{{ app?.updated_at }}</t-descriptions-item>
-    </t-descriptions>
+      </div>
+      <div class="desc-wrap">
+        <t-descriptions :column="2">
+          <t-descriptions-item label="描述">{{ app?.description || '—' }}</t-descriptions-item>
+          <t-descriptions-item label="域名">{{ app?.domain || '—' }}</t-descriptions-item>
+          <t-descriptions-item label="所属服务器">
+            <router-link v-if="server" :to="`/servers/${server.id}/overview`" class="link">{{ server.name }} ({{ server.host }})</router-link>
+            <span v-else>—</span>
+          </t-descriptions-item>
+          <t-descriptions-item label="Nginx 站点">
+            <router-link v-if="app?.site_name && server" :to="`/servers/${server.id}/nginx`" class="link">{{ app.site_name }}</router-link>
+            <span v-else>{{ app?.site_name || '未关联' }}</span>
+          </t-descriptions-item>
+          <t-descriptions-item label="容器名">
+            <router-link v-if="app?.container_name && server" :to="`/servers/${server.id}/docker`" class="link">{{ app.container_name }}</router-link>
+            <span v-else>{{ app?.container_name || '未关联' }}</span>
+          </t-descriptions-item>
+          <t-descriptions-item label="创建时间">{{ app?.created_at }}</t-descriptions-item>
+          <t-descriptions-item label="最后更新">{{ app?.updated_at }}</t-descriptions-item>
+        </t-descriptions>
+      </div>
+    </div>
 
-    <t-space>
-      <t-button v-if="server" variant="outline" @click="$router.push(`/servers/${server.id}/terminal`)">打开终端</t-button>
-      <t-button v-if="server" variant="outline" @click="$router.push(`/servers/${server.id}/files`)">文件管理</t-button>
-      <t-button theme="danger" variant="outline" @click="handleDelete">删除应用</t-button>
-    </t-space>
+    <!-- 快捷操作 -->
+    <div class="section-block">
+      <div class="section-title">
+        <span class="title-text">快捷操作</span>
+      </div>
+      <div class="actions-wrap">
+        <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/servers/${server.id}/terminal`)">打开终端</t-button>
+        <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/servers/${server.id}/files`)">文件管理</t-button>
+        <t-button theme="danger" variant="outline" size="small" @click="handleDelete">删除应用</t-button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -78,7 +90,31 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.app-overview { padding: 4px 0; }
-.link { color: var(--td-brand-color); text-decoration: none; }
+.title-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sh-text-primary);
+}
+.desc-wrap {
+  padding: 16px 20px 20px;
+}
+:deep(.t-descriptions__label) {
+  color: var(--sh-text-secondary);
+  font-size: 13px;
+  width: 90px;
+}
+:deep(.t-descriptions__content) {
+  font-size: 13px;
+}
+.actions-wrap {
+  display: flex;
+  gap: 10px;
+  padding: 12px 20px 20px;
+  flex-wrap: wrap;
+}
+.link {
+  color: var(--sh-blue);
+  text-decoration: none;
+}
 .link:hover { text-decoration: underline; }
 </style>
