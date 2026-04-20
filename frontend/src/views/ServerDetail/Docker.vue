@@ -21,7 +21,7 @@
             size="small"
           >
             <template #state="{ row }">
-              <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ row.status }}</t-tag>
+              <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ stateText(row.state) }}</t-tag>
             </template>
             <template #operations="{ row }">
               <t-space size="small">
@@ -149,6 +149,9 @@ const imageColumns = [
 
 function stateTheme(state: string) {
   return ({ running: 'success', paused: 'warning', exited: 'default' } as Record<string, string>)[state] ?? 'danger'
+}
+function stateText(state: string) {
+  return ({ running: '运行中', paused: '已暂停', exited: '已停止', restarting: '重启中', dead: '异常', created: '已创建', removing: '删除中' } as Record<string, string>)[state] ?? state
 }
 
 async function refresh() {

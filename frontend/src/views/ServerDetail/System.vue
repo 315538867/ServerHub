@@ -77,10 +77,10 @@
           </div>
           <t-table :data="filteredServices" :columns="svcColumns" :loading="svcLoading" row-key="unit" bordered size="small">
             <template #active="{ row }">
-              <t-tag :theme="activeTheme(row.active)" variant="light" size="small">{{ row.active }}</t-tag>
+              <t-tag :theme="activeTheme(row.active)" variant="light" size="small">{{ activeText(row.active) }}</t-tag>
             </template>
             <template #load="{ row }">
-              <t-tag :theme="row.load === 'loaded' ? 'success' : 'default'" variant="light" size="small">{{ row.load }}</t-tag>
+              <t-tag :theme="row.load === 'loaded' ? 'success' : 'default'" variant="light" size="small">{{ loadText(row.load) }}</t-tag>
             </template>
             <template #operations="{ row }">
               <t-space size="small">
@@ -215,6 +215,12 @@ const svcColumns = [
 
 function activeTheme(active: string) {
   return ({ active: 'success', failed: 'danger', inactive: 'default' } as Record<string, string>)[active] ?? 'warning'
+}
+function activeText(active: string) {
+  return ({ active: '运行中', inactive: '未运行', failed: '失败', activating: '启动中', deactivating: '停止中' } as Record<string, string>)[active] ?? active
+}
+function loadText(load: string) {
+  return ({ loaded: '已加载', 'not-found': '未找到', masked: '已屏蔽', error: '错误' } as Record<string, string>)[load] ?? load
 }
 
 async function onTabChange(tab: string) {

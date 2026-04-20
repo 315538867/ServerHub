@@ -34,7 +34,7 @@
         <div class="table-wrap">
           <t-table :data="logs" :columns="logColumns" :loading="logsLoading" row-key="id" stripe size="small">
             <template #status="{ row }">
-              <t-tag :theme="row.status === 'success' ? 'success' : 'danger'" variant="light" size="small">{{ row.status }}</t-tag>
+              <t-tag :theme="row.status === 'success' ? 'success' : 'danger'" variant="light" size="small">{{ row.status === 'success' ? '成功' : '失败' }}</t-tag>
             </template>
             <template #duration="{ row }">{{ row.duration }}s</template>
           </t-table>
