@@ -73,8 +73,10 @@
       v-model:visible="editVisible"
       :header="`编辑配置 — ${editName}`"
       width="800px"
+      placement="center"
       :close-on-overlay-click="false"
       :confirm-btn="{ content: '保存并验证', loading: saving }"
+      class="code-editor-dialog"
       @confirm="saveConfig"
       @closed="destroyEditor"
     >
@@ -264,8 +266,6 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy() })
 .code-editor {
   height: 60vh;
   overflow: auto;
-  border: 1px solid var(--sh-border);
-  border-radius: 4px;
   font-size: 13px;
 }
 

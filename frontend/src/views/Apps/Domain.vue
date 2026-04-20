@@ -108,8 +108,10 @@
       v-model:visible="editVisible"
       :header="`编辑配置 — ${editName}`"
       width="800px"
+      placement="center"
       :close-on-overlay-click="false"
       :confirm-btn="{ content: '保存并验证', loading: saving }"
+      class="code-editor-dialog"
       @confirm="saveConfig"
       @closed="destroyEditor"
     >
@@ -398,7 +400,7 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy(); certWs?.close() })
 :deep(.t-table td) {
   font-size: 13px;
 }
-.code-editor { height: 60vh; overflow: auto; border: 1px solid var(--sh-border); border-radius: 4px; font-size: 13px; }
+.code-editor { height: 60vh; overflow: auto; font-size: 13px; }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
 .logs-terminal { width: 100%; height: calc(100vh - 240px); background: #1a2332; border-radius: 4px; overflow: hidden; margin-top: 12px; }

@@ -1,1 +1,0 @@
-import{Q as f,r as t}from"./vendor-vue-DSv01b-N.js";import{g as u}from"./servers-Dw2YUpjG.js";const v=f("server",()=>{const e=t([]),r=t(!1);async function a(){r.value=!0;try{e.value=await u()}finally{r.value=!1}}function s(n){return e.value.find(o=>o.id===n)}return{servers:e,loading:r,fetch:a,getById:s}});export{v as u};

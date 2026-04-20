@@ -235,18 +235,25 @@ html, body, #app {
 }
 
 /* Dialog */
+.t-dialog__position.t-dialog--top {
+  padding-top: 8vh !important;
+}
 .t-dialog__header {
   font-size: 15px !important;
   font-weight: 600 !important;
-  padding: 18px 24px 14px !important;
+  padding: 14px 24px !important;
 }
 .t-dialog__body {
-  padding: 4px 24px 20px !important;
+  padding: 8px 24px 20px !important;
   font-size: 13px !important;
 }
 .t-dialog__footer {
-  padding: 12px 24px 18px !important;
+  padding: 12px 24px !important;
   border-top: 1px solid var(--sh-border) !important;
+}
+/* Code editor dialogs — flush editor with no padding */
+.code-editor-dialog .t-dialog__body {
+  padding: 0 !important;
 }
 
 /* Drawer */
