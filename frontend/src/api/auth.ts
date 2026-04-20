@@ -21,6 +21,14 @@ export function totpDisable() {
   return request.post('/auth/totp/disable')
 }
 
+export function updateProfile(oldPassword: string, newUsername?: string, newPassword?: string) {
+  return request.put<never, User>('/auth/profile', {
+    old_password: oldPassword,
+    new_username: newUsername || undefined,
+    new_password: newPassword || undefined,
+  })
+}
+
 export function logout() {
   return request.post('/auth/logout')
 }

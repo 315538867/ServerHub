@@ -123,6 +123,8 @@
 
     </t-layout>
   </t-layout>
+
+  <ChangeProfile v-model:visible="profileDialogVisible" />
 </template>
 
 <script setup lang="ts">
@@ -135,6 +137,7 @@ import {
   DashboardIcon, AddIcon, ServerIcon, NotificationIcon, SettingIcon,
   SwapIcon, ChevronRightIcon, ChevronDownIcon,
 } from 'tdesign-icons-vue-next'
+import ChangeProfile from '@/views/Profile/ChangeProfile.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -208,10 +211,16 @@ const breadcrumbs = computed(() => {
   return topLabels[path] ? [{ label: topLabels[path], path: '' }] : []
 })
 
-const userMenuOptions = [{ content: '退出登录', value: 'logout' }]
+const profileDialogVisible = ref(false)
+const userMenuOptions = [
+  { content: '账号设置', value: 'profile' },
+  { content: '退出登录', value: 'logout' },
+]
 
 function onUserMenu(item: { value: string }) {
-  if (item.value === 'logout') {
+  if (item.value === 'profile') {
+    profileDialogVisible.value = true
+  } else if (item.value === 'logout') {
     authStore.logout()
     router.push('/login')
   }
