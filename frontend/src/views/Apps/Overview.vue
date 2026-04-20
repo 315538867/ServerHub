@@ -79,7 +79,7 @@
         <span class="title-text">快捷操作</span>
       </div>
       <div class="actions-wrap">
-        <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/servers/${server.id}/terminal`)">打开终端</t-button>
+        <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/apps/${appId}/terminal`)">打开终端</t-button>
         <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/servers/${server.id}/files`)">文件管理</t-button>
         <t-button theme="danger" variant="outline" size="small" @click="handleDelete">删除应用</t-button>
       </div>

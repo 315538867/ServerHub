@@ -33,6 +33,7 @@ const router = createRouter({
             { path: 'logs', name: 'AppLogs', component: () => import('@/views/Apps/Logs.vue') },
             { path: 'database', name: 'AppDatabase', component: () => import('@/views/Apps/Database.vue') },
             { path: 'env', name: 'AppEnv', component: () => import('@/views/Apps/Env.vue') },
+            { path: 'terminal', name: 'AppTerminal', component: () => import('@/views/Apps/Terminal.vue') },
           ],
         },
 

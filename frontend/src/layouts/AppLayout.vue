@@ -18,7 +18,7 @@
     </div>
 
     <!-- 内容区 -->
-    <div class="al-content">
+    <div class="al-content" :class="{ 'al-content--terminal': activeTab === 'terminal' }">
       <router-view />
     </div>
   </div>
@@ -62,6 +62,7 @@ const tabs = computed(() => {
     { value: 'logs',     label: '日志' },
     { value: 'database', label: '数据库' },
     { value: 'env',      label: '环境变量' },
+    { value: 'terminal', label: '终端' },
   ]
 })
 
@@ -103,4 +104,5 @@ onMounted(async () => {
 .al-tabs :deep(.t-tabs__nav) { border-bottom: none; }
 
 .al-content { flex: 1; overflow-y: auto; padding: var(--sh-space-sm) var(--sh-space-lg); }
+.al-content--terminal { padding: 0; overflow: hidden; }
 </style>
