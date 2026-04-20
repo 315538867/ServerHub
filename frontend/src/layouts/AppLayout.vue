@@ -51,16 +51,19 @@ const statusLabel = computed(() => {
   return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string,string>)[s] ?? s
 })
 
-const tabs = [
-  { value: 'overview', label: '概览' },
-  { value: 'nginx',    label: '路由配置' },
-  { value: 'domain',   label: '域名' },
-  { value: 'service',  label: '服务' },
-  { value: 'deploy',   label: '部署' },
-  { value: 'logs',     label: '日志' },
-  { value: 'database', label: '数据库' },
-  { value: 'env',      label: '环境变量' },
-]
+const tabs = computed(() => {
+  const a = app.value
+  return [
+    { value: 'overview', label: '概览' },
+    ...(a?.expose_mode && a.expose_mode !== 'none' ? [{ value: 'nginx', label: '路由配置' }] : []),
+    ...(a?.site_name ? [{ value: 'domain', label: '域名' }] : []),
+    ...(a?.container_name ? [{ value: 'service', label: '服务' }] : []),
+    { value: 'deploy',   label: '部署' },
+    { value: 'logs',     label: '日志' },
+    { value: 'database', label: '数据库' },
+    { value: 'env',      label: '环境变量' },
+  ]
+})
 
 function onTabChange(val: string | number) {
   router.push(`/apps/${appId.value}/${val}`)

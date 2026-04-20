@@ -44,6 +44,7 @@
             <div class="form-field">
               <label class="form-label">Docker 容器名</label>
               <t-input v-model="form.container_name" placeholder="关联的容器名（可选）" />
+              <span class="form-hint">填写后开启「服务」Tab，用于管理 Docker 容器</span>
             </div>
           </div>
         </div>
@@ -55,6 +56,7 @@
             <div class="form-field">
               <label class="form-label">Nginx 站点</label>
               <t-input v-model="form.site_name" placeholder="conf.d 中的配置文件名（可选）" />
+              <span class="form-hint">填写后开启「域名」Tab，用于管理对应的 Nginx 站点配置</span>
             </div>
             <div class="form-field">
               <label class="form-label">应用基础目录</label>
@@ -68,7 +70,9 @@
                 <t-radio-button value="path">路径转发</t-radio-button>
                 <t-radio-button value="site">独立站点</t-radio-button>
               </t-radio-group>
-              <span class="form-hint">创建后可在「路由配置」Tab 中详细设置</span>
+              <span v-if="form.expose_mode === 'none'" class="form-hint">不通过 Nginx 暴露，「路由配置」Tab 将隐藏</span>
+              <span v-else-if="form.expose_mode === 'path'" class="form-hint">将应用路径反代到已有 Nginx，创建后在「路由配置」Tab 配置路由</span>
+              <span v-else class="form-hint">为应用创建独立 Nginx 站点，需填写域名；创建后在「路由配置」Tab 配置路由</span>
             </div>
           </div>
         </div>
