@@ -202,6 +202,7 @@
 
       <!-- S2: 操作台 -->
       <div class="section-block">
+        <div class="section-title">
           <span>操作台</span>
           <t-space v-if="!running" size="small">
             <t-button theme="primary" size="small" @click="doRun('run')">立即部署</t-button>
