@@ -2,45 +2,43 @@
   <div class="service-page">
     <template v-if="app?.container_name && app?.server_id">
       <div class="page-toolbar">
-        <el-button :icon="Refresh" :loading="loading" @click="loadContainers">刷新</el-button>
+        <t-button variant="outline" :loading="loading" @click="loadContainers">
+          <template #icon><refresh-icon /></template>
+          刷新
+        </t-button>
       </div>
-      <el-table :data="containers" v-loading="loading" style="width:100%">
-        <el-table-column label="名称" prop="names" min-width="140" show-overflow-tooltip />
-        <el-table-column label="镜像" prop="image" min-width="160" show-overflow-tooltip />
-        <el-table-column label="状态" width="110">
-          <template #default="{ row }">
-            <el-tag :type="stateTag(row.state)" size="small">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="端口" prop="ports" min-width="160" show-overflow-tooltip />
-        <el-table-column label="操作" width="260" fixed="right">
-          <template #default="{ row }">
-            <el-button v-if="row.state !== 'running'" size="small" type="success" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</el-button>
-            <el-button v-if="row.state === 'running'" size="small" type="warning" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</el-button>
-            <el-button size="small" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</el-button>
-            <el-button size="small" @click="openLogs(row)">日志</el-button>
-            <el-button size="small" @click="openInspect(row)">详情</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <t-table :data="containers" :columns="containerColumns" :loading="loading" row-key="id" stripe>
+        <template #status="{ row }">
+          <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ row.status }}</t-tag>
+        </template>
+        <template #operations="{ row }">
+          <t-space size="small">
+            <t-button v-if="row.state !== 'running'" theme="success" size="small" variant="text" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</t-button>
+            <t-button v-if="row.state === 'running'" theme="warning" size="small" variant="text" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</t-button>
+            <t-button size="small" variant="text" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</t-button>
+            <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
+            <t-button size="small" variant="text" @click="openInspect(row)">详情</t-button>
+          </t-space>
+        </template>
+      </t-table>
     </template>
-    <el-empty v-else description="该应用未关联 Docker 容器，请先在应用设置中配置 container_name" />
+    <t-empty v-else description="该应用未关联 Docker 容器，请先在应用设置中配置 container_name" />
 
-    <el-drawer v-model="logsVisible" :title="`容器日志 — ${logsContainer}`" size="60%" direction="rtl" @closed="onLogsClosed">
+    <t-drawer v-model:visible="logsVisible" :header="`容器日志 — ${logsContainer}`" size="60%" @closed="onLogsClosed">
       <div ref="logsEl" class="logs-terminal" />
-    </el-drawer>
+    </t-drawer>
 
-    <el-dialog v-model="inspectVisible" title="容器详情" width="720px" top="5vh">
+    <t-dialog v-model:visible="inspectVisible" header="容器详情" width="720px" :footer="false">
       <pre class="inspect-json">{{ inspectJson }}</pre>
-    </el-dialog>
+    </t-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import { Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { RefreshIcon } from 'tdesign-icons-vue-next'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -60,6 +58,14 @@ const containers = ref<ContainerItem[]>([])
 const loading = ref(false)
 const actionLoading = ref('')
 
+const containerColumns = [
+  { colKey: 'names', title: '名称', minWidth: 140, ellipsis: true },
+  { colKey: 'image', title: '镜像', minWidth: 160, ellipsis: true },
+  { colKey: 'status', title: '状态', width: 110 },
+  { colKey: 'ports', title: '端口', minWidth: 160, ellipsis: true },
+  { colKey: 'operations', title: '操作', width: 260, fixed: 'right' as const },
+]
+
 const logsVisible = ref(false)
 const logsContainer = ref('')
 const logsEl = ref<HTMLDivElement>()
@@ -69,8 +75,8 @@ let logsWs: WebSocket | null = null
 const inspectVisible = ref(false)
 const inspectJson = ref('')
 
-function stateTag(state: string) {
-  return ({ running: 'success', paused: 'warning', exited: 'info' } as Record<string, string>)[state] ?? 'danger'
+function stateTheme(state: string) {
+  return ({ running: 'success', paused: 'warning', exited: 'default' } as Record<string, string>)[state] ?? 'danger'
 }
 
 async function loadContainers() {
@@ -85,9 +91,9 @@ async function doAction(row: ContainerItem, action: 'start' | 'stop' | 'restart'
   actionLoading.value = key
   try {
     await containerAction(serverId.value, row.id, action)
-    ElMessage.success('操作成功')
+    MessagePlugin.success('操作成功')
     await loadContainers()
-  } catch { ElMessage.error('操作失败') }
+  } catch { MessagePlugin.error('操作失败') }
   finally { actionLoading.value = '' }
 }
 
@@ -97,7 +103,7 @@ function openLogs(row: ContainerItem) {
   nextTick(() => {
     if (!logsEl.value) return
     logsTerm?.dispose()
-    logsTerm = new Terminal({ theme: { background: '#1a1a2e' }, convertEol: true, fontSize: 13 })
+    logsTerm = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
     const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
     logsWs?.close()
     logsWs = new WebSocket(containerLogsWsUrl(serverId.value, row.id, auth.token))
@@ -119,7 +125,7 @@ async function openInspect(row: ContainerItem) {
     }
     inspectJson.value = JSON.stringify(arr[0] ?? data, null, 2)
     inspectVisible.value = true
-  } catch { ElMessage.error('获取详情失败') }
+  } catch { MessagePlugin.error('获取详情失败') }
 }
 
 onMounted(async () => {
@@ -132,6 +138,6 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose() })
 <style scoped>
 .service-page { padding: 4px 0; }
 .page-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
-.logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a1a2e; border-radius: 4px; overflow: hidden; }
-.inspect-json { background: #f5f7fa; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 70vh; margin: 0; white-space: pre-wrap; word-break: break-all; }
+.logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a2332; border-radius: 4px; overflow: hidden; }
+.inspect-json { background: var(--td-bg-color-secondarycontainer); border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 70vh; margin: 0; white-space: pre-wrap; word-break: break-all; }
 </style>

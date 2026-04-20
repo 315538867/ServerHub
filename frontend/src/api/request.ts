@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { ElMessage } from 'element-plus'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { useAuthStore } from '@/stores/auth'
 import router from '@/router'
 
@@ -20,7 +20,7 @@ instance.interceptors.response.use(
   (res) => {
     const data = res.data as { code: number; msg: string; data: unknown }
     if (data.code !== 0) {
-      ElMessage.error(data.msg || 'request failed')
+      MessagePlugin.error(data.msg || 'request failed')
       return Promise.reject(data)
     }
     return data.data as never
@@ -31,7 +31,7 @@ instance.interceptors.response.use(
       const isAuthEndpoint = url.includes('/auth/')
       if (isAuthEndpoint) {
         // 登录/验证接口：显示具体错误
-        ElMessage.error(err.response?.data?.msg || '用户名或密码错误')
+        MessagePlugin.error(err.response?.data?.msg || '用户名或密码错误')
       } else {
         // 其他接口 401：Token 过期，登出并跳转
         const authStore = useAuthStore()
@@ -39,7 +39,7 @@ instance.interceptors.response.use(
         router.push('/login')
       }
     } else {
-      ElMessage.error(err.response?.data?.msg || '网络错误')
+      MessagePlugin.error(err.response?.data?.msg || '网络错误')
     }
     return Promise.reject(err)
   },

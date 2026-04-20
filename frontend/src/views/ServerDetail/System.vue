@@ -1,159 +1,144 @@
 <template>
   <div class="system-page">
     <div class="page-toolbar">
-      <el-button :icon="Refresh" :loading="loading" @click="refreshAll">刷新</el-button>
+      <t-button variant="outline" :loading="loading" @click="refreshAll">
+        <template #icon><refresh-icon /></template>
+        刷新
+      </t-button>
     </div>
 
-    <el-tabs v-model="activeTab" @tab-change="onTabChange">
-      <el-tab-pane label="防火墙" name="firewall">
+    <t-tabs :value="activeTab" @change="val => { activeTab = val as string; onTabChange(val as string) }">
+      <t-tab-panel value="firewall" label="防火墙">
         <div class="tab-toolbar">
-          <el-tag type="info" v-if="firewallType">{{ firewallType }}</el-tag>
-          <el-button type="primary" size="small" @click="openAddRule">添加规则</el-button>
+          <t-tag v-if="firewallType" theme="default" variant="light">{{ firewallType }}</t-tag>
+          <t-button theme="primary" size="small" @click="openAddRule">添加规则</t-button>
         </div>
-        <el-table :data="firewallRules" v-loading="loading" style="width:100%">
-          <el-table-column label="#" prop="index" width="60" />
-          <el-table-column label="规则" prop="rule" min-width="280" show-overflow-tooltip />
-          <el-table-column label="操作" width="80" fixed="right">
-            <template #default="{ row }">
-              <el-popconfirm title="确认删除该规则？" @confirm="delRule(row)">
-                <template #reference>
-                  <el-button size="small" type="danger">删除</el-button>
-                </template>
-              </el-popconfirm>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
+        <t-table :data="firewallRules" :columns="fwColumns" :loading="loading" row-key="index" stripe>
+          <template #operations="{ row }">
+            <t-popconfirm content="确认删除该规则？" @confirm="delRule(row)">
+              <t-button theme="danger" size="small" variant="text">删除</t-button>
+            </t-popconfirm>
+          </template>
+        </t-table>
+      </t-tab-panel>
 
-      <el-tab-pane label="Cron 任务" name="cron">
+      <t-tab-panel value="cron" label="Cron 任务">
         <div class="tab-toolbar">
-          <el-button type="primary" size="small" @click="openCronAdd">添加任务</el-button>
+          <t-button theme="primary" size="small" @click="openCronAdd">添加任务</t-button>
         </div>
-        <el-table :data="cronJobs" v-loading="loading" style="width:100%">
-          <el-table-column label="Cron 表达式" prop="expr" width="160" />
-          <el-table-column label="命令" prop="cmd" min-width="260" show-overflow-tooltip />
-          <el-table-column label="操作" width="140" fixed="right">
-            <template #default="{ row }">
-              <el-button size="small" @click="openCronEdit(row)">编辑</el-button>
-              <el-popconfirm title="确认删除该任务？" @confirm="delCron(row)">
-                <template #reference>
-                  <el-button size="small" type="danger">删除</el-button>
-                </template>
-              </el-popconfirm>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
+        <t-table :data="cronJobs" :columns="cronColumns" :loading="loading" row-key="index" stripe>
+          <template #operations="{ row }">
+            <t-space size="small">
+              <t-button size="small" variant="text" @click="openCronEdit(row)">编辑</t-button>
+              <t-popconfirm content="确认删除该任务？" @confirm="delCron(row)">
+                <t-button theme="danger" size="small" variant="text">删除</t-button>
+              </t-popconfirm>
+            </t-space>
+          </template>
+        </t-table>
+      </t-tab-panel>
 
-      <el-tab-pane label="进程" name="processes">
+      <t-tab-panel value="processes" label="进程">
         <div class="tab-toolbar">
-          <el-button size="small" :icon="Refresh" @click="loadProcesses">刷新</el-button>
+          <t-button size="small" variant="outline" @click="loadProcesses">
+            <template #icon><refresh-icon /></template>
+            刷新
+          </t-button>
         </div>
-        <el-table :data="processes" v-loading="procLoading" style="width:100%">
-          <el-table-column label="PID" prop="pid" width="80" />
-          <el-table-column label="用户" prop="user" width="100" />
-          <el-table-column label="CPU%" width="80">
-            <template #default="{ row }">{{ row.cpu.toFixed(1) }}%</template>
-          </el-table-column>
-          <el-table-column label="内存%" width="80">
-            <template #default="{ row }">{{ row.mem.toFixed(1) }}%</template>
-          </el-table-column>
-          <el-table-column label="命令" prop="command" min-width="240" show-overflow-tooltip />
-          <el-table-column label="操作" width="80" fixed="right">
-            <template #default="{ row }">
-              <el-popconfirm :title="`确认 kill -9 PID ${row.pid}？`" @confirm="killProc(row)">
-                <template #reference>
-                  <el-button size="small" type="danger">Kill</el-button>
-                </template>
-              </el-popconfirm>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
+        <t-table :data="processes" :columns="procColumns" :loading="procLoading" row-key="pid" stripe>
+          <template #cpu="{ row }">{{ row.cpu.toFixed(1) }}%</template>
+          <template #mem="{ row }">{{ row.mem.toFixed(1) }}%</template>
+          <template #operations="{ row }">
+            <t-popconfirm :content="`确认 kill -9 PID ${row.pid}？`" @confirm="killProc(row)">
+              <t-button theme="danger" size="small" variant="text">Kill</t-button>
+            </t-popconfirm>
+          </template>
+        </t-table>
+      </t-tab-panel>
 
-      <el-tab-pane label="系统服务" name="services">
+      <t-tab-panel value="services" label="系统服务">
         <div class="tab-toolbar">
-          <el-input v-model="svcFilter" placeholder="过滤服务名" style="width:200px" clearable />
-          <el-button size="small" :icon="Refresh" @click="loadServices">刷新</el-button>
+          <t-input v-model="svcFilter" placeholder="过滤服务名" style="width:200px" clearable />
+          <t-button size="small" variant="outline" @click="loadServices">
+            <template #icon><refresh-icon /></template>
+          </t-button>
         </div>
-        <el-table :data="filteredServices" v-loading="svcLoading" style="width:100%">
-          <el-table-column label="服务名" prop="unit" min-width="220" show-overflow-tooltip />
-          <el-table-column label="状态" width="90">
-            <template #default="{ row }">
-              <el-tag :type="activeTag(row.active)" size="small">{{ row.active }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="自启" width="70">
-            <template #default="{ row }">
-              <el-tag :type="row.load === 'loaded' ? 'success' : 'info'" size="small">{{ row.load }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="说明" prop="description" min-width="180" show-overflow-tooltip />
-          <el-table-column label="操作" width="280" fixed="right">
-            <template #default="{ row }">
-              <el-button size="small" type="success" @click="svcAction(row, 'start')">启动</el-button>
-              <el-button size="small" type="warning" @click="svcAction(row, 'stop')">停止</el-button>
-              <el-button size="small" @click="svcAction(row, 'restart')">重启</el-button>
-              <el-button size="small" @click="openSvcLogs(row)">日志</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-    </el-tabs>
+        <t-table :data="filteredServices" :columns="svcColumns" :loading="svcLoading" row-key="unit" stripe>
+          <template #active="{ row }">
+            <t-tag :theme="activeTheme(row.active)" variant="light" size="small">{{ row.active }}</t-tag>
+          </template>
+          <template #load="{ row }">
+            <t-tag :theme="row.load === 'loaded' ? 'success' : 'default'" variant="light" size="small">{{ row.load }}</t-tag>
+          </template>
+          <template #operations="{ row }">
+            <t-space size="small">
+              <t-button theme="success" size="small" variant="text" @click="svcAction(row, 'start')">启动</t-button>
+              <t-button theme="warning" size="small" variant="text" @click="svcAction(row, 'stop')">停止</t-button>
+              <t-button size="small" variant="text" @click="svcAction(row, 'restart')">重启</t-button>
+              <t-button size="small" variant="text" @click="openSvcLogs(row)">日志</t-button>
+            </t-space>
+          </template>
+        </t-table>
+      </t-tab-panel>
+    </t-tabs>
 
-    <el-dialog v-model="ruleVisible" title="添加防火墙规则" width="440px">
-      <el-form :model="ruleForm" label-width="80px">
-        <el-form-item label="端口">
-          <el-input v-model="ruleForm.port" placeholder="如 80 或 8000:8100" />
-        </el-form-item>
-        <el-form-item label="协议">
-          <el-select v-model="ruleForm.proto">
-            <el-option label="tcp" value="tcp" />
-            <el-option label="udp" value="udp" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="动作">
-          <el-select v-model="ruleForm.action">
-            <el-option label="允许 (allow)" value="allow" />
-            <el-option label="拒绝 (deny)" value="deny" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="来源 IP">
-          <el-input v-model="ruleForm.from" placeholder="留空表示 Anywhere" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="ruleVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmAddRule">添加</el-button>
-      </template>
-    </el-dialog>
+    <t-dialog
+      v-model:visible="ruleVisible"
+      header="添加防火墙规则"
+      width="440px"
+      confirm-btn="添加"
+      @confirm="confirmAddRule"
+    >
+      <t-form :data="ruleForm" label-width="80px" colon>
+        <t-form-item label="端口">
+          <t-input v-model="ruleForm.port" placeholder="如 80 或 8000:8100" />
+        </t-form-item>
+        <t-form-item label="协议">
+          <t-select v-model="ruleForm.proto" style="width:100%">
+            <t-option label="tcp" value="tcp" />
+            <t-option label="udp" value="udp" />
+          </t-select>
+        </t-form-item>
+        <t-form-item label="动作">
+          <t-select v-model="ruleForm.action" style="width:100%">
+            <t-option label="允许 (allow)" value="allow" />
+            <t-option label="拒绝 (deny)" value="deny" />
+          </t-select>
+        </t-form-item>
+        <t-form-item label="来源 IP">
+          <t-input v-model="ruleForm.from" placeholder="留空表示 Anywhere" />
+        </t-form-item>
+      </t-form>
+    </t-dialog>
 
-    <el-dialog v-model="cronVisible" :title="cronEditIndex === -1 ? '添加 Cron 任务' : '编辑 Cron 任务'" width="480px">
-      <el-form :model="cronForm" label-width="100px">
-        <el-form-item label="Cron 表达式">
-          <el-input v-model="cronForm.expr" placeholder="*/5 * * * *" />
-        </el-form-item>
-        <el-form-item label="执行命令">
-          <el-input v-model="cronForm.cmd" placeholder="/path/to/script.sh" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="cronVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmCron">保存</el-button>
-      </template>
-    </el-dialog>
+    <t-dialog
+      v-model:visible="cronVisible"
+      :header="cronEditIndex === -1 ? '添加 Cron 任务' : '编辑 Cron 任务'"
+      width="480px"
+      confirm-btn="保存"
+      @confirm="confirmCron"
+    >
+      <t-form :data="cronForm" label-width="100px" colon>
+        <t-form-item label="Cron 表达式">
+          <t-input v-model="cronForm.expr" placeholder="*/5 * * * *" />
+        </t-form-item>
+        <t-form-item label="执行命令">
+          <t-input v-model="cronForm.cmd" placeholder="/path/to/script.sh" />
+        </t-form-item>
+      </t-form>
+    </t-dialog>
 
-    <el-drawer v-model="svcLogsVisible" :title="`服务日志 — ${svcLogsName}`" size="60%" direction="rtl" @closed="onSvcLogsClosed">
+    <t-drawer v-model:visible="svcLogsVisible" :header="`服务日志 — ${svcLogsName}`" size="60%" @close="onSvcLogsClosed">
       <div ref="svcLogsEl" class="logs-terminal" />
-    </el-drawer>
+    </t-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import { Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { RefreshIcon } from 'tdesign-icons-vue-next'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -186,8 +171,34 @@ const filteredServices = computed(() =>
     : services.value
 )
 
-function activeTag(active: string) {
-  return ({ active: 'success', failed: 'danger', inactive: 'info' } as Record<string, string>)[active] ?? 'warning'
+const fwColumns = [
+  { colKey: 'index', title: '#', width: 60 },
+  { colKey: 'rule', title: '规则', minWidth: 280, ellipsis: true },
+  { colKey: 'operations', title: '操作', width: 80, fixed: 'right' as const },
+]
+const cronColumns = [
+  { colKey: 'expr', title: 'Cron 表达式', width: 160 },
+  { colKey: 'cmd', title: '命令', minWidth: 260, ellipsis: true },
+  { colKey: 'operations', title: '操作', width: 140, fixed: 'right' as const },
+]
+const procColumns = [
+  { colKey: 'pid', title: 'PID', width: 80 },
+  { colKey: 'user', title: '用户', width: 100 },
+  { colKey: 'cpu', title: 'CPU%', width: 80 },
+  { colKey: 'mem', title: '内存%', width: 80 },
+  { colKey: 'command', title: '命令', minWidth: 240, ellipsis: true },
+  { colKey: 'operations', title: '操作', width: 80, fixed: 'right' as const },
+]
+const svcColumns = [
+  { colKey: 'unit', title: '服务名', minWidth: 220, ellipsis: true },
+  { colKey: 'active', title: '状态', width: 90 },
+  { colKey: 'load', title: '自启', width: 70 },
+  { colKey: 'description', title: '说明', minWidth: 180, ellipsis: true },
+  { colKey: 'operations', title: '操作', width: 260, fixed: 'right' as const },
+]
+
+function activeTheme(active: string) {
+  return ({ active: 'success', failed: 'danger', inactive: 'default' } as Record<string, string>)[active] ?? 'warning'
 }
 
 async function onTabChange(tab: string) {
@@ -215,46 +226,35 @@ async function loadFirewall() {
 
 async function loadCron() {
   loading.value = true
-  try { cronJobs.value = await getCronJobs(serverId.value) }
-  finally { loading.value = false }
+  try { cronJobs.value = await getCronJobs(serverId.value) } finally { loading.value = false }
 }
 
 async function loadProcesses() {
   procLoading.value = true
-  try { processes.value = await getProcesses(serverId.value) }
-  finally { procLoading.value = false }
+  try { processes.value = await getProcesses(serverId.value) } finally { procLoading.value = false }
 }
 
 async function loadServices() {
   svcLoading.value = true
-  try { services.value = await getServices(serverId.value) }
-  finally { svcLoading.value = false }
+  try { services.value = await getServices(serverId.value) } finally { svcLoading.value = false }
 }
 
 const ruleVisible = ref(false)
 const ruleForm = ref({ port: '', proto: 'tcp', action: 'allow', from: '' })
 
-function openAddRule() {
-  ruleForm.value = { port: '', proto: 'tcp', action: 'allow', from: '' }
-  ruleVisible.value = true
-}
+function openAddRule() { ruleForm.value = { port: '', proto: 'tcp', action: 'allow', from: '' }; ruleVisible.value = true }
 
 async function confirmAddRule() {
   if (!ruleForm.value.port) return
   try {
     await addFirewallRule(serverId.value, ruleForm.value)
-    ElMessage.success('规则已添加')
-    ruleVisible.value = false
-    await loadFirewall()
-  } catch { ElMessage.error('添加失败') }
+    MessagePlugin.success('规则已添加'); ruleVisible.value = false; await loadFirewall()
+  } catch { MessagePlugin.error('添加失败') }
 }
 
 async function delRule(row: FirewallRule) {
-  try {
-    await deleteFirewallRule(serverId.value, String(row.index))
-    ElMessage.success('规则已删除')
-    await loadFirewall()
-  } catch { ElMessage.error('删除失败') }
+  try { await deleteFirewallRule(serverId.value, String(row.index)); MessagePlugin.success('规则已删除'); await loadFirewall() }
+  catch { MessagePlugin.error('删除失败') }
 }
 
 const cronVisible = ref(false)
@@ -264,46 +264,30 @@ const cronForm = ref({ expr: '', cmd: '' })
 function openCronAdd() { cronEditIndex.value = -1; cronForm.value = { expr: '', cmd: '' }; cronVisible.value = true }
 
 function openCronEdit(row: CronJob) {
-  cronEditIndex.value = row.index
-  cronForm.value = { expr: row.expr, cmd: row.cmd }
-  cronVisible.value = true
+  cronEditIndex.value = row.index; cronForm.value = { expr: row.expr, cmd: row.cmd }; cronVisible.value = true
 }
 
 async function confirmCron() {
   try {
-    if (cronEditIndex.value === -1) {
-      await addCronJob(serverId.value, cronForm.value.expr, cronForm.value.cmd)
-    } else {
-      await updateCronJob(serverId.value, cronEditIndex.value, cronForm.value.expr, cronForm.value.cmd)
-    }
-    ElMessage.success('保存成功')
-    cronVisible.value = false
-    await loadCron()
-  } catch { ElMessage.error('保存失败') }
+    if (cronEditIndex.value === -1) await addCronJob(serverId.value, cronForm.value.expr, cronForm.value.cmd)
+    else await updateCronJob(serverId.value, cronEditIndex.value, cronForm.value.expr, cronForm.value.cmd)
+    MessagePlugin.success('保存成功'); cronVisible.value = false; await loadCron()
+  } catch { MessagePlugin.error('保存失败') }
 }
 
 async function delCron(row: CronJob) {
-  try {
-    await deleteCronJob(serverId.value, row.index)
-    ElMessage.success('已删除')
-    await loadCron()
-  } catch { ElMessage.error('删除失败') }
+  try { await deleteCronJob(serverId.value, row.index); MessagePlugin.success('已删除'); await loadCron() }
+  catch { MessagePlugin.error('删除失败') }
 }
 
 async function killProc(row: ProcessItem) {
-  try {
-    await killProcess(serverId.value, row.pid)
-    ElMessage.success(`PID ${row.pid} 已终止`)
-    await loadProcesses()
-  } catch { ElMessage.error('Kill 失败') }
+  try { await killProcess(serverId.value, row.pid); MessagePlugin.success(`PID ${row.pid} 已终止`); await loadProcesses() }
+  catch { MessagePlugin.error('Kill 失败') }
 }
 
 async function svcAction(row: ServiceItem, action: string) {
-  try {
-    await serviceAction(serverId.value, row.unit, action)
-    ElMessage.success('操作成功')
-    await loadServices()
-  } catch { ElMessage.error('操作失败') }
+  try { await serviceAction(serverId.value, row.unit, action); MessagePlugin.success('操作成功'); await loadServices() }
+  catch { MessagePlugin.error('操作失败') }
 }
 
 const svcLogsVisible = ref(false)
@@ -313,26 +297,20 @@ let svcLogsTerm: Terminal | null = null
 let svcLogsWs: WebSocket | null = null
 
 function openSvcLogs(row: ServiceItem) {
-  svcLogsName.value = row.unit
-  svcLogsVisible.value = true
+  svcLogsName.value = row.unit; svcLogsVisible.value = true
   nextTick(() => initSvcLogs(row.unit))
 }
 
 function initSvcLogs(unit: string) {
   if (!svcLogsEl.value) return
   svcLogsTerm?.dispose()
-  svcLogsTerm = new Terminal({ theme: { background: '#1a1a2e' }, convertEol: true, fontSize: 13 })
+  svcLogsTerm = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
   const fit = new FitAddon()
-  svcLogsTerm.loadAddon(fit)
-  svcLogsTerm.open(svcLogsEl.value)
-  fit.fit()
+  svcLogsTerm.loadAddon(fit); svcLogsTerm.open(svcLogsEl.value); fit.fit()
   svcLogsWs?.close()
   svcLogsWs = new WebSocket(serviceLogsWsUrl(serverId.value, unit, auth.token))
   svcLogsWs.onmessage = (e) => {
-    try {
-      const msg = JSON.parse(e.data)
-      if (msg.type === 'output') svcLogsTerm?.writeln(msg.data)
-    } catch { /* ignore */ }
+    try { const msg = JSON.parse(e.data); if (msg.type === 'output') svcLogsTerm?.writeln(msg.data) } catch { /* ignore */ }
   }
 }
 
@@ -343,8 +321,8 @@ onBeforeUnmount(() => { svcLogsWs?.close(); svcLogsTerm?.dispose() })
 </script>
 
 <style scoped>
-.system-page { padding: 20px; }
-.page-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
-.tab-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-.logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a1a2e; border-radius: 4px; overflow: hidden; }
+.system-page { padding: 4px 0; }
+.page-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+.tab-toolbar { display: flex; gap: 8px; align-items: center; margin: 12px 0; }
+.logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a2332; border-radius: 4px; overflow: hidden; }
 </style>

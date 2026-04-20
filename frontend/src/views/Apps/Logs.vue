@@ -1,22 +1,25 @@
 <template>
   <div class="logs-page">
     <div class="page-toolbar">
-      <el-radio-group v-model="activeSource" size="small" @change="switchSource">
-        <el-radio-button v-if="app?.container_name" value="container">容器日志</el-radio-button>
-        <el-radio-button v-if="app?.site_name" value="nginx_access">Nginx 访问</el-radio-button>
-        <el-radio-button v-if="app?.site_name" value="nginx_error">Nginx 错误</el-radio-button>
-      </el-radio-group>
-      <el-button size="small" :icon="Refresh" @click="reconnect">重连</el-button>
+      <t-radio-group v-model="activeSource" @change="switchSource">
+        <t-radio-button v-if="app?.container_name" value="container">容器日志</t-radio-button>
+        <t-radio-button v-if="app?.site_name" value="nginx_access">Nginx 访问</t-radio-button>
+        <t-radio-button v-if="app?.site_name" value="nginx_error">Nginx 错误</t-radio-button>
+      </t-radio-group>
+      <t-button size="small" variant="outline" @click="reconnect">
+        <template #icon><refresh-icon /></template>
+        重连
+      </t-button>
     </div>
     <div v-if="activeSource" ref="logsEl" class="logs-terminal" />
-    <el-empty v-else description="该应用未关联容器或 Nginx 站点，无日志可查看" />
+    <t-empty v-else description="该应用未关联容器或 Nginx 站点，无日志可查看" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Refresh } from '@element-plus/icons-vue'
+import { RefreshIcon } from 'tdesign-icons-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -47,7 +50,7 @@ function defaultSource() {
 async function startStream() {
   if (!logsEl.value || !serverId.value || !activeSource.value) return
   term?.dispose()
-  term = new Terminal({ theme: { background: '#1a1a2e' }, convertEol: true, fontSize: 13 })
+  term = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
   const fit = new FitAddon(); term.loadAddon(fit); term.open(logsEl.value); fit.fit()
   ws?.close()
 
@@ -95,5 +98,5 @@ onBeforeUnmount(() => cleanup())
 <style scoped>
 .logs-page { padding: 4px 0; display: flex; flex-direction: column; height: 100%; }
 .page-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
-.logs-terminal { flex: 1; min-height: 400px; background: #1a1a2e; border-radius: 4px; overflow: hidden; }
+.logs-terminal { flex: 1; min-height: 400px; background: #1a2332; border-radius: 4px; overflow: hidden; }
 </style>

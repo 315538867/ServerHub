@@ -1,56 +1,52 @@
 <template>
   <div class="deploy-page">
     <template v-if="deploy">
-      <el-descriptions :column="2" border class="desc-block">
-        <el-descriptions-item label="名称">{{ deploy.name }}</el-descriptions-item>
-        <el-descriptions-item label="类型"><el-tag size="small">{{ deploy.type }}</el-tag></el-descriptions-item>
-        <el-descriptions-item label="工作目录">{{ deploy.work_dir }}</el-descriptions-item>
-        <el-descriptions-item label="镜像">{{ deploy.image_name || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="期望版本">{{ deploy.desired_version || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="实际版本">{{ deploy.actual_version || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="同步状态">
-          <el-tag :type="syncTag(deploy.sync_status)" size="small">{{ deploy.sync_status || 'idle' }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="最后运行">{{ deploy.last_run_at || '—' }}</el-descriptions-item>
-      </el-descriptions>
+      <t-descriptions :column="2" bordered style="margin-bottom:20px">
+        <t-descriptions-item label="名称">{{ deploy.name }}</t-descriptions-item>
+        <t-descriptions-item label="类型"><t-tag size="small" variant="light">{{ deploy.type }}</t-tag></t-descriptions-item>
+        <t-descriptions-item label="工作目录">{{ deploy.work_dir }}</t-descriptions-item>
+        <t-descriptions-item label="镜像">{{ deploy.image_name || '—' }}</t-descriptions-item>
+        <t-descriptions-item label="期望版本">{{ deploy.desired_version || '—' }}</t-descriptions-item>
+        <t-descriptions-item label="实际版本">{{ deploy.actual_version || '—' }}</t-descriptions-item>
+        <t-descriptions-item label="同步状态">
+          <t-tag :theme="syncTheme(deploy.sync_status)" variant="light" size="small">{{ deploy.sync_status || 'idle' }}</t-tag>
+        </t-descriptions-item>
+        <t-descriptions-item label="最后运行">{{ deploy.last_run_at || '—' }}</t-descriptions-item>
+      </t-descriptions>
 
-      <div class="action-row">
-        <el-button type="primary" :loading="running" @click="doRun('run')">立即同步</el-button>
-        <el-button :disabled="!deploy.previous_version" :loading="running" @click="doRun('rollback')">回滚到上个版本</el-button>
-      </div>
+      <t-space style="margin-bottom:20px">
+        <t-button theme="primary" :loading="running" @click="doRun('run')">立即同步</t-button>
+        <t-button :disabled="!deploy.previous_version" :loading="running" @click="doRun('rollback')">回滚到上个版本</t-button>
+      </t-space>
 
-      <el-divider>部署历史</el-divider>
-      <el-table :data="logs" v-loading="logsLoading" style="width:100%">
-        <el-table-column label="时间" prop="created_at" width="180" />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 'success' ? 'success' : 'danger'" size="small">{{ row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="耗时" width="90">
-          <template #default="{ row }">{{ row.duration }}s</template>
-        </el-table-column>
-        <el-table-column label="输出" prop="output" min-width="300" show-overflow-tooltip />
-      </el-table>
+      <div class="section-divider"><span>部署历史</span></div>
+      <t-table :data="logs" :columns="logColumns" :loading="logsLoading" row-key="id" stripe>
+        <template #status="{ row }">
+          <t-tag :theme="row.status === 'success' ? 'success' : 'danger'" variant="light" size="small">{{ row.status }}</t-tag>
+        </template>
+        <template #duration="{ row }">{{ row.duration }}s</template>
+      </t-table>
     </template>
-    <el-empty v-else-if="!loading" description="该应用未关联部署配置，请先在应用设置中配置 deploy_id" />
+    <t-empty v-else-if="!loading" description="该应用未关联部署配置，请先在应用设置中配置 deploy_id" />
 
-    <el-drawer v-model="runDrawerVisible" title="部署输出" size="60%" direction="rtl" :close-on-click-modal="!running">
+    <t-drawer v-model:visible="runDrawerVisible" header="部署输出" size="60%">
       <div class="run-status">
-        <el-tag :type="runStatus === 'success' ? 'success' : runStatus === 'failed' ? 'danger' : 'warning'" size="small">
-          {{ running ? '执行中…' : runStatus || '就绪' }}
-        </el-tag>
-        <el-button v-if="running" size="small" @click="stopRun">中止</el-button>
+        <t-tag
+          :theme="runStatus === 'success' ? 'success' : runStatus === 'failed' ? 'danger' : 'warning'"
+          variant="light"
+          size="small"
+        >{{ running ? '执行中…' : runStatus || '就绪' }}</t-tag>
+        <t-button v-if="running" size="small" variant="outline" @click="stopRun">中止</t-button>
       </div>
       <pre ref="logEl" class="run-output">{{ logLines.join('\n') }}</pre>
-    </el-drawer>
+    </t-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { getDeploys, getDeployLogs } from '@/api/deploy'
@@ -67,6 +63,13 @@ const loading = ref(false)
 const logs = ref<DeployLog[]>([])
 const logsLoading = ref(false)
 
+const logColumns = [
+  { colKey: 'created_at', title: '时间', width: 180 },
+  { colKey: 'status', title: '状态', width: 90 },
+  { colKey: 'duration', title: '耗时', width: 90 },
+  { colKey: 'output', title: '输出', minWidth: 300, ellipsis: true },
+]
+
 const running = ref(false)
 const runDrawerVisible = ref(false)
 const runStatus = ref('')
@@ -74,8 +77,8 @@ const logLines = ref<string[]>([])
 const logEl = ref<HTMLPreElement>()
 let abortCtrl: AbortController | null = null
 
-function syncTag(s: string) {
-  return ({ synced: 'success', drifted: 'warning', syncing: 'info', error: 'danger' } as Record<string, string>)[s] ?? 'info'
+function syncTheme(s: string) {
+  return ({ synced: 'success', drifted: 'warning', syncing: 'default', error: 'danger' } as Record<string, string>)[s] ?? 'default'
 }
 
 async function loadDeploy() {
@@ -142,7 +145,7 @@ async function streamSSE(res: Response) {
           if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
         } else if (evt.type === 'done') {
           runStatus.value = evt.line
-          ElMessage({ type: evt.line === 'success' ? 'success' : 'error', message: evt.line === 'success' ? '部署成功' : '部署失败' })
+          MessagePlugin[evt.line === 'success' ? 'success' : 'error'](evt.line === 'success' ? '部署成功' : '部署失败')
         }
       } catch { /* ignore */ }
     }
@@ -160,8 +163,21 @@ onMounted(async () => {
 
 <style scoped>
 .deploy-page { padding: 4px 0; }
-.desc-block { margin-bottom: 20px; }
-.action-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-secondary);
+}
+.section-divider::before, .section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--td-component-border);
+}
 .run-status { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.run-output { background: #1a1a2e; color: #e0e0e0; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; height: calc(100vh - 140px); white-space: pre-wrap; word-break: break-all; margin: 0; }
+.run-output { background: #1a2332; color: #e0e0e0; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; height: calc(100vh - 140px); white-space: pre-wrap; word-break: break-all; margin: 0; }
 </style>

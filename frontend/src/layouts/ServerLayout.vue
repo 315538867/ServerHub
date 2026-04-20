@@ -2,14 +2,14 @@
   <div class="server-layout" :class="{ 'server-layout--fullscreen': isTerminal }">
     <div v-if="!isTerminal" class="server-layout-header">
       <div class="server-info">
-        <h3>{{ server?.name }}</h3>
-        <el-tag v-if="server" :type="statusType" size="small">{{ server.status }}</el-tag>
+        <h3 class="server-name">{{ server?.name }}</h3>
+        <t-tag v-if="server" :theme="statusTheme" variant="light" size="small">{{ statusLabel }}</t-tag>
         <span v-if="server" class="server-host">{{ server.host }}:{{ server.port }}</span>
       </div>
     </div>
-    <el-tabs v-model="activeTab" @tab-click="onTabClick" :class="{ 'tabs-compact': isTerminal }">
-      <el-tab-pane v-for="tab in tabs" :key="tab.name" :label="tab.label" :name="tab.name" />
-    </el-tabs>
+    <t-tabs :value="activeTab" @change="onTabChange" :class="{ 'tabs-compact': isTerminal }">
+      <t-tab-panel v-for="tab in tabs" :key="tab.value" :value="tab.value" :label="tab.label" />
+    </t-tabs>
     <div class="server-layout-content" :class="{ 'content--fullscreen': isTerminal }">
       <router-view />
     </div>
@@ -28,31 +28,31 @@ const serverStore = useServerStore()
 const serverId = computed(() => Number(route.params.serverId))
 const server = computed(() => serverStore.getById(serverId.value))
 
-const statusType = computed(() => {
+const statusTheme = computed(() => {
   const s = server.value?.status
   if (s === 'online') return 'success'
   if (s === 'offline') return 'danger'
-  return 'info'
+  return 'default'
+})
+const statusLabel = computed(() => {
+  const s = server.value?.status ?? ''
+  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string, string>)[s] ?? s
 })
 
 const tabs = [
-  { name: 'overview', label: '概览' },
-  { name: 'nginx', label: 'Nginx 网关' },
-  { name: 'docker', label: 'Docker' },
-  { name: 'system', label: '系统' },
-  { name: 'files', label: '文件' },
-  { name: 'terminal', label: '终端' },
+  { value: 'overview', label: '概览' },
+  { value: 'nginx', label: 'Nginx 网关' },
+  { value: 'docker', label: 'Docker' },
+  { value: 'system', label: '系统' },
+  { value: 'files', label: '文件' },
+  { value: 'terminal', label: '终端' },
 ]
 
-const activeTab = computed({
-  get: () => route.path.split('/').pop() || 'overview',
-  set: () => {},
-})
-
+const activeTab = computed(() => route.path.split('/').pop() || 'overview')
 const isTerminal = computed(() => activeTab.value === 'terminal')
 
-function onTabClick(tab: any) {
-  router.push(`/servers/${serverId.value}/${tab.paneName}`)
+function onTabChange(val: string | number) {
+  router.push(`/servers/${serverId.value}/${val}`)
 }
 
 onMounted(async () => {
@@ -63,11 +63,11 @@ onMounted(async () => {
 <style scoped>
 .server-layout { height: 100%; }
 .server-layout--fullscreen { display: flex; flex-direction: column; }
-.server-layout-header { margin-bottom: 8px; }
-.server-info { display: flex; align-items: center; gap: 12px; }
-.server-info h3 { margin: 0; font-size: 18px; }
-.server-host { color: var(--el-text-color-secondary); font-size: 13px; }
-.server-layout-content { margin-top: 8px; }
+.server-layout-header { margin-bottom: 12px; }
+.server-info { display: flex; align-items: center; gap: 10px; }
+.server-name { margin: 0; font-size: 18px; font-weight: 600; color: var(--td-text-color-primary); }
+.server-host { color: var(--td-text-color-secondary); font-size: 13px; }
+.server-layout-content { margin-top: 12px; }
 .content--fullscreen { flex: 1; overflow: hidden; margin-top: 0; }
 .tabs-compact { margin-bottom: 0; }
 </style>

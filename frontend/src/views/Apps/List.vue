@@ -1,23 +1,17 @@
 <template>
   <div class="app-list">
     <div class="page-header">
-      <h2>应用列表</h2>
-      <el-button type="primary" @click="$router.push('/apps/create')">新建应用</el-button>
+      <h2 class="page-title">应用列表</h2>
+      <t-button theme="primary" @click="$router.push('/apps/create')">新建应用</t-button>
     </div>
-    <el-table :data="appStore.apps" v-loading="appStore.loading" style="width: 100%">
-      <el-table-column prop="name" label="应用名称">
-        <template #default="{ row }">
-          <el-link type="primary" @click="$router.push(`/apps/${row.id}/overview`)">{{ row.name }}</el-link>
-        </template>
-      </el-table-column>
-      <el-table-column prop="domain" label="域名" />
-      <el-table-column prop="status" label="状态">
-        <template #default="{ row }">
-          <el-tag :type="row.status === 'online' ? 'success' : row.status === 'offline' ? 'danger' : 'info'" size="small">{{ row.status }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="updated_at" label="更新时间" />
-    </el-table>
+    <t-table :data="appStore.apps" :columns="columns" :loading="appStore.loading" row-key="id" stripe>
+      <template #name="{ row }">
+        <t-link theme="primary" @click="$router.push(`/apps/${row.id}/overview`)">{{ row.name }}</t-link>
+      </template>
+      <template #status="{ row }">
+        <t-tag :theme="statusTheme(row.status)" variant="light" size="small">{{ statusText(row.status) }}</t-tag>
+      </template>
+    </t-table>
   </div>
 </template>
 
@@ -26,9 +20,26 @@ import { onMounted } from 'vue'
 import { useAppStore } from '@/stores/app'
 
 const appStore = useAppStore()
+
+const columns = [
+  { colKey: 'name', title: '应用名称', minWidth: 160 },
+  { colKey: 'domain', title: '域名', minWidth: 160 },
+  { colKey: 'status', title: '状态', width: 90 },
+  { colKey: 'updated_at', title: '更新时间', minWidth: 160 },
+]
+
+function statusTheme(s: string) {
+  return ({ online: 'success', offline: 'danger', error: 'danger', unknown: 'default' } as Record<string, string>)[s] ?? 'default'
+}
+function statusText(s: string) {
+  return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string, string>)[s] ?? s
+}
+
 onMounted(() => appStore.fetch())
 </script>
 
 <style scoped>
+.app-list {}
 .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.page-title { margin: 0; font-size: 18px; font-weight: 600; color: var(--td-text-color-primary); }
 </style>

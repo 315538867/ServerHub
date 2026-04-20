@@ -1,68 +1,62 @@
 <template>
   <div class="database-page">
     <template v-if="conn">
-      <el-descriptions :column="2" border class="desc-block">
-        <el-descriptions-item label="名称">{{ conn.name }}</el-descriptions-item>
-        <el-descriptions-item label="类型"><el-tag size="small">{{ conn.type.toUpperCase() }}</el-tag></el-descriptions-item>
-        <el-descriptions-item label="主机">{{ conn.host }}:{{ conn.port }}</el-descriptions-item>
-        <el-descriptions-item label="用户">{{ conn.username || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="数据库">{{ conn.database || '—' }}</el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <el-tag :type="testResult === 'ok' ? 'success' : testResult === 'fail' ? 'danger' : 'info'" size="small">
+      <t-descriptions :column="2" bordered style="margin-bottom:16px">
+        <t-descriptions-item label="名称">{{ conn.name }}</t-descriptions-item>
+        <t-descriptions-item label="类型"><t-tag size="small" variant="light">{{ conn.type.toUpperCase() }}</t-tag></t-descriptions-item>
+        <t-descriptions-item label="主机">{{ conn.host }}:{{ conn.port }}</t-descriptions-item>
+        <t-descriptions-item label="用户">{{ conn.username || '—' }}</t-descriptions-item>
+        <t-descriptions-item label="数据库">{{ conn.database || '—' }}</t-descriptions-item>
+        <t-descriptions-item label="状态">
+          <t-tag :theme="testTheme" variant="light" size="small">
             {{ testResult === 'ok' ? '连接正常' : testResult === 'fail' ? '连接失败' : '未检测' }}
-          </el-tag>
-        </el-descriptions-item>
-      </el-descriptions>
-      <el-button :loading="testing" @click="doTest" style="margin-bottom:16px">连接测试</el-button>
+          </t-tag>
+        </t-descriptions-item>
+      </t-descriptions>
+      <t-button :loading="testing" @click="doTest" style="margin-bottom:16px">连接测试</t-button>
 
       <template v-if="conn.type === 'mysql'">
-        <el-divider>数据库列表</el-divider>
+        <div class="section-divider"><span>数据库列表</span></div>
         <div class="db-toolbar">
-          <el-button size="small" type="primary" @click="openCreateDB">新建</el-button>
-          <el-button size="small" @click="loadDBs">刷新</el-button>
+          <t-button size="small" theme="primary" @click="openCreateDB">新建</t-button>
+          <t-button size="small" variant="outline" @click="loadDBs">刷新</t-button>
         </div>
-        <el-table :data="databases" v-loading="dbLoading" style="width:100%">
-          <el-table-column label="数据库名" prop="name" min-width="200" />
-          <el-table-column label="操作" width="120" fixed="right">
-            <template #default="{ row }">
-              <el-popconfirm :title="`确认删除数据库 ${row.name}？此操作不可恢复`" @confirm="dropDB(row.name)">
-                <template #reference>
-                  <el-button size="small" type="danger">删除</el-button>
-                </template>
-              </el-popconfirm>
-            </template>
-          </el-table-column>
-        </el-table>
+        <t-table :data="databases" :columns="dbColumns" :loading="dbLoading" row-key="name" stripe>
+          <template #operations="{ row }">
+            <t-popconfirm :content="`确认删除数据库 ${row.name}？此操作不可恢复`" @confirm="dropDB(row.name)">
+              <t-button theme="danger" size="small" variant="text">删除</t-button>
+            </t-popconfirm>
+          </template>
+        </t-table>
       </template>
 
       <template v-if="conn.type === 'redis'">
-        <el-divider>Redis 状态</el-divider>
-        <el-button size="small" @click="loadRedisInfo" style="margin-bottom:12px">刷新</el-button>
-        <el-table :data="redisInfoRows" v-loading="redisLoading" style="width:100%">
-          <el-table-column label="键" prop="key" width="220" />
-          <el-table-column label="值" prop="val" min-width="300" show-overflow-tooltip />
-        </el-table>
+        <div class="section-divider"><span>Redis 状态</span></div>
+        <t-button size="small" variant="outline" @click="loadRedisInfo" style="margin-bottom:12px">刷新</t-button>
+        <t-table :data="redisInfoRows" :columns="redisColumns" :loading="redisLoading" row-key="key" stripe />
       </template>
     </template>
-    <el-empty v-else-if="!loading" description="该应用未关联数据库连接，请先在应用设置中配置 db_conn_id" />
+    <t-empty v-else-if="!loading" description="该应用未关联数据库连接，请先在应用设置中配置 db_conn_id" />
 
-    <el-dialog v-model="createDBVisible" title="新建数据库" width="400px">
-      <el-form :model="createDBForm" label-width="80px">
-        <el-form-item label="库名"><el-input v-model="createDBForm.name" placeholder="my_database" /></el-form-item>
-        <el-form-item label="字符集"><el-input v-model="createDBForm.charset" placeholder="utf8mb4（默认）" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createDBVisible = false">取消</el-button>
-        <el-button type="primary" @click="confirmCreateDB">创建</el-button>
-      </template>
-    </el-dialog>
+    <t-dialog
+      v-model:visible="createDBVisible"
+      header="新建数据库"
+      width="400px"
+      confirm-btn="创建"
+      @confirm="confirmCreateDB"
+    >
+      <t-form :data="createDBForm" label-width="80px" colon>
+        <t-form-item label="库名"><t-input v-model="createDBForm.name" placeholder="my_database" /></t-form-item>
+        <t-form-item label="字符集"><t-input v-model="createDBForm.charset" placeholder="utf8mb4（默认）" /></t-form-item>
+      </t-form>
+    </t-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { useAppStore } from '@/stores/app'
 import { listConns, testConn, mysqlDatabases, mysqlCreateDatabase, mysqlDropDatabase, redisInfo } from '@/api/database'
 import type { DBConn } from '@/api/database'
@@ -86,6 +80,22 @@ const redisLoading = ref(false)
 const createDBVisible = ref(false)
 const createDBForm = ref({ name: '', charset: '' })
 
+const dbColumns = [
+  { colKey: 'name', title: '数据库名', minWidth: 200 },
+  { colKey: 'operations', title: '操作', width: 120, fixed: 'right' as const },
+]
+
+const redisColumns = [
+  { colKey: 'key', title: '键', width: 220 },
+  { colKey: 'val', title: '值', minWidth: 300, ellipsis: true },
+]
+
+const testTheme = computed(() => {
+  if (testResult.value === 'ok') return 'success'
+  if (testResult.value === 'fail') return 'danger'
+  return 'default'
+})
+
 async function loadConn() {
   if (!app.value?.db_conn_id) return
   loading.value = true
@@ -98,8 +108,8 @@ async function loadConn() {
 async function doTest() {
   if (!conn.value) return
   testing.value = true
-  try { await testConn(conn.value.id); testResult.value = 'ok'; ElMessage.success('连接正常') }
-  catch { testResult.value = 'fail'; ElMessage.error('连接失败') }
+  try { await testConn(conn.value.id); testResult.value = 'ok'; MessagePlugin.success('连接正常') }
+  catch { testResult.value = 'fail'; MessagePlugin.error('连接失败') }
   finally { testing.value = false }
 }
 
@@ -109,7 +119,7 @@ async function loadDBs() {
   try {
     const dbs = await mysqlDatabases(conn.value.id)
     databases.value = dbs.map(name => ({ name }))
-  } catch { ElMessage.error('加载失败') }
+  } catch { MessagePlugin.error('加载失败') }
   finally { dbLoading.value = false }
 }
 
@@ -119,14 +129,14 @@ async function confirmCreateDB() {
   if (!conn.value || !createDBForm.value.name) return
   try {
     await mysqlCreateDatabase(conn.value.id, createDBForm.value.name, createDBForm.value.charset || undefined)
-    ElMessage.success('已创建'); createDBVisible.value = false; await loadDBs()
-  } catch { ElMessage.error('创建失败') }
+    MessagePlugin.success('已创建'); createDBVisible.value = false; await loadDBs()
+  } catch { MessagePlugin.error('创建失败') }
 }
 
 async function dropDB(name: string) {
   if (!conn.value) return
-  try { await mysqlDropDatabase(conn.value.id, name); ElMessage.success('已删除'); await loadDBs() }
-  catch { ElMessage.error('删除失败') }
+  try { await mysqlDropDatabase(conn.value.id, name); MessagePlugin.success('已删除'); await loadDBs() }
+  catch { MessagePlugin.error('删除失败') }
 }
 
 async function loadRedisInfo() {
@@ -135,7 +145,7 @@ async function loadRedisInfo() {
   try {
     const info = await redisInfo(conn.value.id)
     redisInfoRows.value = Object.entries(info).map(([key, val]) => ({ key, val }))
-  } catch { ElMessage.error('加载失败') }
+  } catch { MessagePlugin.error('加载失败') }
   finally { redisLoading.value = false }
 }
 
@@ -149,6 +159,20 @@ onMounted(async () => {
 
 <style scoped>
 .database-page { padding: 4px 0; }
-.desc-block { margin-bottom: 16px; }
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 20px 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-secondary);
+}
+.section-divider::before, .section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--td-component-border);
+}
 .db-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
 </style>

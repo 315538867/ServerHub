@@ -10,18 +10,20 @@
       >
         <span class="tab-dot" :class="tab.status" />
         <span class="tab-label">终端 {{ tab.id }}</span>
-        <el-icon class="tab-close" @click.stop="closeTab(tab.id)"><Close /></el-icon>
+        <close-icon class="tab-close" @click.stop="closeTab(tab.id)" />
       </div>
-      <el-button class="tab-add" :icon="Plus" circle size="small" @click="addTab" />
+      <t-button class="tab-add" shape="circle" size="small" variant="text" theme="default" @click="addTab">
+        <template #icon><add-icon /></template>
+      </t-button>
     </div>
     <div v-if="searchVisible" class="search-bar">
-      <el-input v-model="searchQuery" placeholder="搜索…" size="small" style="width:200px"
-        @keyup.enter="searchNext" @keyup.escape="closeSearch" ref="searchInputEl" />
-      <el-checkbox v-model="searchCaseSensitive" label="区分大小写" size="small" />
-      <el-checkbox v-model="searchRegex" label="正则" size="small" />
-      <el-button size="small" @click="searchPrev">↑</el-button>
-      <el-button size="small" @click="searchNext">↓</el-button>
-      <el-button size="small" :icon="Close" @click="closeSearch" />
+      <t-input v-model="searchQuery" placeholder="搜索…" size="small" style="width:200px"
+        @keydown.enter="searchNext" @keydown.escape="closeSearch" ref="searchInputEl" />
+      <t-checkbox v-model="searchCaseSensitive">区分大小写</t-checkbox>
+      <t-checkbox v-model="searchRegex">正则</t-checkbox>
+      <t-button size="small" variant="outline" @click="searchPrev">↑</t-button>
+      <t-button size="small" variant="outline" @click="searchNext">↓</t-button>
+      <t-button size="small" variant="text" @click="closeSearch"><template #icon><close-icon /></template></t-button>
     </div>
     <div class="terminals-wrapper">
       <div
@@ -32,7 +34,7 @@
         :style="{ display: activeTabId === tab.id ? 'block' : 'none' }"
       />
       <div v-if="tabs.length === 0" class="terminal-empty">
-        <el-empty description="连接中…" :image-size="80" />
+        <t-empty description="连接中…" />
       </div>
     </div>
   </div>
@@ -41,7 +43,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import { Plus, Close } from '@element-plus/icons-vue'
+import { AddIcon, CloseIcon } from 'tdesign-icons-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
@@ -106,7 +108,7 @@ function initTerm(id: number) {
   const term = new Terminal({
     cursorBlink: true, fontSize: 14,
     fontFamily: '"Cascadia Code", "JetBrains Mono", Menlo, Monaco, monospace',
-    theme: { background: '#1a1a2e', foreground: '#e0e0e0', cursor: '#409eff' },
+    theme: { background: '#1a2332', foreground: '#e0e0e0', cursor: '#0052d9' },
     scrollback: 5000, convertEol: true,
   })
   const fit = new FitAddon()
@@ -184,22 +186,22 @@ function searchPrev() {
 </script>
 
 <style scoped>
-.terminal-page { display: flex; flex-direction: column; height: 100%; background: #1a1a2e; }
-.tab-bar { display: flex; align-items: center; gap: 2px; padding: 4px 8px; background: #16213e; border-bottom: 1px solid #2a2a4a; flex-shrink: 0; overflow-x: auto; }
-.tab-item { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; cursor: pointer; color: #a0a0c0; font-size: 13px; white-space: nowrap; transition: background 0.15s; }
-.tab-item:hover { background: #1a2a4a; }
-.tab-item.active { background: #1a1a2e; color: #e0e0e0; }
+.terminal-page { display: flex; flex-direction: column; height: 100%; background: #1a2332; }
+.tab-bar { display: flex; align-items: center; gap: 2px; padding: 4px 8px; background: #152030; border-bottom: 1px solid #243447; flex-shrink: 0; overflow-x: auto; }
+.tab-item { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; cursor: pointer; color: #8a94a6; font-size: 13px; white-space: nowrap; transition: background 0.15s; }
+.tab-item:hover { background: #1e2d3d; }
+.tab-item.active { background: #1a2332; color: #e0e0e0; }
 .tab-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.tab-dot.connecting { background: #e6a23c; }
-.tab-dot.connected { background: #67c23a; }
-.tab-dot.disconnected { background: #f56c6c; }
-.tab-close { opacity: 0.4; font-size: 12px; transition: opacity 0.15s; }
+.tab-dot.connecting { background: #ed7b2f; }
+.tab-dot.connected { background: #00a870; }
+.tab-dot.disconnected { background: #e34d59; }
+.tab-close { opacity: 0.4; font-size: 12px; transition: opacity 0.15s; cursor: pointer; }
 .tab-close:hover { opacity: 1; }
 .tab-add { margin-left: 4px; flex-shrink: 0; }
-.search-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #16213e; border-bottom: 1px solid #2a2a4a; flex-shrink: 0; }
+.search-bar { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #152030; border-bottom: 1px solid #243447; flex-shrink: 0; }
 .terminals-wrapper { flex: 1; overflow: hidden; position: relative; }
 .terminal-container { width: 100%; height: 100%; padding: 4px; }
 .terminal-empty { display: flex; align-items: center; justify-content: center; height: 100%; }
 :deep(.xterm) { height: 100%; }
-:deep(.xterm-viewport) { background-color: #1a1a2e !important; }
+:deep(.xterm-viewport) { background-color: #1a2332 !important; }
 </style>

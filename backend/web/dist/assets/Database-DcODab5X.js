@@ -1,1 +1,0 @@
-import{_ as o}from"./index-BKf5cmUj.js";import{H as t,L as n,M as r,ag as a}from"./vendor-vue-BmVvftDS.js";import"./vendor-ui-vF0I9up8.js";const c={};function s(_,m){const e=a("el-empty");return t(),n("div",null,[r(e,{description:"数据库管理 - Phase 3 实现"})])}const f=o(c,[["render",s]]);export{f as default};

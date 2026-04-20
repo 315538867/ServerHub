@@ -1,81 +1,77 @@
 <template>
   <div>
     <div class="page-toolbar">
-      <el-button :icon="Refresh" :loading="loading" @click="refresh">刷新</el-button>
+      <t-button variant="outline" :loading="loading" @click="refresh">
+        <template #icon><refresh-icon /></template>
+        刷新
+      </t-button>
     </div>
-    <el-tabs v-model="activeTab">
-      <el-tab-pane label="容器" name="containers">
-        <el-table :data="containers" v-loading="loading" style="width:100%">
-          <el-table-column label="名称" prop="names" min-width="140" show-overflow-tooltip />
-          <el-table-column label="镜像" prop="image" min-width="160" show-overflow-tooltip />
-          <el-table-column label="状态" width="110">
-            <template #default="{ row }">
-              <el-tag :type="stateTag(row.state)" size="small">{{ row.status }}</el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="端口" prop="ports" min-width="160" show-overflow-tooltip />
-          <el-table-column label="操作" width="260" fixed="right">
-            <template #default="{ row }">
-              <el-button v-if="row.state !== 'running'" size="small" type="success" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</el-button>
-              <el-button v-if="row.state === 'running'" size="small" type="warning" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</el-button>
-              <el-button size="small" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</el-button>
-              <el-button size="small" @click="openLogs(row)">日志</el-button>
-              <el-button size="small" @click="openInspect(row)">详情</el-button>
-              <el-popconfirm title="确认删除该容器？" @confirm="doAction(row, 'remove')">
-                <template #reference>
-                  <el-button size="small" type="danger" :loading="actionLoading === row.id + '_remove'">删除</el-button>
-                </template>
-              </el-popconfirm>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-      <el-tab-pane label="镜像" name="images">
+    <t-tabs :value="activeTab" @change="activeTab = $event as string">
+      <t-tab-panel value="containers" label="容器">
+        <t-table :data="containers" :columns="containerColumns" :loading="loading" row-key="id" stripe style="margin-top:8px">
+          <template #state="{ row }">
+            <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ row.status }}</t-tag>
+          </template>
+          <template #operations="{ row }">
+            <t-space size="small">
+              <t-button v-if="row.state !== 'running'" theme="success" size="small" variant="text" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</t-button>
+              <t-button v-if="row.state === 'running'" theme="warning" size="small" variant="text" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</t-button>
+              <t-button size="small" variant="text" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</t-button>
+              <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
+              <t-button size="small" variant="text" @click="openInspect(row)">详情</t-button>
+              <t-popconfirm content="确认删除该容器？" @confirm="doAction(row, 'remove')">
+                <t-button theme="danger" size="small" variant="text" :loading="actionLoading === row.id + '_remove'">删除</t-button>
+              </t-popconfirm>
+            </t-space>
+          </template>
+        </t-table>
+      </t-tab-panel>
+      <t-tab-panel value="images" label="镜像">
         <div class="tab-toolbar">
-          <el-button type="primary" :icon="Download" @click="openPull">拉取镜像</el-button>
+          <t-button theme="primary" @click="openPull">
+            <template #icon><download-icon /></template>
+            拉取镜像
+          </t-button>
         </div>
-        <el-table :data="images" v-loading="imgLoading" style="width:100%">
-          <el-table-column label="仓库" prop="repository" min-width="180" show-overflow-tooltip />
-          <el-table-column label="Tag" prop="tag" width="120" />
-          <el-table-column label="大小" prop="size" width="100" />
-          <el-table-column label="创建时间" prop="created_at" min-width="140" show-overflow-tooltip />
-          <el-table-column label="操作" width="80" fixed="right">
-            <template #default="{ row }">
-              <el-popconfirm title="确认删除该镜像？" @confirm="rmImage(row)">
-                <template #reference>
-                  <el-button size="small" type="danger">删除</el-button>
-                </template>
-              </el-popconfirm>
-            </template>
-          </el-table-column>
-        </el-table>
-      </el-tab-pane>
-    </el-tabs>
+        <t-table :data="images" :columns="imageColumns" :loading="imgLoading" row-key="id" stripe>
+          <template #operations="{ row }">
+            <t-popconfirm content="确认删除该镜像？" @confirm="rmImage(row)">
+              <t-button theme="danger" size="small" variant="text">删除</t-button>
+            </t-popconfirm>
+          </template>
+        </t-table>
+      </t-tab-panel>
+    </t-tabs>
 
-    <el-drawer v-model="logsVisible" :title="`容器日志 — ${logsContainer}`" size="60%" direction="rtl" @closed="onLogsClosed">
+    <t-drawer v-model:visible="logsVisible" :header="`容器日志 — ${logsContainer}`" size="60%" @close="onLogsClosed">
       <div ref="logsEl" class="logs-terminal" />
-    </el-drawer>
+    </t-drawer>
 
-    <el-dialog v-model="inspectVisible" title="容器详情" width="720px" top="5vh">
+    <t-dialog v-model:visible="inspectVisible" header="容器详情" width="720px" :footer="false">
       <pre class="inspect-json">{{ inspectJson }}</pre>
-    </el-dialog>
+    </t-dialog>
 
-    <el-dialog v-model="pullVisible" title="拉取镜像" width="580px" :close-on-click-modal="!pulling" @closed="onPullClosed">
-      <el-input v-model="pullImage" placeholder="例如：ubuntu:22.04 或 nginx:latest" :disabled="pulling" @keyup.enter="startPull" />
+    <t-dialog
+      v-model:visible="pullVisible"
+      header="拉取镜像"
+      width="580px"
+      :close-on-overlay-click="!pulling"
+      :confirm-btn="{ content: '拉取', loading: pulling }"
+      :cancel-btn="{ disabled: pulling }"
+      @confirm="startPull"
+      @closed="onPullClosed"
+    >
+      <t-input v-model="pullImage" placeholder="例如：ubuntu:22.04 或 nginx:latest" :disabled="pulling" @keydown.enter="startPull" />
       <pre v-if="pullOutput" ref="pullOutputEl" class="pull-output">{{ pullOutput }}</pre>
-      <template #footer>
-        <el-button @click="pullVisible = false" :disabled="pulling">取消</el-button>
-        <el-button type="primary" :loading="pulling" @click="startPull">拉取</el-button>
-      </template>
-    </el-dialog>
+    </t-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import { Refresh, Download } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { RefreshIcon, DownloadIcon } from 'tdesign-icons-vue-next'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -112,8 +108,23 @@ const pulling = ref(false)
 const pullOutputEl = ref<HTMLPreElement>()
 let pullWs: WebSocket | null = null
 
-function stateTag(state: string) {
-  return ({ running: 'success', paused: 'warning', exited: 'info' } as Record<string, string>)[state] ?? 'danger'
+const containerColumns = [
+  { colKey: 'names', title: '名称', minWidth: 140, ellipsis: true },
+  { colKey: 'image', title: '镜像', minWidth: 160, ellipsis: true },
+  { colKey: 'state', title: '状态', width: 110 },
+  { colKey: 'ports', title: '端口', minWidth: 160, ellipsis: true },
+  { colKey: 'operations', title: '操作', width: 280, fixed: 'right' as const },
+]
+const imageColumns = [
+  { colKey: 'repository', title: '仓库', minWidth: 180, ellipsis: true },
+  { colKey: 'tag', title: 'Tag', width: 120 },
+  { colKey: 'size', title: '大小', width: 100 },
+  { colKey: 'created_at', title: '创建时间', minWidth: 140, ellipsis: true },
+  { colKey: 'operations', title: '操作', width: 80, fixed: 'right' as const },
+]
+
+function stateTheme(state: string) {
+  return ({ running: 'success', paused: 'warning', exited: 'default' } as Record<string, string>)[state] ?? 'danger'
 }
 
 async function refresh() {
@@ -127,14 +138,11 @@ watch(activeTab, async (tab) => {
 
 async function loadContainers() {
   loading.value = true
-  try { containers.value = await getContainers(serverId.value) }
-  finally { loading.value = false }
+  try { containers.value = await getContainers(serverId.value) } finally { loading.value = false }
 }
-
 async function loadImages() {
   imgLoading.value = true
-  try { images.value = await getImages(serverId.value) }
-  finally { imgLoading.value = false }
+  try { images.value = await getImages(serverId.value) } finally { imgLoading.value = false }
 }
 
 async function doAction(row: ContainerItem, action: 'start' | 'stop' | 'restart' | 'remove') {
@@ -142,9 +150,9 @@ async function doAction(row: ContainerItem, action: 'start' | 'stop' | 'restart'
   actionLoading.value = key
   try {
     await containerAction(serverId.value, row.id, action)
-    ElMessage.success('操作成功')
+    MessagePlugin.success('操作成功')
     await loadContainers()
-  } catch { ElMessage.error('操作失败') }
+  } catch { MessagePlugin.error('操作失败') }
   finally { actionLoading.value = '' }
 }
 
@@ -153,7 +161,7 @@ function openLogs(row: ContainerItem) {
   nextTick(() => {
     if (!logsEl.value) return
     logsTerm?.dispose()
-    logsTerm = new Terminal({ theme: { background: '#1a1a2e' }, convertEol: true, fontSize: 13 })
+    logsTerm = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
     const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
     logsWs?.close()
     logsWs = new WebSocket(containerLogsWsUrl(serverId.value, row.id, auth.token))
@@ -175,7 +183,7 @@ async function openInspect(row: ContainerItem) {
     }
     inspectJson.value = JSON.stringify(arr[0] ?? data, null, 2)
     inspectVisible.value = true
-  } catch { ElMessage.error('获取详情失败') }
+  } catch { MessagePlugin.error('获取详情失败') }
 }
 
 function openPull() { pullImage.value = ''; pullOutput.value = ''; pullVisible.value = true }
@@ -192,7 +200,7 @@ function startPull() {
       if (msg.type === 'output') {
         pullOutput.value += msg.data + '\n'
         nextTick(() => { if (pullOutputEl.value) pullOutputEl.value.scrollTop = pullOutputEl.value.scrollHeight })
-      } else if (msg.type === 'done') { pulling.value = false; ElMessage.success('拉取完成'); loadImages() }
+      } else if (msg.type === 'done') { pulling.value = false; MessagePlugin.success('拉取完成'); loadImages() }
       else if (msg.type === 'error') { pulling.value = false; pullOutput.value += '[错误] ' + msg.data + '\n' }
     } catch { /* ignore */ }
   }
@@ -202,8 +210,8 @@ function startPull() {
 function onPullClosed() { pullWs?.close(); pullWs = null; pulling.value = false }
 
 async function rmImage(row: ImageItem) {
-  try { await deleteImage(serverId.value, row.id); ElMessage.success('镜像已删除'); await loadImages() }
-  catch { ElMessage.error('删除失败') }
+  try { await deleteImage(serverId.value, row.id); MessagePlugin.success('镜像已删除'); await loadImages() }
+  catch { MessagePlugin.error('删除失败') }
 }
 
 onMounted(() => loadContainers())
@@ -212,8 +220,8 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
 
 <style scoped>
 .page-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
-.tab-toolbar { margin-bottom: 12px; }
-.logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a1a2e; border-radius: 4px; overflow: hidden; }
+.tab-toolbar { margin: 12px 0; }
+.logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a2332; border-radius: 4px; overflow: hidden; }
 .inspect-json { background: #f5f7fa; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 70vh; margin: 0; white-space: pre-wrap; word-break: break-all; }
-.pull-output { background: #1a1a2e; color: #e0e0e0; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 320px; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
+.pull-output { background: #1a2332; color: #e0e0e0; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 320px; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
 </style>

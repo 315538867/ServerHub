@@ -2,117 +2,139 @@
   <div class="domain-page">
     <template v-if="app?.site_name && app?.server_id">
       <div class="page-toolbar">
-        <el-button type="primary" @click="openCreate">添加站点</el-button>
-        <el-button @click="doReload" :loading="reloading">Nginx Reload</el-button>
-        <el-button type="warning" @click="doRestart">Nginx Restart</el-button>
-        <el-button :icon="Refresh" :loading="loading" @click="loadSites">刷新</el-button>
+        <t-button theme="primary" @click="openCreate">添加站点</t-button>
+        <t-button :loading="reloading" @click="doReload">Nginx Reload</t-button>
+        <t-button theme="warning" @click="doRestart">Nginx Restart</t-button>
+        <t-button variant="outline" :loading="loading" @click="loadSites">
+          <template #icon><refresh-icon /></template>
+          刷新
+        </t-button>
       </div>
 
-      <el-table :data="sites" v-loading="loading" style="width:100%">
-        <el-table-column label="站点名" prop="name" min-width="180" show-overflow-tooltip />
-        <el-table-column label="配置文件" prop="path" min-width="280" show-overflow-tooltip />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '启用' : '禁用' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="320" fixed="right">
-          <template #default="{ row }">
-            <el-button v-if="!row.enabled" size="small" type="success" @click="toggleSite(row, true)">启用</el-button>
-            <el-button v-if="row.enabled" size="small" type="warning" @click="toggleSite(row, false)">禁用</el-button>
-            <el-button size="small" @click="openEdit(row)">编辑配置</el-button>
-            <el-button size="small" @click="openLogs(row)">日志</el-button>
-            <el-popconfirm :title="`确认删除站点 ${row.name}？`" @confirm="delSite(row)">
-              <template #reference>
-                <el-button size="small" type="danger">删除</el-button>
-              </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
+      <t-table :data="sites" :columns="siteColumns" :loading="loading" row-key="name" stripe>
+        <template #status="{ row }">
+          <t-tag :theme="row.enabled ? 'success' : 'default'" variant="light" size="small">
+            {{ row.enabled ? '启用' : '禁用' }}
+          </t-tag>
+        </template>
+        <template #operations="{ row }">
+          <t-space size="small">
+            <t-button v-if="!row.enabled" theme="success" size="small" variant="text" @click="toggleSite(row, true)">启用</t-button>
+            <t-button v-if="row.enabled" theme="warning" size="small" variant="text" @click="toggleSite(row, false)">禁用</t-button>
+            <t-button size="small" variant="text" @click="openEdit(row)">编辑配置</t-button>
+            <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
+            <t-popconfirm :content="`确认删除站点 ${row.name}？`" @confirm="delSite(row)">
+              <t-button theme="danger" size="small" variant="text">删除</t-button>
+            </t-popconfirm>
+          </t-space>
+        </template>
+      </t-table>
 
-      <el-divider>SSL 证书</el-divider>
+      <div class="section-divider"><span>SSL 证书</span></div>
       <div class="ssl-toolbar">
-        <el-button type="primary" size="small" @click="openRequestCert">申请证书 (Let's Encrypt)</el-button>
-        <el-button size="small" @click="loadCerts">刷新</el-button>
+        <t-button theme="primary" size="small" @click="openRequestCert">申请证书 (Let's Encrypt)</t-button>
+        <t-button size="small" variant="outline" @click="loadCerts">刷新</t-button>
       </div>
-      <el-table :data="certs" v-loading="certLoading" style="width:100%">
-        <el-table-column label="域名" prop="domain" min-width="180" />
-        <el-table-column label="签发机构" prop="issuer" min-width="140" />
-        <el-table-column label="到期时间" prop="expires_at" min-width="140" />
-        <el-table-column label="剩余天数" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.days_left < 14 ? 'danger' : row.days_left < 30 ? 'warning' : 'success'" size="small">{{ row.days_left }}天</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" @click="openRenew(row)">续签</el-button>
-            <el-popconfirm title="确认删除该证书？" @confirm="delCert(row)">
-              <template #reference>
-                <el-button size="small" type="danger">删除</el-button>
-              </template>
-            </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
+      <t-table :data="certs" :columns="certColumns" :loading="certLoading" row-key="id" stripe>
+        <template #days_left="{ row }">
+          <t-tag :theme="row.days_left < 14 ? 'danger' : row.days_left < 30 ? 'warning' : 'success'" variant="light" size="small">
+            {{ row.days_left }}天
+          </t-tag>
+        </template>
+        <template #operations="{ row }">
+          <t-space size="small">
+            <t-button size="small" variant="text" @click="openRenew(row)">续签</t-button>
+            <t-popconfirm content="确认删除该证书？" @confirm="delCert(row)">
+              <t-button theme="danger" size="small" variant="text">删除</t-button>
+            </t-popconfirm>
+          </t-space>
+        </template>
+      </t-table>
     </template>
-    <el-empty v-else description="该应用未关联 Nginx 站点，请先在应用设置中配置 site_name" />
+    <t-empty v-else description="该应用未关联 Nginx 站点，请先在应用设置中配置 site_name" />
 
-    <el-dialog v-model="createVisible" title="添加站点" width="520px">
-      <el-form :model="createForm" label-width="90px">
-        <el-form-item label="站点名称"><el-input v-model="createForm.name" placeholder="my-site" /></el-form-item>
-        <el-form-item label="类型">
-          <el-select v-model="createForm.type" style="width:100%">
-            <el-option label="静态文件" value="static" /><el-option label="反向代理" value="proxy" /><el-option label="PHP" value="php" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="域名"><el-input v-model="createForm.domain" placeholder="example.com" /></el-form-item>
-        <el-form-item label="监听端口"><el-input-number v-model="createForm.port" :min="1" :max="65535" style="width:100%" /></el-form-item>
-        <el-form-item v-if="createForm.type !== 'proxy'" label="根目录"><el-input v-model="createForm.root" placeholder="/var/www/html" /></el-form-item>
-        <el-form-item v-if="createForm.type === 'proxy'" label="代理地址"><el-input v-model="createForm.proxy" placeholder="http://127.0.0.1:3000" /></el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" :loading="creating" @click="confirmCreate">创建</el-button>
-      </template>
-    </el-dialog>
+    <t-dialog
+      v-model:visible="createVisible"
+      header="添加站点"
+      width="520px"
+      :confirm-btn="{ content: '创建', loading: creating }"
+      @confirm="confirmCreate"
+    >
+      <t-form :data="createForm" label-width="90px" colon>
+        <t-form-item label="站点名称">
+          <t-input v-model="createForm.name" placeholder="my-site" />
+        </t-form-item>
+        <t-form-item label="类型">
+          <t-select v-model="createForm.type" style="width:100%">
+            <t-option label="静态文件" value="static" />
+            <t-option label="反向代理" value="proxy" />
+            <t-option label="PHP" value="php" />
+          </t-select>
+        </t-form-item>
+        <t-form-item label="域名">
+          <t-input v-model="createForm.domain" placeholder="example.com" />
+        </t-form-item>
+        <t-form-item label="监听端口">
+          <t-input-number v-model="createForm.port" :min="1" :max="65535" style="width:100%" />
+        </t-form-item>
+        <t-form-item v-if="createForm.type !== 'proxy'" label="根目录">
+          <t-input v-model="createForm.root" placeholder="/var/www/html" />
+        </t-form-item>
+        <t-form-item v-if="createForm.type === 'proxy'" label="代理地址">
+          <t-input v-model="createForm.proxy" placeholder="http://127.0.0.1:3000" />
+        </t-form-item>
+      </t-form>
+    </t-dialog>
 
-    <el-dialog v-model="editVisible" :title="`编辑配置 — ${editName}`" width="800px" top="4vh" :close-on-click-modal="false" @closed="destroyEditor">
+    <t-dialog
+      v-model:visible="editVisible"
+      :header="`编辑配置 — ${editName}`"
+      width="800px"
+      :close-on-overlay-click="false"
+      :confirm-btn="{ content: '保存并验证', loading: saving }"
+      @confirm="saveConfig"
+      @closed="destroyEditor"
+    >
       <div ref="editorEl" class="code-editor" />
-      <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="saveConfig">保存并验证</el-button>
-      </template>
-    </el-dialog>
+    </t-dialog>
 
-    <el-drawer v-model="logsVisible" :title="`日志 — ${logsSite}`" size="60%" direction="rtl" @opened="initLogs" @closed="closeLogs">
-      <el-tabs v-model="logsTab" @tab-change="switchLogsTab">
-        <el-tab-pane label="访问日志" name="access" /><el-tab-pane label="错误日志" name="error" />
-      </el-tabs>
+    <t-drawer v-model:visible="logsVisible" :header="`日志 — ${logsSite}`" size="60%" @closed="closeLogs">
+      <t-tabs :value="logsTab" @change="onLogsTabChange">
+        <t-tab-panel value="access" label="访问日志" />
+        <t-tab-panel value="error" label="错误日志" />
+      </t-tabs>
       <div ref="logsEl" class="logs-terminal" />
-    </el-drawer>
+    </t-drawer>
 
-    <el-dialog v-model="certReqVisible" title="申请 Let's Encrypt 证书" width="480px" :close-on-click-modal="!certRequesting">
-      <el-form :model="certReqForm" label-width="80px">
-        <el-form-item label="域名"><el-input v-model="certReqForm.domain" :placeholder="app?.domain || 'example.com'" /></el-form-item>
-        <el-form-item label="邮箱"><el-input v-model="certReqForm.email" placeholder="admin@example.com" /></el-form-item>
-        <el-form-item label="Webroot"><el-input v-model="certReqForm.webroot" placeholder="/var/www/html（留空使用 standalone）" /></el-form-item>
-      </el-form>
+    <t-dialog
+      v-model:visible="certReqVisible"
+      header="申请 Let's Encrypt 证书"
+      width="480px"
+      :close-on-overlay-click="!certRequesting"
+      :confirm-btn="{ content: '申请', loading: certRequesting }"
+      @confirm="startRequestCert"
+    >
+      <t-form :data="certReqForm" label-width="80px" colon>
+        <t-form-item label="域名">
+          <t-input v-model="certReqForm.domain" :placeholder="app?.domain || 'example.com'" />
+        </t-form-item>
+        <t-form-item label="邮箱">
+          <t-input v-model="certReqForm.email" placeholder="admin@example.com" />
+        </t-form-item>
+        <t-form-item label="Webroot">
+          <t-input v-model="certReqForm.webroot" placeholder="/var/www/html（留空使用 standalone）" />
+        </t-form-item>
+      </t-form>
       <pre v-if="certOutput" ref="certOutputEl" class="cert-output">{{ certOutput }}</pre>
-      <template #footer>
-        <el-button @click="certReqVisible = false" :disabled="certRequesting">取消</el-button>
-        <el-button type="primary" :loading="certRequesting" @click="startRequestCert">申请</el-button>
-      </template>
-    </el-dialog>
+    </t-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import { Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { RefreshIcon } from 'tdesign-icons-vue-next'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -142,6 +164,21 @@ const reloading = ref(false)
 const certs = ref<SSLCert[]>([])
 const certLoading = ref(false)
 
+const siteColumns = [
+  { colKey: 'name', title: '站点名', minWidth: 180, ellipsis: true },
+  { colKey: 'path', title: '配置文件', minWidth: 280, ellipsis: true },
+  { colKey: 'status', title: '状态', width: 90 },
+  { colKey: 'operations', title: '操作', width: 320, fixed: 'right' as const },
+]
+
+const certColumns = [
+  { colKey: 'domain', title: '域名', minWidth: 180 },
+  { colKey: 'issuer', title: '签发机构', minWidth: 140 },
+  { colKey: 'expires_at', title: '到期时间', minWidth: 140 },
+  { colKey: 'days_left', title: '剩余天数', width: 100 },
+  { colKey: 'operations', title: '操作', width: 160, fixed: 'right' as const },
+]
+
 const createVisible = ref(false)
 const creating = ref(false)
 const createForm = ref({ name: '', type: 'static' as 'static' | 'proxy' | 'php', domain: '', port: 80, root: '', proxy: '' })
@@ -156,11 +193,11 @@ async function confirmCreate() {
   creating.value = true
   try {
     await createSite(serverId.value, createForm.value)
-    ElMessage.success('站点已创建')
+    MessagePlugin.success('站点已创建')
     createVisible.value = false
     await loadSites()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.msg ?? '创建失败')
+    MessagePlugin.error(e?.response?.data?.msg ?? '创建失败')
   } finally { creating.value = false }
 }
 
@@ -181,7 +218,7 @@ async function openEdit(row: SiteItem) {
       state: EditorState.create({ doc: res.content, extensions: [basicSetup, oneDark] }),
       parent: editorEl.value!,
     })
-  } catch { ElMessage.error('读取配置失败'); editVisible.value = false }
+  } catch { MessagePlugin.error('读取配置失败'); editVisible.value = false }
 }
 
 async function saveConfig() {
@@ -189,10 +226,10 @@ async function saveConfig() {
   saving.value = true
   try {
     await putSiteConfig(serverId.value, editName.value, editorView.state.doc.toString())
-    ElMessage.success('配置已保存')
+    MessagePlugin.success('配置已保存')
     editVisible.value = false
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.msg ?? '保存失败')
+    MessagePlugin.error(e?.response?.data?.msg ?? '保存失败')
   } finally { saving.value = false }
 }
 
@@ -202,26 +239,26 @@ async function toggleSite(row: SiteItem, enable: boolean) {
   try {
     if (enable) await enableSite(serverId.value, row.name)
     else await disableSite(serverId.value, row.name)
-    ElMessage.success(enable ? '已启用' : '已禁用')
+    MessagePlugin.success(enable ? '已启用' : '已禁用')
     await loadSites()
-  } catch { ElMessage.error('操作失败') }
+  } catch { MessagePlugin.error('操作失败') }
 }
 
 async function delSite(row: SiteItem) {
-  try { await deleteSite(serverId.value, row.name); ElMessage.success('已删除'); await loadSites() }
-  catch { ElMessage.error('删除失败') }
+  try { await deleteSite(serverId.value, row.name); MessagePlugin.success('已删除'); await loadSites() }
+  catch { MessagePlugin.error('删除失败') }
 }
 
 async function doReload() {
   reloading.value = true
-  try { await nginxReload(serverId.value); ElMessage.success('nginx reload 成功') }
-  catch { ElMessage.error('reload 失败') }
+  try { await nginxReload(serverId.value); MessagePlugin.success('nginx reload 成功') }
+  catch { MessagePlugin.error('reload 失败') }
   finally { reloading.value = false }
 }
 
 async function doRestart() {
-  try { await nginxRestart(serverId.value); ElMessage.success('nginx restart 成功') }
-  catch { ElMessage.error('restart 失败') }
+  try { await nginxRestart(serverId.value); MessagePlugin.success('nginx restart 成功') }
+  catch { MessagePlugin.error('restart 失败') }
 }
 
 const logsVisible = ref(false)
@@ -231,19 +268,33 @@ const logsEl = ref<HTMLDivElement>()
 let logsTerm: Terminal | null = null
 let logsWs: WebSocket | null = null
 
-function openLogs(row: SiteItem) { logsSite.value = row.name; logsTab.value = 'access'; logsVisible.value = true }
-function initLogs() { startLogsStream(logsTab.value) }
-function switchLogsTab(tab: string) { closeLogs(); nextTick(() => startLogsStream(tab)) }
+function openLogs(row: SiteItem) {
+  logsSite.value = row.name
+  logsTab.value = 'access'
+  logsVisible.value = true
+  nextTick(() => startLogsStream('access'))
+}
+
+function onLogsTabChange(val: string | number) {
+  const tab = val as string
+  logsTab.value = tab
+  closeLogs()
+  nextTick(() => startLogsStream(tab))
+}
+
 function startLogsStream(type: string) {
   if (!logsEl.value) return
   logsTerm?.dispose()
-  logsTerm = new Terminal({ theme: { background: '#1a1a2e' }, convertEol: true, fontSize: 13 })
+  logsTerm = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
   const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
   logsWs?.close()
   const url = type === 'access' ? accessLogsWsUrl(serverId.value, auth.token) : errorLogsWsUrl(serverId.value, auth.token)
   logsWs = new WebSocket(url)
-  logsWs.onmessage = (e) => { try { const msg = JSON.parse(e.data); if (msg.type === 'output') logsTerm?.writeln(msg.data) } catch { /* ignore */ } }
+  logsWs.onmessage = (e) => {
+    try { const msg = JSON.parse(e.data); if (msg.type === 'output') logsTerm?.writeln(msg.data) } catch { /* ignore */ }
+  }
 }
+
 function closeLogs() { logsWs?.close(); logsWs = null; logsTerm?.dispose(); logsTerm = null }
 
 async function loadCerts() {
@@ -253,8 +304,8 @@ async function loadCerts() {
 }
 
 async function delCert(row: SSLCert) {
-  try { await apiDeleteCert(serverId.value, row.id); ElMessage.success('证书已删除'); await loadCerts() }
-  catch { ElMessage.error('删除失败') }
+  try { await apiDeleteCert(serverId.value, row.id); MessagePlugin.success('证书已删除'); await loadCerts() }
+  catch { MessagePlugin.error('删除失败') }
 }
 
 const certReqVisible = ref(false)
@@ -280,7 +331,7 @@ function startRequestCert() {
     try {
       const msg = JSON.parse(e.data)
       if (msg.type === 'output') { certOutput.value += msg.data + '\n'; nextTick(() => { if (certOutputEl.value) certOutputEl.value.scrollTop = certOutputEl.value.scrollHeight }) }
-      else if (msg.type === 'done') { certRequesting.value = false; ElMessage.success('证书申请成功'); loadCerts() }
+      else if (msg.type === 'done') { certRequesting.value = false; MessagePlugin.success('证书申请成功'); loadCerts() }
       else if (msg.type === 'error') { certRequesting.value = false; certOutput.value += '[错误] ' + msg.data + '\n' }
     } catch { /* ignore */ }
   }
@@ -295,7 +346,7 @@ function openRenew(row: SSLCert) {
     try {
       const msg = JSON.parse(e.data)
       if (msg.type === 'output') { certOutput.value += msg.data + '\n'; nextTick(() => { if (certOutputEl.value) certOutputEl.value.scrollTop = certOutputEl.value.scrollHeight }) }
-      else if (msg.type === 'done') { certRequesting.value = false; ElMessage.success('续签成功'); loadCerts() }
+      else if (msg.type === 'done') { certRequesting.value = false; MessagePlugin.success('续签成功'); loadCerts() }
       else if (msg.type === 'error') { certRequesting.value = false; certOutput.value += '[错误] ' + msg.data + '\n' }
     } catch { /* ignore */ }
   }
@@ -319,9 +370,24 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy(); certWs?.close() })
 .domain-page { padding: 4px 0; }
 .page-toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; flex-wrap: wrap; }
 .ssl-toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-.code-editor { height: 60vh; overflow: auto; border: 1px solid #e4e7ed; border-radius: 4px; font-size: 13px; }
+.section-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 24px 0 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--td-text-color-secondary);
+}
+.section-divider::before, .section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--td-component-border);
+}
+.code-editor { height: 60vh; overflow: auto; border: 1px solid var(--td-component-border); border-radius: 4px; font-size: 13px; }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
-.logs-terminal { width: 100%; height: calc(100vh - 200px); background: #1a1a2e; border-radius: 4px; overflow: hidden; }
-.cert-output { background: #1a1a2e; color: #e0e0e0; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 280px; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
+.logs-terminal { width: 100%; height: calc(100vh - 240px); background: #1a2332; border-radius: 4px; overflow: hidden; margin-top: 12px; }
+.cert-output { background: #1a2332; color: #e0e0e0; border-radius: 4px; padding: 12px; font-size: 12px; line-height: 1.6; overflow: auto; max-height: 280px; margin: 12px 0 0; white-space: pre-wrap; word-break: break-all; }
 </style>

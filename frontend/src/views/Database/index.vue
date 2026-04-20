@@ -1,12 +1,12 @@
 <template>
   <div class="db-page">
-    <!-- Left sidebar: connection list -->
+    <!-- Left sidebar -->
     <div class="db-sidebar">
       <div class="sidebar-header">
         <span class="sidebar-title">数据库连接</span>
-        <el-button :icon="Plus" circle size="small" @click="openAddConn" />
+        <t-button :icon="() => h(AddIcon)" shape="circle" size="small" variant="outline" @click="openAddConn" />
       </div>
-      <el-scrollbar>
+      <div class="sidebar-list">
         <div
           v-for="c in conns"
           :key="c.id"
@@ -14,241 +14,241 @@
           :class="{ active: selectedConn?.id === c.id }"
           @click="selectConn(c)"
         >
-          <el-icon class="conn-icon"><component :is="c.type === 'redis' ? 'Star' : 'Grid'" /></el-icon>
+          <component-grid-icon v-if="c.type !== 'redis'" class="conn-icon" />
+          <star-icon v-else class="conn-icon" />
           <div class="conn-info">
             <div class="conn-name">{{ c.name }}</div>
             <div class="conn-meta">{{ c.type.toUpperCase() }} · {{ c.host }}:{{ c.port }}</div>
           </div>
-          <el-button :icon="Delete" circle size="small" type="danger" plain @click.stop="deleteConnItem(c)" />
+          <t-button shape="circle" size="small" theme="danger" variant="text" @click.stop="deleteConnItem(c)">
+            <template #icon><delete-icon /></template>
+          </t-button>
         </div>
-        <el-empty v-if="conns.length === 0" description="暂无连接" :image-size="60" />
-      </el-scrollbar>
+        <t-empty v-if="conns.length === 0" description="暂无连接" style="padding:20px 0" />
+      </div>
     </div>
 
     <!-- Right content -->
     <div class="db-content" v-if="selectedConn">
       <div class="content-header">
         <span class="content-title">{{ selectedConn.name }}</span>
-        <el-tag :type="selectedConn.type === 'redis' ? 'warning' : 'primary'" size="small">{{ selectedConn.type.toUpperCase() }}</el-tag>
-        <el-button size="small" @click="testConnection">测试连接</el-button>
+        <t-tag :theme="selectedConn.type === 'redis' ? 'warning' : 'primary'" size="small" variant="light">
+          {{ selectedConn.type.toUpperCase() }}
+        </t-tag>
+        <t-button size="small" variant="outline" @click="testConnection">测试连接</t-button>
       </div>
 
       <!-- MySQL view -->
       <template v-if="selectedConn.type === 'mysql'">
-        <el-tabs v-model="mysqlTab">
-          <el-tab-pane label="数据库" name="databases">
-            <div class="tab-toolbar">
-              <el-button type="primary" size="small" @click="openCreateDb">建库</el-button>
-              <el-button size="small" :loading="dbLoading" @click="loadDatabases">刷新</el-button>
-            </div>
-            <el-table :data="databases" v-loading="dbLoading" size="small">
-              <el-table-column label="数据库名" prop="" min-width="200">
-                <template #default="{ row }">{{ row }}</template>
-              </el-table-column>
-              <el-table-column label="操作" width="160">
-                <template #default="{ row }">
-                  <el-button size="small" @click="exportDatabase(row)">导出</el-button>
-                  <el-popconfirm :title="`确认删除数据库 ${row}？不可恢复！`" @confirm="dropDatabase(row)">
-                    <template #reference>
-                      <el-button size="small" type="danger">删除</el-button>
-                    </template>
-                  </el-popconfirm>
+        <t-tabs :value="mysqlTab" @change="val => (mysqlTab = val as string)">
+          <t-tab-panel value="databases" label="数据库">
+            <div class="tab-content">
+              <div class="tab-toolbar">
+                <t-button theme="primary" size="small" @click="openCreateDb">建库</t-button>
+                <t-button size="small" variant="outline" :loading="dbLoading" @click="loadDatabases">刷新</t-button>
+              </div>
+              <t-table :data="databaseRows" :columns="dbTableColumns" :loading="dbLoading" size="small" row-key="name">
+                <template #operations="{ row }">
+                  <t-space size="small">
+                    <t-button size="small" variant="text" @click="exportDatabase(row.name)">导出</t-button>
+                    <t-popconfirm :content="`确认删除数据库 ${row.name}？不可恢复！`" @confirm="dropDatabase(row.name)">
+                      <t-button theme="danger" size="small" variant="text">删除</t-button>
+                    </t-popconfirm>
+                  </t-space>
                 </template>
-              </el-table-column>
-            </el-table>
-          </el-tab-pane>
-
-          <el-tab-pane label="用户" name="users">
-            <div class="tab-toolbar">
-              <el-button type="primary" size="small" @click="openCreateUser">添加用户</el-button>
-              <el-button size="small" :loading="userLoading" @click="loadUsers">刷新</el-button>
+              </t-table>
             </div>
-            <el-table :data="users" v-loading="userLoading" size="small">
-              <el-table-column label="用户名" prop="user" min-width="150" />
-              <el-table-column label="Host" prop="host" width="160" />
-            </el-table>
-          </el-tab-pane>
+          </t-tab-panel>
 
-          <el-tab-pane label="SQL 执行器" name="query">
-            <div class="query-toolbar">
-              <el-select v-model="queryDb" placeholder="选择数据库" size="small" style="width:180px" clearable>
-                <el-option v-for="d in databases" :key="d" :label="d" :value="d" />
-              </el-select>
-              <el-button type="primary" size="small" :loading="queryLoading" @click="runQuery">执行</el-button>
+          <t-tab-panel value="users" label="用户">
+            <div class="tab-content">
+              <div class="tab-toolbar">
+                <t-button theme="primary" size="small" @click="openCreateUser">添加用户</t-button>
+                <t-button size="small" variant="outline" :loading="userLoading" @click="loadUsers">刷新</t-button>
+              </div>
+              <t-table :data="users" :columns="userColumns" :loading="userLoading" size="small" row-key="user" />
             </div>
-            <div ref="sqlEditorEl" class="sql-editor" />
-            <div v-if="queryResult" class="query-result">
-              <el-table :data="queryResult.rows" size="small" style="width:100%" max-height="300">
-                <el-table-column
-                  v-for="(col, i) in queryResult.columns"
-                  :key="i"
-                  :label="col"
-                  :prop="String(i)"
-                  show-overflow-tooltip
-                >
-                  <template #default="{ row }">{{ row[i] }}</template>
-                </el-table-column>
-              </el-table>
-              <div class="result-meta">共 {{ queryResult.rows.length }} 行</div>
-            </div>
-            <div v-if="queryError" class="query-error">{{ queryError }}</div>
-          </el-tab-pane>
+          </t-tab-panel>
 
-          <el-tab-pane label="状态" name="status">
-            <el-button size="small" :loading="statusLoading" @click="loadStatus" style="margin-bottom:12px">刷新</el-button>
-            <el-table :data="statusRows" v-loading="statusLoading" size="small" max-height="500">
-              <el-table-column label="变量名" prop="0" width="300" show-overflow-tooltip />
-              <el-table-column label="值" prop="1" show-overflow-tooltip />
-            </el-table>
-          </el-tab-pane>
-        </el-tabs>
+          <t-tab-panel value="query" label="SQL 执行器">
+            <div class="tab-content">
+              <div class="query-toolbar">
+                <t-select v-model="queryDb" placeholder="选择数据库" size="small" style="width:180px" clearable>
+                  <t-option v-for="d in databases" :key="d" :label="d" :value="d" />
+                </t-select>
+                <t-button theme="primary" size="small" :loading="queryLoading" @click="runQuery">执行</t-button>
+              </div>
+              <div ref="sqlEditorEl" class="sql-editor" />
+              <div v-if="queryResult" class="query-result">
+                <t-table :data="queryRowsData" :columns="queryColumnsData" size="small" max-height="300" row-key="_idx" />
+                <div class="result-meta">共 {{ queryResult.rows.length }} 行</div>
+              </div>
+              <div v-if="queryError" class="query-error">{{ queryError }}</div>
+            </div>
+          </t-tab-panel>
+
+          <t-tab-panel value="status" label="状态">
+            <div class="tab-content">
+              <t-button size="small" variant="outline" :loading="statusLoading" @click="loadStatus" style="margin-bottom:12px">刷新</t-button>
+              <t-table :data="statusRowsData" :columns="statusColumns" :loading="statusLoading" size="small" max-height="500" row-key="key" />
+            </div>
+          </t-tab-panel>
+        </t-tabs>
       </template>
 
       <!-- Redis view -->
       <template v-else-if="selectedConn.type === 'redis'">
-        <el-tabs v-model="redisTab">
-          <el-tab-pane label="状态" name="info">
-            <el-button size="small" :loading="infoLoading" @click="loadRedisInfo" style="margin-bottom:12px">刷新</el-button>
-            <div class="redis-info-grid">
-              <div v-for="(val, key) in redisInfo" :key="key" class="info-item">
-                <span class="info-key">{{ key }}</span>
-                <span class="info-val">{{ val }}</span>
-              </div>
-            </div>
-          </el-tab-pane>
-
-          <el-tab-pane label="Key 浏览" name="keys">
-            <div class="tab-toolbar">
-              <el-input v-model="keyPattern" placeholder="搜索 Pattern（默认 *）" size="small" style="width:220px" />
-              <el-button size="small" :loading="keysLoading" @click="loadKeys">搜索</el-button>
-              <el-popconfirm title="确认 FLUSHDB？所有数据将被清空！" @confirm="doFlushDB">
-                <template #reference>
-                  <el-button size="small" type="danger">FLUSHDB</el-button>
-                </template>
-              </el-popconfirm>
-            </div>
-            <div class="keys-layout">
-              <div class="keys-list">
-                <div
-                  v-for="k in redisKeys"
-                  :key="k"
-                  class="key-item"
-                  :class="{ active: selectedKey === k }"
-                  @click="viewKey(k)"
-                >{{ k }}</div>
-              </div>
-              <div class="key-detail" v-if="keyDetail">
-                <div class="key-detail-header">
-                  <el-tag size="small">{{ keyDetail.type }}</el-tag>
-                  <span class="key-ttl">TTL: {{ keyDetail.ttl }}s</span>
-                  <el-button size="small" type="danger" @click="deleteKey(selectedKey!)">删除</el-button>
+        <t-tabs :value="redisTab" @change="val => (redisTab = val as string)">
+          <t-tab-panel value="info" label="状态">
+            <div class="tab-content">
+              <t-button size="small" variant="outline" :loading="infoLoading" @click="loadRedisInfo" style="margin-bottom:12px">刷新</t-button>
+              <div class="redis-info-grid">
+                <div v-for="(val, key) in redisInfo" :key="key" class="info-item">
+                  <span class="info-key">{{ key }}</span>
+                  <span class="info-val">{{ val }}</span>
                 </div>
-                <pre class="key-value">{{ keyDetail.value }}</pre>
               </div>
             </div>
-          </el-tab-pane>
-        </el-tabs>
+          </t-tab-panel>
+
+          <t-tab-panel value="keys" label="Key 浏览">
+            <div class="tab-content">
+              <div class="tab-toolbar">
+                <t-input v-model="keyPattern" placeholder="搜索 Pattern（默认 *）" size="small" style="width:220px" />
+                <t-button size="small" variant="outline" :loading="keysLoading" @click="loadKeys">搜索</t-button>
+                <t-popconfirm content="确认 FLUSHDB？所有数据将被清空！" @confirm="doFlushDB">
+                  <t-button size="small" theme="danger" variant="outline">FLUSHDB</t-button>
+                </t-popconfirm>
+              </div>
+              <div class="keys-layout">
+                <div class="keys-list">
+                  <div
+                    v-for="k in redisKeys"
+                    :key="k"
+                    class="key-item"
+                    :class="{ active: selectedKey === k }"
+                    @click="viewKey(k)"
+                  >{{ k }}</div>
+                </div>
+                <div class="key-detail" v-if="keyDetail">
+                  <div class="key-detail-header">
+                    <t-tag size="small" variant="light">{{ keyDetail.type }}</t-tag>
+                    <span class="key-ttl">TTL: {{ keyDetail.ttl }}s</span>
+                    <t-button size="small" theme="danger" variant="outline" @click="deleteKey(selectedKey!)">删除</t-button>
+                  </div>
+                  <pre class="key-value">{{ keyDetail.value }}</pre>
+                </div>
+              </div>
+            </div>
+          </t-tab-panel>
+        </t-tabs>
       </template>
     </div>
 
     <div class="db-content db-empty" v-else>
-      <el-empty description="选择或创建一个数据库连接" />
+      <t-empty description="选择或创建一个数据库连接" />
     </div>
 
     <!-- Add connection dialog -->
-    <el-dialog v-model="addConnVisible" title="添加数据库连接" width="480px">
-      <el-form :model="connForm" label-width="80px" size="small">
-        <el-form-item label="名称">
-          <el-input v-model="connForm.name" placeholder="My MySQL" />
-        </el-form-item>
-        <el-form-item label="服务器">
-          <el-select v-model="connForm.server_id" placeholder="选择服务器" style="width:100%">
-            <el-option v-for="s in servers" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="类型">
-          <el-radio-group v-model="connForm.type">
-            <el-radio value="mysql">MySQL</el-radio>
-            <el-radio value="redis">Redis</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="Host">
-          <el-input v-model="connForm.host" placeholder="127.0.0.1" />
-        </el-form-item>
-        <el-form-item label="端口">
-          <el-input-number v-model="connForm.port" :min="1" :max="65535" style="width:100%" />
-        </el-form-item>
-        <el-form-item label="用户名" v-if="connForm.type === 'mysql'">
-          <el-input v-model="connForm.username" placeholder="root" />
-        </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="connForm.password" type="password" show-password />
-        </el-form-item>
-        <el-form-item label="默认库" v-if="connForm.type === 'mysql'">
-          <el-input v-model="connForm.database" placeholder="可选" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="addConnVisible = false">取消</el-button>
-        <el-button type="primary" :loading="addConnLoading" @click="confirmAddConn">保存</el-button>
-      </template>
-    </el-dialog>
+    <t-dialog
+      v-model:visible="addConnVisible"
+      header="添加数据库连接"
+      width="480px"
+      :confirm-btn="{ content: '保存', loading: addConnLoading }"
+      @confirm="confirmAddConn"
+    >
+      <t-form :data="connForm" label-width="80px" colon>
+        <t-form-item label="名称">
+          <t-input v-model="connForm.name" placeholder="My MySQL" />
+        </t-form-item>
+        <t-form-item label="服务器">
+          <t-select v-model="connForm.server_id" placeholder="选择服务器" style="width:100%">
+            <t-option v-for="s in servers" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
+          </t-select>
+        </t-form-item>
+        <t-form-item label="类型">
+          <t-radio-group v-model="connForm.type">
+            <t-radio value="mysql">MySQL</t-radio>
+            <t-radio value="redis">Redis</t-radio>
+          </t-radio-group>
+        </t-form-item>
+        <t-form-item label="Host">
+          <t-input v-model="connForm.host" placeholder="127.0.0.1" />
+        </t-form-item>
+        <t-form-item label="端口">
+          <t-input-number v-model="connForm.port" :min="1" :max="65535" style="width:100%" />
+        </t-form-item>
+        <t-form-item v-if="connForm.type === 'mysql'" label="用户名">
+          <t-input v-model="connForm.username" placeholder="root" />
+        </t-form-item>
+        <t-form-item label="密码">
+          <t-input v-model="connForm.password" type="password" />
+        </t-form-item>
+        <t-form-item v-if="connForm.type === 'mysql'" label="默认库">
+          <t-input v-model="connForm.database" placeholder="可选" />
+        </t-form-item>
+      </t-form>
+    </t-dialog>
 
     <!-- Create database dialog -->
-    <el-dialog v-model="createDbVisible" title="创建数据库" width="400px">
-      <el-form :model="createDbForm" label-width="80px" size="small">
-        <el-form-item label="库名">
-          <el-input v-model="createDbForm.name" placeholder="mydb" />
-        </el-form-item>
-        <el-form-item label="字符集">
-          <el-select v-model="createDbForm.charset" style="width:100%">
-            <el-option label="utf8mb4" value="utf8mb4" />
-            <el-option label="utf8" value="utf8" />
-            <el-option label="latin1" value="latin1" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createDbVisible = false">取消</el-button>
-        <el-button type="primary" :loading="createDbLoading" @click="confirmCreateDb">创建</el-button>
-      </template>
-    </el-dialog>
+    <t-dialog
+      v-model:visible="createDbVisible"
+      header="创建数据库"
+      width="400px"
+      :confirm-btn="{ content: '创建', loading: createDbLoading }"
+      @confirm="confirmCreateDb"
+    >
+      <t-form :data="createDbForm" label-width="80px" colon>
+        <t-form-item label="库名">
+          <t-input v-model="createDbForm.name" placeholder="mydb" />
+        </t-form-item>
+        <t-form-item label="字符集">
+          <t-select v-model="createDbForm.charset" style="width:100%">
+            <t-option label="utf8mb4" value="utf8mb4" />
+            <t-option label="utf8" value="utf8" />
+            <t-option label="latin1" value="latin1" />
+          </t-select>
+        </t-form-item>
+      </t-form>
+    </t-dialog>
 
     <!-- Create user dialog -->
-    <el-dialog v-model="createUserVisible" title="添加用户" width="400px">
-      <el-form :model="createUserForm" label-width="80px" size="small">
-        <el-form-item label="用户名">
-          <el-input v-model="createUserForm.user" placeholder="appuser" />
-        </el-form-item>
-        <el-form-item label="Host">
-          <el-input v-model="createUserForm.host" placeholder="%" />
-        </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="createUserForm.password" type="password" show-password />
-        </el-form-item>
-        <el-form-item label="授权库">
-          <el-input v-model="createUserForm.database" placeholder="留空为 *.*" />
-        </el-form-item>
-        <el-form-item label="权限">
-          <el-select v-model="createUserForm.grant" style="width:100%">
-            <el-option label="ALL PRIVILEGES" value="ALL PRIVILEGES" />
-            <el-option label="SELECT" value="SELECT" />
-            <el-option label="SELECT, INSERT, UPDATE, DELETE" value="SELECT, INSERT, UPDATE, DELETE" />
-          </el-select>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="createUserVisible = false">取消</el-button>
-        <el-button type="primary" :loading="createUserLoading" @click="confirmCreateUser">创建</el-button>
-      </template>
-    </el-dialog>
+    <t-dialog
+      v-model:visible="createUserVisible"
+      header="添加用户"
+      width="400px"
+      :confirm-btn="{ content: '创建', loading: createUserLoading }"
+      @confirm="confirmCreateUser"
+    >
+      <t-form :data="createUserForm" label-width="80px" colon>
+        <t-form-item label="用户名">
+          <t-input v-model="createUserForm.user" placeholder="appuser" />
+        </t-form-item>
+        <t-form-item label="Host">
+          <t-input v-model="createUserForm.host" placeholder="%" />
+        </t-form-item>
+        <t-form-item label="密码">
+          <t-input v-model="createUserForm.password" type="password" />
+        </t-form-item>
+        <t-form-item label="授权库">
+          <t-input v-model="createUserForm.database" placeholder="留空为 *.*" />
+        </t-form-item>
+        <t-form-item label="权限">
+          <t-select v-model="createUserForm.grant" style="width:100%">
+            <t-option label="ALL PRIVILEGES" value="ALL PRIVILEGES" />
+            <t-option label="SELECT" value="SELECT" />
+            <t-option label="SELECT, INSERT, UPDATE, DELETE" value="SELECT, INSERT, UPDATE, DELETE" />
+          </t-select>
+        </t-form-item>
+      </t-form>
+    </t-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
-import { Plus, Delete } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { h, ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { AddIcon, DeleteIcon, ComponentGridIcon, StarIcon } from 'tdesign-icons-vue-next'
+import { MessagePlugin } from 'tdesign-vue-next'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { sql } from '@codemirror/lang-sql'
@@ -272,7 +272,7 @@ const selectedConn = ref<DBConn | null>(null)
 // ── Connections ──────────────────────────────────────────────────
 const addConnVisible = ref(false)
 const addConnLoading = ref(false)
-const connForm = ref({ name: '', server_id: 0, type: 'mysql' as 'mysql'|'redis', host: '127.0.0.1', port: 3306, username: 'root', password: '', database: '' })
+const connForm = ref({ name: '', server_id: 0, type: 'mysql' as 'mysql' | 'redis', host: '127.0.0.1', port: 3306, username: 'root', password: '', database: '' })
 
 watch(() => connForm.value.type, (t) => {
   connForm.value.port = t === 'redis' ? 6379 : 3306
@@ -285,17 +285,17 @@ function openAddConn() {
 
 async function confirmAddConn() {
   if (!connForm.value.name || !connForm.value.server_id) {
-    ElMessage.warning('请填写名称并选择服务器')
+    MessagePlugin.warning('请填写名称并选择服务器')
     return
   }
   addConnLoading.value = true
   try {
     await createConn(connForm.value)
-    ElMessage.success('连接已创建')
+    MessagePlugin.success('连接已创建')
     addConnVisible.value = false
     await loadConns()
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.msg ?? '创建失败')
+    MessagePlugin.error(e?.response?.data?.msg ?? '创建失败')
   } finally { addConnLoading.value = false }
 }
 
@@ -309,35 +309,31 @@ function selectConn(c: DBConn) {
   selectedConn.value = c
   mysqlTab.value = 'databases'
   redisTab.value = 'info'
-  if (c.type === 'mysql') {
-    loadDatabases()
-  } else {
-    loadRedisInfo()
-  }
+  if (c.type === 'mysql') loadDatabases()
+  else loadRedisInfo()
 }
 
 async function testConnection() {
   if (!selectedConn.value) return
   try {
     const res = await testConn(selectedConn.value.id)
-    ElMessage.success(`连接成功: ${res?.output ?? 'OK'}`)
+    MessagePlugin.success(`连接成功: ${res?.output ?? 'OK'}`)
   } catch (e: any) {
-    ElMessage.error(e?.response?.data?.msg ?? '连接失败')
+    MessagePlugin.error(e?.response?.data?.msg ?? '连接失败')
   }
 }
 
-async function loadConns() {
-  conns.value = await listConns()
-}
+async function loadConns() { conns.value = await listConns() }
 
 // ── MySQL ────────────────────────────────────────────────────────
 const mysqlTab = ref('databases')
 const dbLoading = ref(false)
 const databases = ref<string[]>([])
+const databaseRows = computed(() => databases.value.map(name => ({ name })))
 const userLoading = ref(false)
 const users = ref<Array<{ user: string; host: string }>>([])
 const statusLoading = ref(false)
-const statusRows = ref<string[][]>([])
+const statusRowsData = ref<Array<{ key: string; val: string }>>([])
 const queryLoading = ref(false)
 const queryDb = ref('')
 const queryResult = ref<{ columns: string[]; rows: string[][] } | null>(null)
@@ -345,15 +341,37 @@ const queryError = ref('')
 const sqlEditorEl = ref<HTMLDivElement>()
 let sqlEditor: EditorView | null = null
 
+const dbTableColumns = [
+  { colKey: 'name', title: '数据库名', minWidth: 200 },
+  { colKey: 'operations', title: '操作', width: 160, fixed: 'right' as const },
+]
+const userColumns = [
+  { colKey: 'user', title: '用户名', minWidth: 150 },
+  { colKey: 'host', title: 'Host', width: 160 },
+]
+const statusColumns = [
+  { colKey: 'key', title: '变量名', width: 300, ellipsis: true },
+  { colKey: 'val', title: '值', minWidth: 200, ellipsis: true },
+]
+
+const queryRowsData = computed(() => {
+  if (!queryResult.value) return []
+  return queryResult.value.rows.map((row, idx) => {
+    const obj: Record<string, string> = { _idx: String(idx) }
+    queryResult.value!.columns.forEach((col, i) => { obj[col] = row[i] })
+    return obj
+  })
+})
+const queryColumnsData = computed(() =>
+  queryResult.value?.columns.map(col => ({ colKey: col, title: col, minWidth: 120, ellipsis: true })) ?? []
+)
+
 watch(mysqlTab, async (tab) => {
   if (!selectedConn.value) return
   if (tab === 'databases') loadDatabases()
   if (tab === 'users') loadUsers()
   if (tab === 'status') loadStatus()
-  if (tab === 'query') {
-    await nextTick()
-    initSqlEditor()
-  }
+  if (tab === 'query') { await nextTick(); initSqlEditor() }
 })
 
 function initSqlEditor() {
@@ -383,7 +401,7 @@ async function loadStatus() {
   statusLoading.value = true
   try {
     const res = await mysqlStatus(selectedConn.value.id)
-    statusRows.value = res.rows
+    statusRowsData.value = res.rows.map((row: string[]) => ({ key: row[0], val: row[1] }))
   } finally { statusLoading.value = false }
 }
 
@@ -400,7 +418,6 @@ async function runQuery() {
   } finally { queryLoading.value = false }
 }
 
-// Create database
 const createDbVisible = ref(false)
 const createDbLoading = ref(false)
 const createDbForm = ref({ name: '', charset: 'utf8mb4' })
@@ -412,10 +429,10 @@ async function confirmCreateDb() {
   createDbLoading.value = true
   try {
     await mysqlCreateDatabase(selectedConn.value.id, createDbForm.value.name, createDbForm.value.charset)
-    ElMessage.success('数据库已创建')
+    MessagePlugin.success('数据库已创建')
     createDbVisible.value = false
     await loadDatabases()
-  } catch (e: any) { ElMessage.error(e?.response?.data?.msg ?? '创建失败') }
+  } catch (e: any) { MessagePlugin.error(e?.response?.data?.msg ?? '创建失败') }
   finally { createDbLoading.value = false }
 }
 
@@ -423,9 +440,9 @@ async function dropDatabase(dbname: string) {
   if (!selectedConn.value) return
   try {
     await mysqlDropDatabase(selectedConn.value.id, dbname)
-    ElMessage.success('已删除')
+    MessagePlugin.success('已删除')
     await loadDatabases()
-  } catch (e: any) { ElMessage.error(e?.response?.data?.msg ?? '删除失败') }
+  } catch (e: any) { MessagePlugin.error(e?.response?.data?.msg ?? '删除失败') }
 }
 
 function exportDatabase(dbname: string) {
@@ -434,7 +451,6 @@ function exportDatabase(dbname: string) {
   window.open(url, '_blank')
 }
 
-// Create user
 const createUserVisible = ref(false)
 const createUserLoading = ref(false)
 const createUserForm = ref({ user: '', host: '%', password: '', database: '', grant: 'ALL PRIVILEGES' })
@@ -443,16 +459,16 @@ function openCreateUser() { createUserForm.value = { user: '', host: '%', passwo
 
 async function confirmCreateUser() {
   if (!selectedConn.value || !createUserForm.value.user || !createUserForm.value.password) {
-    ElMessage.warning('请填写用户名和密码')
+    MessagePlugin.warning('请填写用户名和密码')
     return
   }
   createUserLoading.value = true
   try {
     await mysqlCreateUser(selectedConn.value.id, createUserForm.value)
-    ElMessage.success('用户已创建')
+    MessagePlugin.success('用户已创建')
     createUserVisible.value = false
     await loadUsers()
-  } catch (e: any) { ElMessage.error(e?.response?.data?.msg ?? '创建失败') }
+  } catch (e: any) { MessagePlugin.error(e?.response?.data?.msg ?? '创建失败') }
   finally { createUserLoading.value = false }
 }
 
@@ -504,9 +520,9 @@ async function doFlushDB() {
   if (!selectedConn.value) return
   try {
     await redisFlushDB(selectedConn.value.id)
-    ElMessage.success('FLUSHDB 已执行')
+    MessagePlugin.success('FLUSHDB 已执行')
     await loadKeys()
-  } catch (e: any) { ElMessage.error(e?.response?.data?.msg ?? '失败') }
+  } catch (e: any) { MessagePlugin.error(e?.response?.data?.msg ?? '失败') }
 }
 
 // ── Init ─────────────────────────────────────────────────────────
@@ -524,72 +540,60 @@ init()
   display: flex;
   height: 100%;
   min-height: calc(100vh - 120px);
-  gap: 0;
 }
 .db-sidebar {
   width: 240px;
   flex-shrink: 0;
-  border-right: 1px solid #e4e7ed;
+  border-right: 1px solid var(--td-component-border);
   display: flex;
   flex-direction: column;
-  background: #fafafa;
+  background: var(--td-bg-color-secondarycontainer);
 }
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 12px 14px;
-  border-bottom: 1px solid #e4e7ed;
+  border-bottom: 1px solid var(--td-component-border);
 }
-.sidebar-title { font-weight: 600; font-size: 13px; }
+.sidebar-title { font-weight: 600; font-size: 13px; color: var(--td-text-color-primary); }
+.sidebar-list { flex: 1; overflow-y: auto; }
 .conn-item {
   display: flex;
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--td-component-border);
   transition: background 0.15s;
 }
-.conn-item:hover { background: #f0f5ff; }
-.conn-item.active { background: #ecf5ff; }
-.conn-icon { font-size: 16px; color: #409eff; flex-shrink: 0; }
+.conn-item:hover { background: var(--td-bg-color-container-hover); }
+.conn-item.active { background: #e8f0fe; }
+.conn-icon { font-size: 16px; color: #0052d9; flex-shrink: 0; }
 .conn-info { flex: 1; overflow: hidden; }
-.conn-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.conn-meta { font-size: 11px; color: #909399; }
-.db-content {
-  flex: 1;
-  padding: 20px;
-  overflow: auto;
-}
-.db-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.content-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 16px;
-}
-.content-title { font-size: 16px; font-weight: 600; }
-.tab-toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
+.conn-name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--td-text-color-primary); }
+.conn-meta { font-size: 11px; color: var(--td-text-color-secondary); }
+.db-content { flex: 1; padding: 20px; overflow: auto; }
+.db-empty { display: flex; align-items: center; justify-content: center; }
+.content-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.content-title { font-size: 16px; font-weight: 600; color: var(--td-text-color-primary); }
+.tab-content { padding: 16px 0; }
+.tab-toolbar { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
 .query-toolbar { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
 .sql-editor {
   height: 200px;
   overflow: auto;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--td-component-border);
   border-radius: 4px;
   margin-bottom: 12px;
 }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
 .query-result { margin-top: 8px; }
-.result-meta { font-size: 12px; color: #909399; margin-top: 6px; }
+.result-meta { font-size: 12px; color: var(--td-text-color-secondary); margin-top: 6px; }
 .query-error {
-  color: #f56c6c;
-  background: #fef0f0;
+  color: #e34d59;
+  background: #fff0f0;
   padding: 8px 12px;
   border-radius: 4px;
   font-size: 13px;
@@ -604,18 +608,18 @@ init()
   display: flex;
   gap: 8px;
   padding: 4px 8px;
-  background: #f5f7fa;
+  background: var(--td-bg-color-secondarycontainer);
   border-radius: 4px;
   font-size: 12px;
 }
-.info-key { color: #606266; min-width: 180px; flex-shrink: 0; }
-.info-val { color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info-key { color: var(--td-text-color-secondary); min-width: 180px; flex-shrink: 0; }
+.info-val { color: var(--td-text-color-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .keys-layout { display: flex; gap: 12px; height: 400px; }
 .keys-list {
   width: 260px;
   flex-shrink: 0;
   overflow-y: auto;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--td-component-border);
   border-radius: 4px;
 }
 .key-item {
@@ -623,16 +627,17 @@ init()
   font-size: 12px;
   font-family: monospace;
   cursor: pointer;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--td-component-border);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--td-text-color-primary);
 }
-.key-item:hover { background: #f0f5ff; }
-.key-item.active { background: #ecf5ff; color: #409eff; }
+.key-item:hover { background: var(--td-bg-color-container-hover); }
+.key-item.active { background: #e8f0fe; color: #0052d9; }
 .key-detail {
   flex: 1;
-  border: 1px solid #e4e7ed;
+  border: 1px solid var(--td-component-border);
   border-radius: 4px;
   padding: 12px;
   display: flex;
@@ -641,10 +646,10 @@ init()
   overflow: auto;
 }
 .key-detail-header { display: flex; align-items: center; gap: 8px; }
-.key-ttl { font-size: 12px; color: #909399; }
+.key-ttl { font-size: 12px; color: var(--td-text-color-secondary); }
 .key-value {
   flex: 1;
-  background: #1a1a2e;
+  background: #1a2332;
   color: #a0f0a0;
   padding: 10px;
   border-radius: 4px;
