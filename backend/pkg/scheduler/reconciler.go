@@ -61,7 +61,7 @@ func reconcileOne(db *gorm.DB, cfg *config.Config, app model.Deploy) {
 		return
 	}
 
-	result := deployer.Run(db, cfg, app, nil)
+	result := deployer.Run(db, cfg, app, "schedule", nil)
 	if !result.Success {
 		fmt.Printf("[reconciler] app %d failed: %s\n", app.ID, result.Output)
 	}

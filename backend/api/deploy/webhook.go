@@ -48,7 +48,7 @@ func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			}
 		}
 
-		go deployer.Run(db, cfg, d, nil)
+		go deployer.Run(db, cfg, d, "webhook", nil)
 
 		resp.OK(c, gin.H{"triggered": true})
 	}

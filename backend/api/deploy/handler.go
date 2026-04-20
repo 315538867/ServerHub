@@ -179,7 +179,7 @@ func runHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			c.Writer.Flush()
 		}
 
-		result := deployer.Run(db, cfg, d, func(line string) {
+		result := deployer.Run(db, cfg, d, "manual", func(line string) {
 			sendEvent("output", line)
 		})
 		if result.Success {
@@ -221,7 +221,7 @@ func rollbackHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			c.Writer.Flush()
 		}
 
-		result := deployer.Run(db, cfg, d, func(line string) {
+		result := deployer.Run(db, cfg, d, "manual", func(line string) {
 			sendEvent("output", line)
 		})
 		if result.Success {

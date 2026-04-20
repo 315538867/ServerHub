@@ -23,8 +23,9 @@ type Result struct {
 }
 
 // Run executes a deployment via SSH.
+// triggerSource: "manual" | "webhook" | "schedule" | "api"
 // onLine is called for each stdout line (pass nil for background runs).
-func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, onLine func(string)) Result {
+func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string, onLine func(string)) Result {
 	var s model.Server
 	if err := db.First(&s, app.ServerID).Error; err != nil {
 		return Result{Output: "server not found", Success: false}
@@ -76,10 +77,11 @@ func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, onLine func(string))
 	output := buf.String()
 
 	db.Create(&model.DeployLog{
-		DeployID: app.ID,
-		Output:   output,
-		Status:   statusStr(success),
-		Duration: duration,
+		DeployID:      app.ID,
+		Output:        output,
+		Status:        statusStr(success),
+		Duration:      duration,
+		TriggerSource: triggerSource,
 	})
 
 	if success {
