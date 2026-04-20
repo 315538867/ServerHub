@@ -49,18 +49,18 @@
 
     <!-- 服务器基本信息 -->
     <div class="section-block">
-      <div class="section-header">
-        <div class="section-title">
-          <server-icon class="section-icon" />
+      <div class="section-title">
+        <span class="info-title">
+          <server-icon style="color: var(--sh-blue); font-size: 16px" />
           服务器信息
-        </div>
-        <div class="section-actions">
+        </span>
+        <t-space size="small">
           <t-button size="small" variant="outline" :loading="testing" @click="doTest">连接测试</t-button>
           <t-button size="small" variant="outline" :loading="collecting" @click="doCollect">
             <template #icon><refresh-icon /></template>
             采集指标
           </t-button>
-        </div>
+        </t-space>
       </div>
       <div class="info-grid">
         <div class="info-item">
@@ -79,13 +79,13 @@
           <span class="info-label">连接状态</span>
           <span class="info-value">
             <t-tag :theme="statusTheme(server?.status)" variant="light" size="small">
-              {{ server?.status ?? '—' }}
+              {{ statusText(server?.status) }}
             </t-tag>
           </span>
         </div>
         <div class="info-item">
           <span class="info-label">最后检测</span>
-          <span class="info-value time">{{ server?.last_check_at ?? '—' }}</span>
+          <span class="info-value time">{{ server?.last_check_at ? dayjs(server.last_check_at).format('MM-DD HH:mm:ss') : '—' }}</span>
         </div>
         <div class="info-item">
           <span class="info-label">备注</span>
@@ -101,6 +101,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { RefreshIcon, ServerIcon } from 'tdesign-icons-vue-next'
 import { MessagePlugin } from 'tdesign-vue-next'
+import dayjs from 'dayjs'
 import { useServerStore } from '@/stores/server'
 import { getServer, testServer, collectMetrics, getMetrics } from '@/api/servers'
 import type { Server, Metric } from '@/types/api'
@@ -116,6 +117,9 @@ const collecting = ref(false)
 
 function statusTheme(s?: string) {
   return ({ online: 'success', offline: 'danger', unknown: 'default' } as Record<string, string>)[s ?? ''] ?? 'default'
+}
+function statusText(s?: string) {
+  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string, string>)[s ?? ''] ?? '—'
 }
 function progressColor(v: number) {
   if (v >= 90) return '#e34d59'
@@ -193,38 +197,17 @@ onMounted(async () => {
   margin-top: 8px;
 }
 
-.section-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--sh-border);
-}
-
-.section-title {
+.info-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--sh-text-primary);
-}
-
-.section-icon {
-  color: var(--sh-blue);
-  font-size: 16px;
-}
-
-.section-actions {
-  display: flex;
-  gap: 8px;
 }
 
 .info-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px 24px;
+  padding: 16px 20px 20px;
 }
 
 .info-item {
