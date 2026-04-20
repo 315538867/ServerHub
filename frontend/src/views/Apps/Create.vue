@@ -50,8 +50,8 @@
         </div>
 
         <!-- 部署配置 -->
-        <div class="form-section form-section--last">
-          <div class="form-section-title">部署配置</div>
+        <div class="form-section">
+          <div class="form-section-title">Nginx 配置</div>
           <div class="form-grid">
             <div class="form-field">
               <label class="form-label">Nginx 站点</label>
@@ -77,6 +77,58 @@
           </div>
         </div>
 
+        <!-- 部署方式 -->
+        <div class="form-section form-section--last">
+          <div class="form-section-title">部署方式 <span class="form-hint" style="font-weight:400;border:none;padding:0">（可选，稍后在「部署」Tab 配置）</span></div>
+          <div class="deploy-type-cards">
+            <div
+              v-for="t in deployTypes" :key="t.value"
+              class="deploy-type-card"
+              :class="{ 'is-active': deployType === t.value }"
+              @click="deployType = deployType === t.value ? '' : t.value"
+            >
+              <div class="dtc-icon">{{ t.icon }}</div>
+              <div class="dtc-title">{{ t.label }}</div>
+              <div class="dtc-desc">{{ t.desc }}</div>
+            </div>
+          </div>
+
+          <div v-if="deployType" class="deploy-type-fields">
+            <div class="form-grid">
+              <div class="form-field">
+                <label class="form-label">工作目录</label>
+                <t-input v-model="deployForm.work_dir" placeholder="例如：/srv/apps/my-blog" />
+              </div>
+              <template v-if="deployType === 'docker-compose'">
+                <div class="form-field">
+                  <label class="form-label">Compose 文件名</label>
+                  <t-input v-model="deployForm.compose_file" placeholder="docker-compose.yml" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label">镜像名（可选）</label>
+                  <t-input v-model="deployForm.image_name" placeholder="例如：nginx:latest" />
+                </div>
+              </template>
+              <template v-if="deployType === 'docker'">
+                <div class="form-field">
+                  <label class="form-label">镜像名 <span class="form-required">*</span></label>
+                  <t-input v-model="deployForm.image_name" placeholder="例如：nginx:latest" />
+                </div>
+                <div class="form-field">
+                  <label class="form-label">启动命令（可选）</label>
+                  <t-input v-model="deployForm.start_cmd" placeholder="docker run 附加参数" />
+                </div>
+              </template>
+              <template v-if="deployType === 'native'">
+                <div class="form-field">
+                  <label class="form-label">启动命令 <span class="form-required">*</span></label>
+                  <t-input v-model="deployForm.start_cmd" placeholder="例如：./server --port 8080" />
+                </div>
+              </template>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <!-- 底部操作 -->
@@ -93,7 +145,8 @@
 import { reactive, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { MessagePlugin } from 'tdesign-vue-next'
-import { createApp } from '@/api/application'
+import { createApp, updateApp } from '@/api/application'
+import { createDeploy } from '@/api/deploy'
 import { useServerStore } from '@/stores/server'
 import { useAppStore } from '@/stores/app'
 
@@ -111,6 +164,16 @@ const form = reactive({
   deploy_id: null as number | null, db_conn_id: null as number | null,
 })
 
+const deployTypes = [
+  { value: 'docker-compose', icon: '🐙', label: 'Docker Compose', desc: '通过 compose 文件管理多容器服务' },
+  { value: 'docker',         icon: '🐳', label: 'Docker',         desc: '直接拉取镜像并运行单个容器' },
+  { value: 'native',         icon: '📦', label: '文件部署',        desc: '上传可执行文件，配置启动命令' },
+] as const
+type DeployTypeVal = typeof deployTypes[number]['value']
+
+const deployType = ref<DeployTypeVal | ''>('')
+const deployForm = reactive({ work_dir: '', compose_file: 'docker-compose.yml', image_name: '', start_cmd: '' })
+
 watch(() => form.name, (name, oldName) => {
   const autoOld = oldName ? `/srv/apps/${oldName}` : ''
   if (!form.base_dir || form.base_dir === autoOld) {
@@ -118,16 +181,40 @@ watch(() => form.name, (name, oldName) => {
   }
 })
 
+watch(() => form.base_dir, (dir) => {
+  if (!deployForm.work_dir || deployForm.work_dir === '') {
+    deployForm.work_dir = dir
+  }
+})
+
 onMounted(() => serverStore.fetch())
 
 async function handleCreate() {
   if (!form.name || !form.server_id) { MessagePlugin.warning('请填写应用名称和服务器'); return }
+  if (deployType.value === 'docker' && !deployForm.image_name) { MessagePlugin.warning('Docker 部署需填写镜像名'); return }
+  if (deployType.value === 'native' && !deployForm.start_cmd) { MessagePlugin.warning('文件部署需填写启动命令'); return }
   saving.value = true
   try {
     const app = await createApp(form as any)
-    MessagePlugin.success('应用创建成功')
-    await appStore.fetch()
-    router.push(`/apps/${app.id}/overview`)
+    if (deployType.value) {
+      const deploy = await createDeploy({
+        name: app.name,
+        server_id: app.server_id,
+        type: deployType.value,
+        work_dir: deployForm.work_dir,
+        compose_file: deployForm.compose_file || 'docker-compose.yml',
+        image_name: deployForm.image_name,
+        start_cmd: deployForm.start_cmd,
+      })
+      await updateApp(app.id, { ...app, deploy_id: deploy.id } as any)
+      MessagePlugin.success('应用创建成功，已关联部署配置')
+      await appStore.fetch()
+      router.push(`/apps/${app.id}/deploy`)
+    } else {
+      MessagePlugin.success('应用创建成功')
+      await appStore.fetch()
+      router.push(`/apps/${app.id}/overview`)
+    }
   } catch (e: any) {
     MessagePlugin.error(e.message || '创建失败')
   } finally {
@@ -233,5 +320,38 @@ async function handleCreate() {
   padding: 18px 32px;
   border-top: 1px solid var(--sh-border);
   background: var(--sh-page-bg);
+}
+
+/* 部署类型卡片 */
+.deploy-type-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.deploy-type-card {
+  border: 1px solid var(--sh-border);
+  border-radius: 8px;
+  padding: 14px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  text-align: center;
+}
+.deploy-type-card:hover {
+  border-color: var(--sh-blue);
+  background: color-mix(in srgb, var(--sh-blue) 5%, transparent);
+}
+.deploy-type-card.is-active {
+  border-color: var(--sh-blue);
+  background: color-mix(in srgb, var(--sh-blue) 8%, transparent);
+}
+.dtc-icon { font-size: 22px; margin-bottom: 6px; }
+.dtc-title { font-size: 13px; font-weight: 600; color: var(--sh-text-primary); margin-bottom: 4px; }
+.dtc-desc  { font-size: 11px; color: var(--sh-text-secondary); line-height: 1.4; }
+
+.deploy-type-fields {
+  border-top: 1px dashed var(--sh-border);
+  padding-top: 16px;
 }
 </style>
