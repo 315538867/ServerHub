@@ -940,7 +940,12 @@ onMounted(async () => {
   await loadDeploy()
 })
 
-onBeforeUnmount(() => { cfEditorView?.destroy() })
+onBeforeUnmount(() => {
+  // Abort any in-flight deploy SSE stream so fetch callbacks don't fire
+  // against a torn-down component (and the backend can close its side).
+  runAbort?.abort()
+  cfEditorView?.destroy()
+})
 </script>
 
 <style scoped>

@@ -339,7 +339,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted, watch, h } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount, watch, h } from 'vue'
 import {
   NSelect, NDataTable, NModal, NDrawer, NDrawerContent, NTabs, NTabPane,
   NForm, NFormItem, NInput, NInputNumber, NRadioGroup, NRadio, NSwitch,
@@ -833,6 +833,10 @@ async function handleCommand(cmd: string, app: Deploy) {
 }
 
 onMounted(loadAll)
+onBeforeUnmount(() => {
+  // Abort any in-flight SSE reader so the component tears down cleanly.
+  abortCtrl?.abort()
+})
 </script>
 
 <style scoped>
