@@ -45,6 +45,11 @@ func SetHostKeyStore(s HostKeyStore) { hostKeyStore = s }
 // the previously pinned fingerprint — possible MITM or genuine key rotation.
 var ErrHostKeyMismatch = errors.New("ssh host key mismatch")
 
+// OnHostKeyMismatch, if non-nil, is invoked when a server's presented key
+// does not match the pinned fingerprint. Wired by main.go to push a
+// security audit event without making this package depend on auditq.
+var OnHostKeyMismatch func(serverID uint, hostname, pinned, got string)
+
 const idleTimeout = 30 * time.Minute
 
 func init() {
@@ -85,6 +90,9 @@ func hostKeyCallback(serverID uint) gossh.HostKeyCallback {
 		}
 		if pinned, ok := store.Get(serverID); ok && pinned != "" {
 			if pinned != fp {
+				if OnHostKeyMismatch != nil {
+					OnHostKeyMismatch(serverID, hostname, pinned, fp)
+				}
 				return fmt.Errorf("%w: server=%d host=%s pinned=%s got=%s",
 					ErrHostKeyMismatch, serverID, hostname, pinned, fp)
 			}

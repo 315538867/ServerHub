@@ -50,13 +50,38 @@ func runAll(db *gorm.DB) {
 	cleanTable(db, "metrics", metricsKeepDays)
 	cleanTable(db, "deploy_logs", deployLogKeepDays(db))
 	deployer.PruneAllVersions(db, deployer.MaxVersionsPerDeploy)
-	if time.Now().Day() == 1 {
+	if shouldVacuum(db) {
 		if err := db.Exec("VACUUM").Error; err != nil {
 			log.Printf("[retention] VACUUM error: %v", err)
 		} else {
+			upsertSetting(db, "retention_last_vacuum", time.Now().Format(time.RFC3339))
 			log.Printf("[retention] VACUUM done")
 		}
 	}
+	upsertSetting(db, "retention_last_run", time.Now().Format(time.RFC3339))
+}
+
+// shouldVacuum returns true if it's the 1st of the month AND we haven't
+// already VACUUMed this month — without persistence we'd VACUUM repeatedly
+// when the process restarts during the day.
+func shouldVacuum(db *gorm.DB) bool {
+	if time.Now().Day() != 1 {
+		return false
+	}
+	var s model.Setting
+	if err := db.Where("key = ?", "retention_last_vacuum").First(&s).Error; err != nil {
+		return true
+	}
+	last, err := time.Parse(time.RFC3339, s.Value)
+	if err != nil {
+		return true
+	}
+	now := time.Now()
+	return last.Year() != now.Year() || last.Month() != now.Month()
+}
+
+func upsertSetting(db *gorm.DB, key, value string) {
+	db.Save(&model.Setting{Key: key, Value: value})
 }
 
 func cleanTable(db *gorm.DB, table string, keepDays int) {

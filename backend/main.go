@@ -83,6 +83,14 @@ func main() {
 	auditq.Default = auditq.New(db)
 	defer auditq.Default.Close()
 
+	// Surface host-key mismatches as security audit events. Wired here so
+	// the sshpool package stays free of the auditq dependency.
+	sshpool.OnHostKeyMismatch = func(serverID uint, hostname, pinned, got string) {
+		auditq.Security("system", hostname, "security:host_key_mismatch", 0, map[string]any{
+			"server_id": serverID, "pinned": pinned, "got": got,
+		})
+	}
+
 	if !cfg.DevMode {
 		const devJWT = "serverhub-dev-jwt-secret-change-in-production!!"
 		const devAES = "6465766b6579363436343634363436346465766b657936343634363436343634"
