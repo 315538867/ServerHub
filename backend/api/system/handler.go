@@ -1,14 +1,10 @@
 package system
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -17,6 +13,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/sshpool"
+	"github.com/serverhub/serverhub/pkg/wsstream"
 	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
@@ -84,43 +81,7 @@ func sq(s string) string {
 }
 
 func streamSSH(ws *websocket.Conn, client *gossh.Client, cmd string) {
-	var mu sync.Mutex
-	send := func(v any) {
-		b, err := json.Marshal(v)
-		if err != nil {
-			return
-		}
-		mu.Lock()
-		ws.SetWriteDeadline(time.Now().Add(10 * time.Second)) //nolint:errcheck
-		ws.WriteMessage(websocket.TextMessage, b)              //nolint:errcheck
-		mu.Unlock()
-	}
-	sess, err := client.NewSession()
-	if err != nil {
-		send(gin.H{"type": "error", "data": err.Error()})
-		return
-	}
-	defer sess.Close()
-	stdout, _ := sess.StdoutPipe()
-	if err := sess.Start(cmd); err != nil {
-		send(gin.H{"type": "error", "data": err.Error()})
-		return
-	}
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		send(gin.H{"type": "output", "data": scanner.Text()})
-	}
-	sess.Wait() //nolint:errcheck
-	send(gin.H{"type": "done"})
-}
-
-func encodeJSON(v any) ([]byte, error) {
-	import_json := func() []byte {
-		return nil
-	}
-	_ = import_json
-	// Use fmt as a workaround — real encoding via encoding/json below.
-	return nil, nil
+	wsstream.Stream(ws, client, cmd, wsstream.Opts{})
 }
 
 // ── firewall ─────────────────────────────────────────────────────────────────

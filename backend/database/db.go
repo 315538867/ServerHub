@@ -59,10 +59,26 @@ func Init(cfg *config.Config) *gorm.DB {
 		panic(fmt.Sprintf("migration failed: %v", err))
 	}
 
+	ensureIndexes(db)
+
 	seedSettings(db)
 	seedAdminUser(db, cfg)
 
 	return db
+}
+
+func ensureIndexes(db *gorm.DB) {
+	stmts := []string{
+		"CREATE INDEX IF NOT EXISTS idx_audit_created  ON audit_logs(created_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_username ON audit_logs(username)",
+		"CREATE INDEX IF NOT EXISTS idx_audit_path     ON audit_logs(path)",
+		"CREATE INDEX IF NOT EXISTS idx_metrics_server_created ON metrics(server_id, created_at DESC)",
+	}
+	for _, s := range stmts {
+		if err := db.Exec(s).Error; err != nil {
+			fmt.Printf("ensureIndexes: %v (stmt=%q)\n", err, s)
+		}
+	}
 }
 
 func seedSettings(db *gorm.DB) {

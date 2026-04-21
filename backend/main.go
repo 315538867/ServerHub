@@ -21,6 +21,7 @@ import (
 	apifiles "github.com/serverhub/serverhub/api/files"
 	"github.com/serverhub/serverhub/api/health"
 	apimetrics "github.com/serverhub/serverhub/api/metrics"
+	apilogsearch "github.com/serverhub/serverhub/api/logsearch"
 	apinginx "github.com/serverhub/serverhub/api/nginx"
 	apiservers "github.com/serverhub/serverhub/api/servers"
 	apissl "github.com/serverhub/serverhub/api/ssl"
@@ -31,6 +32,8 @@ import (
 	"github.com/serverhub/serverhub/database"
 	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/pkg/scheduler"
+	"github.com/serverhub/serverhub/pkg/retention"
+	"github.com/serverhub/serverhub/pkg/auditq"
 	"github.com/serverhub/serverhub/tray"
 )
 
@@ -74,6 +77,9 @@ func main() {
 
 	db := database.Init(cfg)
 
+	auditq.Default = auditq.New(db)
+	defer auditq.Default.Close()
+
 	if !cfg.DevMode {
 		const devJWT = "serverhub-dev-jwt-secret-change-in-production!!"
 		const devAES = "6465766b6579363436343634363436346465766b657936343634363436343634"
@@ -87,6 +93,7 @@ func main() {
 
 	scheduler.Start(db, cfg)
 	scheduler.StartReconciler(db, cfg)
+	retention.Start(db)
 
 	if cfg.DevMode {
 		gin.SetMode(gin.DebugMode)
@@ -122,6 +129,7 @@ func main() {
 	apisystem.RegisterSelfRoutes(protected.Group("/system/self"))
 	apinginx.RegisterRoutes(serversGroup, db, cfg)
 	apissl.RegisterRoutes(serversGroup, db, cfg)
+	apilogsearch.RegisterRoutes(serversGroup, db, cfg)
 	apidatabase.RegisterRoutes(protected, db, cfg)
 	apialerts.RegisterRoutes(protected.Group("/alerts"), db, cfg)
 	apideploy.RegisterRoutes(protected.Group("/deploys"), db, cfg)

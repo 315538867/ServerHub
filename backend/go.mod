@@ -1,6 +1,6 @@
 module github.com/serverhub/serverhub
 
-go 1.23.0
+go 1.25.0
 
 require (
 	fyne.io/systray v1.12.0
@@ -55,6 +55,7 @@ require (
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	golang.org/x/net v0.42.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.28.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect

@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -8,8 +9,11 @@ import (
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/sshpool"
+	"golang.org/x/sync/semaphore"
 	"gorm.io/gorm"
 )
+
+var collectSem = semaphore.NewWeighted(8)
 
 // Start launches the background metrics collection loop.
 func Start(db *gorm.DB, cfg *config.Config) {
@@ -30,8 +34,16 @@ func Start(db *gorm.DB, cfg *config.Config) {
 func collectAll(db *gorm.DB, cfg *config.Config) {
 	var servers []model.Server
 	db.Find(&servers)
+	ctx := context.Background()
 	for _, s := range servers {
-		go collectOne(db, cfg, s)
+		s := s
+		if err := collectSem.Acquire(ctx, 1); err != nil {
+			continue
+		}
+		go func() {
+			defer collectSem.Release(1)
+			collectOne(db, cfg, s)
+		}()
 	}
 }
 

@@ -1,14 +1,11 @@
 package docker
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -17,6 +14,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/sshpool"
+	"github.com/serverhub/serverhub/pkg/wsstream"
 	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
@@ -126,38 +124,9 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-// wsSend sends a JSON text frame to the WS connection (thread-safe via mu).
-func wsSend(ws *websocket.Conn, mu *sync.Mutex, v any) {
-	data, _ := json.Marshal(v)
-	mu.Lock()
-	defer mu.Unlock()
-	ws.SetWriteDeadline(time.Now().Add(10 * time.Second)) //nolint:errcheck
-	ws.WriteMessage(websocket.TextMessage, data)           //nolint:errcheck
-}
-
 // streamCmd opens an SSH session, runs cmd, and streams each output line to ws.
 func streamCmd(ws *websocket.Conn, client *gossh.Client, cmd string) {
-	var mu sync.Mutex
-	sess, err := client.NewSession()
-	if err != nil {
-		wsSend(ws, &mu, gin.H{"type": "error", "data": err.Error()})
-		return
-	}
-	defer sess.Close()
-
-	stdout, _ := sess.StdoutPipe()
-	sess.Stderr = nil
-	if err := sess.Start(cmd); err != nil {
-		wsSend(ws, &mu, gin.H{"type": "error", "data": err.Error()})
-		return
-	}
-
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		wsSend(ws, &mu, gin.H{"type": "output", "data": scanner.Text()})
-	}
-	sess.Wait() //nolint:errcheck
-	wsSend(ws, &mu, gin.H{"type": "done"})
+	wsstream.Stream(ws, client, cmd, wsstream.Opts{})
 }
 
 // ── handlers ─────────────────────────────────────────────────────────────────

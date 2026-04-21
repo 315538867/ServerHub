@@ -1,13 +1,10 @@
 package ssl
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +15,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/sftppool"
 	"github.com/serverhub/serverhub/pkg/sshpool"
+	"github.com/serverhub/serverhub/pkg/wsstream"
 	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
@@ -70,31 +68,7 @@ func getSSH(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, *mo
 }
 
 func streamSSH(ws *websocket.Conn, client *gossh.Client, cmd string) {
-	var mu sync.Mutex
-	send := func(v any) {
-		b, _ := json.Marshal(v)
-		mu.Lock()
-		ws.SetWriteDeadline(time.Now().Add(10 * time.Second)) //nolint:errcheck
-		ws.WriteMessage(websocket.TextMessage, b)              //nolint:errcheck
-		mu.Unlock()
-	}
-	sess, err := client.NewSession()
-	if err != nil {
-		send(gin.H{"type": "error", "data": err.Error()})
-		return
-	}
-	defer sess.Close()
-	stdout, _ := sess.StdoutPipe()
-	if err := sess.Start(cmd); err != nil {
-		send(gin.H{"type": "error", "data": err.Error()})
-		return
-	}
-	scanner := bufio.NewScanner(stdout)
-	for scanner.Scan() {
-		send(gin.H{"type": "output", "data": scanner.Text()})
-	}
-	sess.Wait() //nolint:errcheck
-	send(gin.H{"type": "done"})
+	wsstream.Stream(ws, client, cmd, wsstream.Opts{})
 }
 
 // ── cert list ─────────────────────────────────────────────────────────────────

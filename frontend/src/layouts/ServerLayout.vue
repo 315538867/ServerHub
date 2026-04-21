@@ -61,6 +61,7 @@ const tabs = [
   { value: 'nginx',     label: 'Nginx 网关' },
   { value: 'docker',    label: 'Docker' },
   { value: 'system',    label: '系统' },
+  { value: 'logs-search', label: '日志搜索' },
   { value: 'files',     label: '文件' },
   { value: 'terminal',  label: '终端' },
 ]

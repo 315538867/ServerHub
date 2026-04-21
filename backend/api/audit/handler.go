@@ -26,10 +26,10 @@ func logsHandler(db *gorm.DB) gin.HandlerFunc {
 
 		q := db.Model(&model.AuditLog{})
 		if u := c.Query("username"); u != "" {
-			q = q.Where("username LIKE ?", "%"+u+"%")
+			q = q.Where("username LIKE ?", u+"%")
 		}
 		if p := c.Query("path"); p != "" {
-			q = q.Where("path LIKE ?", "%"+p+"%")
+			q = q.Where("path LIKE ?", p+"%")
 		}
 		if s := c.Query("status"); s != "" {
 			q = q.Where("status = ?", s)

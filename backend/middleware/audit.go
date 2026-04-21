@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/pkg/auditq"
 	"gorm.io/gorm"
 )
 
@@ -48,7 +49,11 @@ func Audit(db *gorm.DB) gin.HandlerFunc {
 			Status:     c.Writer.Status(),
 			DurationMS: int(time.Since(start).Milliseconds()),
 		}
-		db.Create(&log)
+		if auditq.Default != nil {
+			auditq.Default.Submit(log)
+		} else {
+			db.Create(&log)
+		}
 	}
 }
 

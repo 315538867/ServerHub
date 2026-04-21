@@ -71,6 +71,7 @@ const router = createRouter({
             { path: 'nginx', name: 'ServerNginx', component: () => import('@/views/ServerDetail/Nginx.vue') },
             { path: 'docker', name: 'ServerDocker', component: () => import('@/views/ServerDetail/Docker.vue') },
             { path: 'system', name: 'ServerSystem', component: () => import('@/views/ServerDetail/System.vue') },
+            { path: 'logs-search', name: 'ServerLogSearch', component: () => import('@/views/ServerDetail/LogSearch.vue') },
             { path: 'files', name: 'ServerFiles', component: () => import('@/views/ServerDetail/Files.vue') },
             { path: 'terminal', name: 'ServerTerminal', component: () => import('@/views/ServerDetail/Terminal.vue') },
           ],
