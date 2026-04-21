@@ -28,6 +28,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 type serverResp struct {
 	ID          uint       `json:"id"`
 	Name        string     `json:"name"`
+	Type        string     `json:"type"`
 	Host        string     `json:"host"`
 	Port        int        `json:"port"`
 	Username    string     `json:"username"`
@@ -41,7 +42,7 @@ type serverResp struct {
 
 func toResp(s model.Server) serverResp {
 	return serverResp{
-		ID: s.ID, Name: s.Name, Host: s.Host, Port: s.Port,
+		ID: s.ID, Name: s.Name, Type: s.Type, Host: s.Host, Port: s.Port,
 		Username: s.Username, AuthType: s.AuthType, Remark: s.Remark,
 		Status: s.Status, LastCheckAt: s.LastCheckAt,
 		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
@@ -121,6 +122,10 @@ func updateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		if s.Type == "local" {
+			resp.Fail(c, http.StatusForbidden, 4030, "本机服务器不可编辑")
+			return
+		}
 
 		var req createReq
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -163,6 +168,10 @@ func deleteHandler(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		if s.Type == "local" {
+			resp.Fail(c, http.StatusForbidden, 4030, "本机服务器不可删除")
+			return
+		}
 		sshpool.Remove(s.ID)
 		db.Delete(&s)
 		sid := s.ID
@@ -182,6 +191,12 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		now := time.Now()
+		if s.Type == "local" {
+			db.Model(&s).Updates(map[string]any{"status": "online", "last_check_at": now})
+			resp.OK(c, gin.H{"status": "online"})
+			return
+		}
 
 		cred, err := getDecryptedCred(s, cfg.Security.AESKey)
 		if err != nil {
@@ -191,7 +206,6 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		sshpool.Remove(s.ID)
 		client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
-		now := time.Now()
 		status := "online"
 		if err != nil {
 			status = "offline"
@@ -212,19 +226,23 @@ func collectMetricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		cred, err := getDecryptedCred(s, cfg.Security.AESKey)
-		if err != nil {
-			resp.InternalError(c, "解密凭据失败")
-			return
+		var metrics *sshpool.MetricsResult
+		var err error
+		if s.Type == "local" {
+			metrics, err = sshpool.CollectLocalMetrics()
+		} else {
+			cred, derr := getDecryptedCred(s, cfg.Security.AESKey)
+			if derr != nil {
+				resp.InternalError(c, "解密凭据失败")
+				return
+			}
+			client, derr := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+			if derr != nil {
+				resp.Fail(c, http.StatusServiceUnavailable, 503, "连接失败: "+derr.Error())
+				return
+			}
+			metrics, err = sshpool.CollectMetrics(client)
 		}
-
-		client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
-		if err != nil {
-			resp.Fail(c, http.StatusServiceUnavailable, 503, "连接失败: "+err.Error())
-			return
-		}
-
-		metrics, err := sshpool.CollectMetrics(client)
 		if err != nil {
 			resp.InternalError(c, "采集指标失败: "+err.Error())
 			return

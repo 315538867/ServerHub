@@ -48,25 +48,34 @@ func collectAll(db *gorm.DB, cfg *config.Config) {
 }
 
 func collectOne(db *gorm.DB, cfg *config.Config, s model.Server) {
-	cred, err := decryptCred(s, cfg.Security.AESKey)
-	if err != nil {
-		return
-	}
-
-	client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
 	now := time.Now()
-	if err != nil {
-		db.Model(&s).Updates(map[string]any{"status": "offline", "last_check_at": now})
-		go checkAlerts(db, cfg, s.ID, 0, 0, 0, true)
-		return
-	}
+	var metrics *sshpool.MetricsResult
+	var err error
 
-	metrics, err := sshpool.CollectMetrics(client)
-	if err != nil {
-		// connection succeeded but metrics failed — still mark online
-		fmt.Printf("[scheduler] metrics error server %d: %v\n", s.ID, err)
-		db.Model(&s).Updates(map[string]any{"status": "online", "last_check_at": now})
-		return
+	if s.Type == "local" {
+		metrics, err = sshpool.CollectLocalMetrics()
+		if err != nil {
+			fmt.Printf("[scheduler] local metrics error: %v\n", err)
+			db.Model(&s).Updates(map[string]any{"status": "online", "last_check_at": now})
+			return
+		}
+	} else {
+		cred, derr := decryptCred(s, cfg.Security.AESKey)
+		if derr != nil {
+			return
+		}
+		client, derr := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+		if derr != nil {
+			db.Model(&s).Updates(map[string]any{"status": "offline", "last_check_at": now})
+			go checkAlerts(db, cfg, s.ID, 0, 0, 0, true)
+			return
+		}
+		metrics, err = sshpool.CollectMetrics(client)
+		if err != nil {
+			fmt.Printf("[scheduler] metrics error server %d: %v\n", s.ID, err)
+			db.Model(&s).Updates(map[string]any{"status": "online", "last_check_at": now})
+			return
+		}
 	}
 
 	db.Create(&model.Metric{

@@ -10,11 +10,9 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
-	"github.com/serverhub/serverhub/pkg/sshpool"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/wsstream"
-	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
 
@@ -42,7 +40,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ── common helpers ────────────────────────────────────────────────────────────
 
-func getSSH(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, bool) {
+func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
@@ -53,35 +51,16 @@ func getSSH(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, boo
 		resp.NotFound(c, "服务器不存在")
 		return nil, false
 	}
-	var cred string
-	switch s.AuthType {
-	case "key":
-		if s.PrivateKey != "" {
-			cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-		}
-	default:
-		if s.Password != "" {
-			cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-		}
-	}
+	rn, err := runner.For(&s, cfg)
 	if err != nil {
-		resp.InternalError(c, "解密失败")
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
 		return nil, false
 	}
-	client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
-	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
-		return nil, false
-	}
-	return client, true
+	return rn, true
 }
 
 func sq(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}
-
-func streamSSH(ws *websocket.Conn, client *gossh.Client, cmd string) {
-	wsstream.Stream(ws, client, cmd, wsstream.Opts{})
 }
 
 // ── firewall ─────────────────────────────────────────────────────────────────
@@ -94,12 +73,12 @@ type FirewallRule struct {
 	Type   string `json:"type"` // ufw | firewalld
 }
 
-func detectFirewall(client *gossh.Client) string {
-	out, _ := sshpool.Run(client, "which ufw 2>/dev/null")
+func detectFirewall(rn runner.Runner) string {
+	out, _ := rn.Run("which ufw 2>/dev/null")
 	if strings.TrimSpace(out) != "" {
 		return "ufw"
 	}
-	out, _ = sshpool.Run(client, "which firewall-cmd 2>/dev/null")
+	out, _ = rn.Run("which firewall-cmd 2>/dev/null")
 	if strings.TrimSpace(out) != "" {
 		return "firewalld"
 	}
@@ -108,15 +87,15 @@ func detectFirewall(client *gossh.Client) string {
 
 func firewallListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		fw := detectFirewall(client)
+		fw := detectFirewall(rn)
 		var rules []FirewallRule
 		switch fw {
 		case "ufw":
-			out, _ := sshpool.Run(client, "ufw status numbered 2>/dev/null")
+			out, _ := rn.Run("ufw status numbered 2>/dev/null")
 			idx := 0
 			for _, line := range strings.Split(out, "\n") {
 				line = strings.TrimSpace(line)
@@ -124,7 +103,6 @@ func firewallListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 					continue
 				}
 				idx++
-				// e.g. "[ 1] 22/tcp                     ALLOW IN    Anywhere"
 				parts := strings.SplitN(line, "]", 2)
 				if len(parts) < 2 {
 					continue
@@ -135,7 +113,7 @@ func firewallListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				})
 			}
 		case "firewalld":
-			out, _ := sshpool.Run(client, "firewall-cmd --list-all 2>/dev/null")
+			out, _ := rn.Run("firewall-cmd --list-all 2>/dev/null")
 			idx := 0
 			for _, line := range strings.Split(out, "\n") {
 				line = strings.TrimSpace(line)
@@ -157,7 +135,7 @@ func firewallListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func firewallAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -171,7 +149,7 @@ func firewallAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "请求体格式错误")
 			return
 		}
-		fw := detectFirewall(client)
+		fw := detectFirewall(rn)
 		var cmd string
 		switch fw {
 		case "ufw":
@@ -192,7 +170,7 @@ func firewallAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, "未检测到支持的防火墙")
 			return
 		}
-		out, err := sshpool.Run(client, cmd)
+		out, err := rn.Run(cmd)
 		if err != nil {
 			resp.InternalError(c, strings.TrimSpace(out))
 			return
@@ -203,7 +181,7 @@ func firewallAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func firewallDelHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -212,7 +190,7 @@ func firewallDelHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "规则不能为空")
 			return
 		}
-		fw := detectFirewall(client)
+		fw := detectFirewall(rn)
 		var cmd string
 		switch fw {
 		case "ufw":
@@ -223,7 +201,7 @@ func firewallDelHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, "未检测到支持的防火墙")
 			return
 		}
-		out, err := sshpool.Run(client, cmd)
+		out, err := rn.Run(cmd)
 		if err != nil {
 			resp.InternalError(c, strings.TrimSpace(out))
 			return
@@ -261,23 +239,23 @@ func parseCrontab(out string) []CronJob {
 	return jobs
 }
 
-func getCrontab(client *gossh.Client) string {
-	out, _ := sshpool.Run(client, "crontab -l 2>/dev/null")
+func getCrontab(rn runner.Runner) string {
+	out, _ := rn.Run("crontab -l 2>/dev/null")
 	return out
 }
 
-func writeCrontab(client *gossh.Client, content string) error {
-	_, err := sshpool.Run(client, fmt.Sprintf("echo %s | crontab -", sq(content)))
+func writeCrontab(rn runner.Runner, content string) error {
+	_, err := rn.Run(fmt.Sprintf("echo %s | crontab -", sq(content)))
 	return err
 }
 
 func cronListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		jobs := parseCrontab(getCrontab(client))
+		jobs := parseCrontab(getCrontab(rn))
 		if jobs == nil {
 			jobs = []CronJob{}
 		}
@@ -287,7 +265,7 @@ func cronListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func cronAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -299,13 +277,13 @@ func cronAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "表达式和命令不能为空")
 			return
 		}
-		current := strings.TrimRight(getCrontab(client), "\n")
+		current := strings.TrimRight(getCrontab(rn), "\n")
 		newLine := body.Expr + " " + body.Cmd
 		if current != "" {
 			current += "\n"
 		}
 		current += newLine + "\n"
-		if err := writeCrontab(client, current); err != nil {
+		if err := writeCrontab(rn, current); err != nil {
 			resp.InternalError(c, "写入定时任务失败")
 			return
 		}
@@ -315,7 +293,7 @@ func cronAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func cronUpdateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -328,7 +306,7 @@ func cronUpdateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "请求体格式错误")
 			return
 		}
-		jobs := parseCrontab(getCrontab(client))
+		jobs := parseCrontab(getCrontab(rn))
 		if body.Index < 0 || body.Index >= len(jobs) {
 			resp.BadRequest(c, "索引无效")
 			return
@@ -336,7 +314,7 @@ func cronUpdateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		jobs[body.Index].Expr = body.Expr
 		jobs[body.Index].Cmd = body.Cmd
 		lines := buildCrontab(jobs)
-		if err := writeCrontab(client, lines); err != nil {
+		if err := writeCrontab(rn, lines); err != nil {
 			resp.InternalError(c, "写入定时任务失败")
 			return
 		}
@@ -346,7 +324,7 @@ func cronUpdateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func cronDelHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -355,13 +333,13 @@ func cronDelHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "索引无效")
 			return
 		}
-		jobs := parseCrontab(getCrontab(client))
+		jobs := parseCrontab(getCrontab(rn))
 		if idx < 0 || idx >= len(jobs) {
 			resp.BadRequest(c, "索引越界")
 			return
 		}
 		jobs = append(jobs[:idx], jobs[idx+1:]...)
-		if err := writeCrontab(client, buildCrontab(jobs)); err != nil {
+		if err := writeCrontab(rn, buildCrontab(jobs)); err != nil {
 			resp.InternalError(c, "写入定时任务失败")
 			return
 		}
@@ -389,14 +367,14 @@ type ProcessItem struct {
 
 func processListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		out, _ := sshpool.Run(client, "ps aux --sort=-%cpu 2>/dev/null | head -21")
+		out, _ := rn.Run("ps aux --sort=-%cpu 2>/dev/null | head -21")
 		var items []ProcessItem
 		lines := strings.Split(out, "\n")
-		for _, line := range lines[1:] { // skip header
+		for _, line := range lines[1:] {
 			fields := strings.Fields(line)
 			if len(fields) < 11 {
 				continue
@@ -420,17 +398,16 @@ func processListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func processKillHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
 		pid := c.Param("pid")
-		// Basic safety: pid must be a number
 		if _, err := strconv.Atoi(pid); err != nil {
 			resp.BadRequest(c, "进程 ID 无效")
 			return
 		}
-		out, err := sshpool.Run(client, "kill -9 "+pid)
+		out, err := rn.Run("kill -9 " + pid)
 		if err != nil {
 			resp.InternalError(c, strings.TrimSpace(out))
 			return
@@ -451,17 +428,16 @@ type ServiceItem struct {
 
 func serviceListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		out, _ := sshpool.Run(client, "systemctl list-units --type=service --no-pager --plain --all 2>/dev/null")
+		out, _ := rn.Run("systemctl list-units --type=service --no-pager --plain --all 2>/dev/null")
 		var items []ServiceItem
 		for i, line := range strings.Split(out, "\n") {
 			if i == 0 {
-				continue // skip header
+				continue
 			}
-			// Remove leading ● if present
 			line = strings.TrimLeft(strings.TrimSpace(line), "●• ")
 			if line == "" || strings.HasPrefix(line, "UNIT") {
 				continue
@@ -491,7 +467,7 @@ func serviceListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func serviceActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -508,7 +484,7 @@ func serviceActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "未知操作")
 			return
 		}
-		out, err := sshpool.Run(client, fmt.Sprintf("systemctl %s %s", body.Action, sq(name)))
+		out, err := rn.Run(fmt.Sprintf("systemctl %s %s", body.Action, sq(name)))
 		if err != nil {
 			resp.InternalError(c, strings.TrimSpace(out))
 			return
@@ -519,17 +495,30 @@ func serviceActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func serviceLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
-		if !ok {
+		// services logs tail — use dedicated runner to avoid pool MaxSessions.
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			resp.BadRequest(c, "服务器 ID 无效")
 			return
 		}
+		var s model.Server
+		if err := db.First(&s, id).Error; err != nil {
+			resp.NotFound(c, "服务器不存在")
+			return
+		}
+		rn, err := runner.ForDedicated(&s, cfg)
+		if err != nil {
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
+			return
+		}
+		defer rn.Close()
 		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}
 		defer ws.Close()
 		name := sq(c.Param("name"))
-		go streamSSH(ws, client, fmt.Sprintf("journalctl -u %s -f --no-pager -n 100 2>&1", name))
+		go wsstream.Stream(ws, rn, fmt.Sprintf("journalctl -u %s -f --no-pager -n 100 2>&1", name), wsstream.Opts{})
 		for {
 			if _, _, err := ws.ReadMessage(); err != nil {
 				break

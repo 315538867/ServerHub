@@ -11,11 +11,9 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
-	"github.com/serverhub/serverhub/pkg/sshpool"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/wsstream"
-	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
 
@@ -56,67 +54,47 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-// loadServerCred looks up the server by :id param, decrypts its credential,
-// and writes any error response itself. Returns (server, cred, ok).
-func loadServerCred(c *gin.Context, db *gorm.DB, cfg *config.Config) (*model.Server, string, bool) {
+// loadServer fetches the server by :id param, writing any error response itself.
+func loadServer(c *gin.Context, db *gorm.DB) (*model.Server, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
-		return nil, "", false
+		return nil, false
 	}
 	var s model.Server
 	if err := db.First(&s, id).Error; err != nil {
 		resp.NotFound(c, "服务器不存在")
-		return nil, "", false
+		return nil, false
 	}
-	var cred string
-	switch s.AuthType {
-	case "key":
-		if s.PrivateKey != "" {
-			cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-		}
-	default:
-		if s.Password != "" {
-			cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-		}
-	}
-	if err != nil {
-		resp.InternalError(c, "解密失败")
-		return nil, "", false
-	}
-	return &s, cred, true
+	return &s, true
 }
 
-// getClient returns a pooled SSH client for short-lived, frequent operations
-// (list, inspect, action). The pool reuses a single TCP connection and shares
-// a MaxSessions budget — do not use this for long-lived streams.
-func getClient(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, bool) {
-	s, cred, ok := loadServerCred(c, db, cfg)
+// getRunner returns a pooled Runner for one-shot operations.
+func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
+	s, ok := loadServer(c, db)
 	if !ok {
 		return nil, false
 	}
-	client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+	rn, err := runner.For(s, cfg)
 	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
 		return nil, false
 	}
-	return client, true
+	return rn, true
 }
 
-// getDedicatedClient returns a fresh non-pooled SSH client for long-lived
-// WebSocket streams (container logs tail, image pull). The caller MUST
-// Close() it to release the TCP connection.
-func getDedicatedClient(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, bool) {
-	s, cred, ok := loadServerCred(c, db, cfg)
+// getDedicatedRunner returns a dedicated Runner for long-lived streams.
+func getDedicatedRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
+	s, ok := loadServer(c, db)
 	if !ok {
 		return nil, false
 	}
-	client, err := sshpool.Dial(s.Host, s.Port, s.Username, s.AuthType, cred)
+	rn, err := runner.ForDedicated(s, cfg)
 	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
 		return nil, false
 	}
-	return client, true
+	return rn, true
 }
 
 // shellQuote wraps s in single quotes safe for bash.
@@ -124,20 +102,15 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-// streamCmd opens an SSH session, runs cmd, and streams each output line to ws.
-func streamCmd(ws *websocket.Conn, client *gossh.Client, cmd string) {
-	wsstream.Stream(ws, client, cmd, wsstream.Opts{})
-}
-
 // ── handlers ─────────────────────────────────────────────────────────────────
 
 func listContainersHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getClient(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		out, err := sshpool.Run(client,
+		out, err := rn.Run(
 			`docker ps -a --format '{"id":"{{.ID}}","names":"{{.Names}}","image":"{{.Image}}","status":"{{.Status}}","state":"{{.State}}","ports":"{{.Ports}}","created_at":"{{.CreatedAt}}"}'`)
 		if err != nil {
 			detail := strings.TrimSpace(out)
@@ -167,7 +140,7 @@ func listContainersHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func containerActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getClient(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -193,7 +166,7 @@ func containerActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "未知操作: "+body.Action)
 			return
 		}
-		out, err := sshpool.Run(client, cmd)
+		out, err := rn.Run(cmd)
 		if err != nil {
 			resp.InternalError(c, strings.TrimSpace(out))
 			return
@@ -204,19 +177,18 @@ func containerActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func containerLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getDedicatedClient(c, db, cfg)
+		rn, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		defer client.Close()
+		defer rn.Close()
 		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}
 		defer ws.Close()
 		cid := shellQuote(c.Param("cid"))
-		go streamCmd(ws, client, fmt.Sprintf("docker logs -f --tail=100 %s 2>&1", cid))
-		// keep alive until client disconnects
+		go wsstream.Stream(ws, rn, fmt.Sprintf("docker logs -f --tail=100 %s 2>&1", cid), wsstream.Opts{})
 		for {
 			if _, _, err := ws.ReadMessage(); err != nil {
 				break
@@ -227,12 +199,12 @@ func containerLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func containerInspectHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getClient(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
 		cid := shellQuote(c.Param("cid"))
-		out, err := sshpool.Run(client, fmt.Sprintf("docker inspect %s", cid))
+		out, err := rn.Run(fmt.Sprintf("docker inspect %s", cid))
 		if err != nil {
 			resp.InternalError(c, strings.TrimSpace(out))
 			return
@@ -248,11 +220,11 @@ func containerInspectHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func listImagesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getClient(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		out, err := sshpool.Run(client,
+		out, err := rn.Run(
 			`docker images --format '{"id":"{{.ID}}","repository":"{{.Repository}}","tag":"{{.Tag}}","size":"{{.Size}}","created_at":"{{.CreatedAt}}"}'`)
 		if err != nil {
 			detail := strings.TrimSpace(out)
@@ -282,11 +254,11 @@ func listImagesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func pullImageHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getDedicatedClient(c, db, cfg)
+		rn, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		defer client.Close()
+		defer rn.Close()
 		image := strings.TrimSpace(c.Query("image"))
 		if image == "" {
 			resp.BadRequest(c, "镜像名称不能为空")
@@ -297,7 +269,7 @@ func pullImageHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		defer ws.Close()
-		go streamCmd(ws, client, fmt.Sprintf("docker pull %s 2>&1", shellQuote(image)))
+		go wsstream.Stream(ws, rn, fmt.Sprintf("docker pull %s 2>&1", shellQuote(image)), wsstream.Opts{})
 		for {
 			if _, _, err := ws.ReadMessage(); err != nil {
 				break
@@ -308,12 +280,12 @@ func pullImageHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func deleteImageHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getClient(c, db, cfg)
+		rn, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
 		iid := shellQuote(c.Param("iid"))
-		out, err := sshpool.Run(client, fmt.Sprintf("docker rmi %s", iid))
+		out, err := rn.Run(fmt.Sprintf("docker rmi %s", iid))
 		if err != nil {
 			resp.InternalError(c, strings.TrimSpace(out))
 			return

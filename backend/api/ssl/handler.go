@@ -3,6 +3,8 @@ package ssl
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -11,12 +13,10 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/sftppool"
-	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/wsstream"
-	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
 
@@ -33,42 +33,69 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func getSSH(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, *model.Server, bool) {
+func loadServer(c *gin.Context, db *gorm.DB) (*model.Server, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
-		return nil, nil, false
+		return nil, false
 	}
 	var s model.Server
 	if err := db.First(&s, id).Error; err != nil {
 		resp.NotFound(c, "服务器不存在")
-		return nil, nil, false
+		return nil, false
 	}
-	var cred string
-	switch s.AuthType {
-	case "key":
-		if s.PrivateKey != "" {
-			cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-		}
-	default:
-		if s.Password != "" {
-			cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-		}
-	}
-	if err != nil {
-		resp.InternalError(c, "解密失败")
-		return nil, nil, false
-	}
-	client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
-	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
-		return nil, nil, false
-	}
-	return client, &s, true
+	return &s, true
 }
 
-func streamSSH(ws *websocket.Conn, client *gossh.Client, cmd string) {
-	wsstream.Stream(ws, client, cmd, wsstream.Opts{})
+func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, *model.Server, bool) {
+	s, ok := loadServer(c, db)
+	if !ok {
+		return nil, nil, false
+	}
+	rn, err := runner.For(s, cfg)
+	if err != nil {
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
+		return nil, nil, false
+	}
+	return rn, s, true
+}
+
+func getDedicatedRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, *model.Server, bool) {
+	s, ok := loadServer(c, db)
+	if !ok {
+		return nil, nil, false
+	}
+	rn, err := runner.ForDedicated(s, cfg)
+	if err != nil {
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
+		return nil, nil, false
+	}
+	return rn, s, true
+}
+
+// writeRemoteFile writes content to path on the target (local = os; ssh = sftp).
+func writeRemoteFile(rn runner.Runner, serverID uint, path, content string) error {
+	if rn.IsLocal() {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(path, []byte(content), 0o600)
+	}
+	cli := runner.SSHClient(rn)
+	if cli == nil {
+		return fmt.Errorf("no ssh client")
+	}
+	sc, err := sftppool.Get(serverID, cli)
+	if err != nil {
+		return err
+	}
+	f, err := sc.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = f.Write([]byte(content))
+	return err
 }
 
 // ── cert list ─────────────────────────────────────────────────────────────────
@@ -112,10 +139,11 @@ func listCertsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func requestCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, s, ok := getSSH(c, db, cfg)
+		rn, s, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {
 			return
 		}
+		defer rn.Close()
 		domain := c.Query("domain")
 		if domain == "" {
 			resp.BadRequest(c, "域名不能为空")
@@ -141,10 +169,10 @@ func requestCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		)
 
 		go func() {
-			streamSSH(ws, client, cmd)
+			wsstream.Stream(ws, rn, cmd, wsstream.Opts{})
 			certPath := "/etc/letsencrypt/live/" + domain + "/fullchain.pem"
 			keyPath := "/etc/letsencrypt/live/" + domain + "/privkey.pem"
-			expiry, _ := parseCertExpiry(client, certPath)
+			expiry, _ := parseCertExpiry(rn, certPath)
 			cert := model.SSLCert{
 				ServerID:  s.ID,
 				Domain:    domain,
@@ -168,7 +196,7 @@ func requestCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func uploadCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, s, ok := getSSH(c, db, cfg)
+		rn, s, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -190,32 +218,16 @@ func uploadCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			body.KeyPath = "/etc/ssl/private/" + body.Domain + ".key"
 		}
 
-		id, _ := strconv.Atoi(c.Param("id"))
-		sc, err := sftppool.Get(uint(id), client)
-		if err != nil {
-			resp.InternalError(c, "SFTP 连接失败: "+err.Error())
-			return
-		}
-
-		writeFile := func(path, content string) error {
-			f, err := sc.Create(path)
-			if err != nil {
-				return err
-			}
-			defer f.Close()
-			_, err = f.Write([]byte(content))
-			return err
-		}
-		if err := writeFile(body.CertPath, body.Cert); err != nil {
+		if err := writeRemoteFile(rn, s.ID, body.CertPath, body.Cert); err != nil {
 			resp.InternalError(c, "写入证书失败: "+err.Error())
 			return
 		}
-		if err := writeFile(body.KeyPath, body.Key); err != nil {
+		if err := writeRemoteFile(rn, s.ID, body.KeyPath, body.Key); err != nil {
 			resp.InternalError(c, "写入密钥失败: "+err.Error())
 			return
 		}
 
-		expiry, _ := parseCertExpiry(client, body.CertPath)
+		expiry, _ := parseCertExpiry(rn, body.CertPath)
 		cert := model.SSLCert{
 			ServerID:  s.ID,
 			Domain:    body.Domain,
@@ -234,10 +246,11 @@ func uploadCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func renewCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, s, ok := getSSH(c, db, cfg)
+		rn, s, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {
 			return
 		}
+		defer rn.Close()
 		cid, _ := strconv.Atoi(c.Param("cid"))
 		var cert model.SSLCert
 		if err := db.Where("server_id = ? AND id = ?", s.ID, cid).First(&cert).Error; err != nil {
@@ -252,8 +265,8 @@ func renewCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		cmd := fmt.Sprintf("certbot renew --cert-name %s --non-interactive 2>&1", shellQuote(cert.Domain))
 		go func() {
-			streamSSH(ws, client, cmd)
-			expiry, _ := parseCertExpiry(client, cert.CertPath)
+			wsstream.Stream(ws, rn, cmd, wsstream.Opts{})
+			expiry, _ := parseCertExpiry(rn, cert.CertPath)
 			if !expiry.IsZero() {
 				db.Model(&cert).Update("expires_at", expiry)
 			}
@@ -283,11 +296,11 @@ func deleteCertHandler(db *gorm.DB) gin.HandlerFunc {
 
 func scanCertsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, s, ok := getSSH(c, db, cfg)
+		rn, s, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		out, _ := sshpool.Run(client, "ls /etc/letsencrypt/live/ 2>/dev/null")
+		out, _ := rn.Run("ls /etc/letsencrypt/live/ 2>/dev/null")
 		imported := 0
 		for _, domain := range strings.Fields(out) {
 			domain = strings.TrimSpace(domain)
@@ -296,7 +309,7 @@ func scanCertsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			}
 			certPath := "/etc/letsencrypt/live/" + domain + "/fullchain.pem"
 			keyPath := "/etc/letsencrypt/live/" + domain + "/privkey.pem"
-			expiry, err := parseCertExpiry(client, certPath)
+			expiry, err := parseCertExpiry(rn, certPath)
 			if err != nil {
 				continue
 			}
@@ -322,14 +335,13 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-func parseCertExpiry(client *gossh.Client, certPath string) (time.Time, error) {
-	out, err := sshpool.Run(client, fmt.Sprintf(
+func parseCertExpiry(rn runner.Runner, certPath string) (time.Time, error) {
+	out, err := rn.Run(fmt.Sprintf(
 		"openssl x509 -enddate -noout -in %s 2>/dev/null", shellQuote(certPath),
 	))
 	if err != nil {
 		return time.Time{}, err
 	}
-	// output: "notAfter=Jan  1 00:00:00 2026 GMT"
 	out = strings.TrimSpace(out)
 	after, found := strings.CutPrefix(out, "notAfter=")
 	if !found {
@@ -337,7 +349,6 @@ func parseCertExpiry(client *gossh.Client, certPath string) (time.Time, error) {
 	}
 	t, err := time.Parse("Jan  2 15:04:05 2006 GMT", strings.TrimSpace(after))
 	if err != nil {
-		// try single-digit day
 		t, err = time.Parse("Jan 2 15:04:05 2006 GMT", strings.TrimSpace(after))
 	}
 	return t, err

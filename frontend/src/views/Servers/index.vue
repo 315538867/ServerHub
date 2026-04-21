@@ -138,6 +138,7 @@ const columns: DataTableColumns<Server> = [
     render: (row) => h('div', { class: 'srv-name-cell' }, [
       h(StatusDot, { status: row.status, size: 8, pulse: row.status === 'online' }),
       h('span', { class: 'srv-name' }, row.name),
+      row.type === 'local' ? h(UiBadge, { tone: 'info' }, () => '主机') : null,
       row.remark ? h('span', { class: 'srv-remark' }, row.remark) : null,
     ]),
   },
@@ -162,21 +163,30 @@ const columns: DataTableColumns<Server> = [
   },
   {
     title: '操作', key: 'operations', width: 220, fixed: 'right' as const,
-    render: (row) => h('div', { class: 'cell-ops' }, [
-      h(UiButton, {
-        variant: 'ghost', size: 'sm',
-        loading: testing.value === row.id,
-        onClick: () => handleTest(row),
-      }, () => '连接测试'),
-      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openEdit(row) }, () => '编辑'),
-      h(NPopconfirm, {
-        onPositiveClick: () => handleDelete(row),
-        positiveText: '删除', negativeText: '取消',
-      }, {
-        trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' }, () => h('span', { class: 'text-danger' }, '删除')),
-        default: () => '确认删除此服务器？',
-      }),
-    ]),
+    render: (row) => {
+      const isLocal = row.type === 'local'
+      return h('div', { class: 'cell-ops' }, [
+        h(UiButton, {
+          variant: 'ghost', size: 'sm',
+          loading: testing.value === row.id,
+          onClick: () => handleTest(row),
+        }, () => '连接测试'),
+        h(UiButton, {
+          variant: 'ghost', size: 'sm',
+          disabled: isLocal,
+          onClick: () => !isLocal && openEdit(row),
+        }, () => '编辑'),
+        isLocal
+          ? h(UiButton, { variant: 'ghost', size: 'sm', disabled: true }, () => h('span', { class: 'text-danger' }, '删除'))
+          : h(NPopconfirm, {
+              onPositiveClick: () => handleDelete(row),
+              positiveText: '删除', negativeText: '取消',
+            }, {
+              trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' }, () => h('span', { class: 'text-danger' }, '删除')),
+              default: () => '确认删除此服务器？',
+            }),
+      ])
+    },
   },
 ]
 

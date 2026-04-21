@@ -111,7 +111,9 @@
 - `/system/self`：本进程 CPU/内存/goroutines/uptime/连接数（gopsutil）
 - Dashboard 工作台展示自身资源占用
 
-## 系统托盘（可选）
+## 本机即主服务器
 
-- macOS / Windows 托盘菜单：打开浏览器、退出
-- Linux 默认 no-op
+- 启动时自动创建 `id=1, type=local` 的本机服务器记录（不可编辑/删除）
+- 本机执行通过 `os/exec` + `creack/pty`，不走 SSH 回环
+- 指标采集走 gopsutil（CPU/内存/磁盘/Load/Uptime）
+- 终端、Docker/systemd/防火墙/cron、Nginx/SSL/文件、部署均支持本机作为目标

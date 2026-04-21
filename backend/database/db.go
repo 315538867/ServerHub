@@ -63,6 +63,7 @@ func Init(cfg *config.Config) *gorm.DB {
 
 	seedSettings(db)
 	seedAdminUser(db, cfg)
+	seedLocalServer(db)
 
 	return db
 }
@@ -141,4 +142,30 @@ func generateRandomPassword() string {
 		return "changeme123!"
 	}
 	return hex.EncodeToString(b)[:16]
+}
+
+// seedLocalServer inserts a single "local" server record representing the host
+// machine ServerHub itself runs on. It is created only if no local-type server
+// exists. The record lets handlers manage the local host without SSH.
+func seedLocalServer(db *gorm.DB) {
+	var count int64
+	db.Model(&model.Server{}).Where("type = ?", "local").Count(&count)
+	if count > 0 {
+		return
+	}
+	now := time.Now()
+	local := model.Server{
+		Name:        "本机",
+		Type:        "local",
+		Host:        "127.0.0.1",
+		Port:        0,
+		Username:    "local",
+		AuthType:    "local",
+		Status:      "online",
+		Remark:      "ServerHub 所在主机（本地执行，无需 SSH）",
+		LastCheckAt: &now,
+	}
+	if err := db.Create(&local).Error; err != nil {
+		fmt.Printf("seedLocalServer: %v\n", err)
+	}
 }

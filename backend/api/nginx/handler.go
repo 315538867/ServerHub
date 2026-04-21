@@ -10,11 +10,10 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/wsstream"
-	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
 
@@ -36,7 +35,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func getSSH(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, bool) {
+func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
@@ -47,35 +46,35 @@ func getSSH(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, boo
 		resp.NotFound(c, "服务器不存在")
 		return nil, false
 	}
-	var cred string
-	switch s.AuthType {
-	case "key":
-		if s.PrivateKey != "" {
-			cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-		}
-	default:
-		if s.Password != "" {
-			cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-		}
-	}
+	rn, err := runner.For(&s, cfg)
 	if err != nil {
-		resp.InternalError(c, "解密失败")
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
 		return nil, false
 	}
-	client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+	return rn, true
+}
+
+func getDedicatedRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
+	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
+		resp.BadRequest(c, "服务器 ID 无效")
 		return nil, false
 	}
-	return client, true
+	var s model.Server
+	if err := db.First(&s, id).Error; err != nil {
+		resp.NotFound(c, "服务器不存在")
+		return nil, false
+	}
+	rn, err := runner.ForDedicated(&s, cfg)
+	if err != nil {
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
+		return nil, false
+	}
+	return rn, true
 }
 
 func sq(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
-}
-
-func streamSSH(ws *websocket.Conn, client *gossh.Client, cmd string) {
-	wsstream.Stream(ws, client, cmd, wsstream.Opts{})
 }
 
 // ── site list ─────────────────────────────────────────────────────────────────
@@ -88,12 +87,12 @@ type SiteItem struct {
 
 func listSitesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		available, _ := sshpool.Run(client, "ls /etc/nginx/sites-available/ 2>/dev/null")
-		enabled, _ := sshpool.Run(client, "ls /etc/nginx/sites-enabled/ 2>/dev/null")
+		available, _ := client.Run("ls /etc/nginx/sites-available/ 2>/dev/null")
+		enabled, _ := client.Run("ls /etc/nginx/sites-enabled/ 2>/dev/null")
 
 		enabledSet := make(map[string]bool)
 		for _, name := range strings.Fields(enabled) {
@@ -123,7 +122,7 @@ func listSitesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func createSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -146,16 +145,16 @@ func createSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		path := "/etc/nginx/sites-available/" + body.Name
 
 		// write config (sudo tee so root-owned target is writable)
-		out, err := sshpool.Run(client, fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), config))
+		out, err := client.Run(fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), config))
 		if err != nil {
 			resp.InternalError(c, "写入配置失败: "+sshpool.HumanizeErr(out))
 			return
 		}
 		// validate
-		out, err = sshpool.Run(client, "sudo -n nginx -t 2>&1")
+		out, err = client.Run("sudo -n nginx -t 2>&1")
 		if err != nil {
 			// rollback
-			sshpool.Run(client, "sudo -n rm -f "+sq(path)) //nolint:errcheck
+			client.Run("sudo -n rm -f "+sq(path)) //nolint:errcheck
 			resp.InternalError(c, "Nginx 配置验证失败: "+sshpool.HumanizeErr(out))
 			return
 		}
@@ -221,13 +220,13 @@ func generateNginxConfig(siteType, domain string, port int, root, proxy string) 
 
 func getSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
 		name := c.Param("name")
 		path := "/etc/nginx/sites-available/" + name
-		out, err := sshpool.Run(client, "cat "+sq(path)+" 2>&1")
+		out, err := client.Run("cat "+sq(path)+" 2>&1")
 		if err != nil {
 			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
@@ -238,7 +237,7 @@ func getSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func putSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -252,14 +251,14 @@ func putSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		path := "/etc/nginx/sites-available/" + name
 		// backup
-		backup, _ := sshpool.Run(client, "sudo -n cat "+sq(path)+" 2>/dev/null")
+		backup, _ := client.Run("sudo -n cat "+sq(path)+" 2>/dev/null")
 		// write new
-		sshpool.Run(client, fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), body.Content)) //nolint:errcheck
+		client.Run(fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), body.Content)) //nolint:errcheck
 		// validate
-		out, err := sshpool.Run(client, "sudo -n nginx -t 2>&1")
+		out, err := client.Run("sudo -n nginx -t 2>&1")
 		if err != nil {
 			// restore backup
-			sshpool.Run(client, fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), backup)) //nolint:errcheck
+			client.Run(fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), backup)) //nolint:errcheck
 			resp.InternalError(c, "Nginx 配置验证失败: "+sshpool.HumanizeErr(out))
 			return
 		}
@@ -271,32 +270,32 @@ func putSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func deleteSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
 		name := c.Param("name")
-		sshpool.Run(client, "sudo -n rm -f "+sq("/etc/nginx/sites-enabled/"+name)) //nolint:errcheck
-		out, err := sshpool.Run(client, "sudo -n rm -f "+sq("/etc/nginx/sites-available/"+name))
+		client.Run("sudo -n rm -f "+sq("/etc/nginx/sites-enabled/"+name)) //nolint:errcheck
+		out, err := client.Run("sudo -n rm -f "+sq("/etc/nginx/sites-available/"+name))
 		if err != nil {
 			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
 		}
-		sshpool.Run(client, "sudo -n nginx -s reload 2>/dev/null") //nolint:errcheck
+		client.Run("sudo -n nginx -s reload 2>/dev/null") //nolint:errcheck
 		resp.OK(c, nil)
 	}
 }
 
 func enableSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
 		name := c.Param("name")
 		src := "/etc/nginx/sites-available/" + name
 		dst := "/etc/nginx/sites-enabled/" + name
-		out, err := sshpool.Run(client, fmt.Sprintf("sudo -n ln -sf %s %s && sudo -n nginx -s reload 2>&1", sq(src), sq(dst)))
+		out, err := client.Run(fmt.Sprintf("sudo -n ln -sf %s %s && sudo -n nginx -s reload 2>&1", sq(src), sq(dst)))
 		if err != nil {
 			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
@@ -307,12 +306,12 @@ func enableSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func disableSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
 		name := c.Param("name")
-		out, err := sshpool.Run(client, "sudo -n rm -f "+sq("/etc/nginx/sites-enabled/"+name)+" && sudo -n nginx -s reload 2>&1")
+		out, err := client.Run("sudo -n rm -f "+sq("/etc/nginx/sites-enabled/"+name)+" && sudo -n nginx -s reload 2>&1")
 		if err != nil {
 			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
@@ -325,11 +324,11 @@ func disableSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func reloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		out, err := sshpool.Run(client, "sudo -n nginx -s reload 2>&1")
+		out, err := client.Run("sudo -n nginx -s reload 2>&1")
 		if err != nil {
 			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
@@ -340,11 +339,11 @@ func reloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func restartHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		out, err := sshpool.Run(client, "sudo -n systemctl restart nginx 2>&1")
+		out, err := client.Run("sudo -n systemctl restart nginx 2>&1")
 		if err != nil {
 			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
@@ -357,16 +356,17 @@ func restartHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func accessLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {
 			return
 		}
+		defer client.Close()
 		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}
 		defer ws.Close()
-		go streamSSH(ws, client, "sudo -n tail -f /var/log/nginx/access.log 2>&1")
+		go wsstream.Stream(ws, client, "sudo -n tail -f /var/log/nginx/access.log 2>&1", wsstream.Opts{})
 		for {
 			if _, _, err := ws.ReadMessage(); err != nil {
 				break
@@ -377,16 +377,17 @@ func accessLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func errorLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {
 			return
 		}
+		defer client.Close()
 		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}
 		defer ws.Close()
-		go streamSSH(ws, client, "sudo -n tail -f /var/log/nginx/error.log 2>&1")
+		go wsstream.Stream(ws, client, "sudo -n tail -f /var/log/nginx/error.log 2>&1", wsstream.Opts{})
 		for {
 			if _, _, err := ws.ReadMessage(); err != nil {
 				break

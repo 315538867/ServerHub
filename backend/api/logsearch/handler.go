@@ -16,11 +16,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
-	"github.com/serverhub/serverhub/pkg/sshpool"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"golang.org/x/sync/semaphore"
-	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
 
@@ -65,7 +63,7 @@ func sq(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-func getSSH(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, bool) {
+func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
@@ -76,27 +74,12 @@ func getSSH(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, boo
 		resp.NotFound(c, "服务器不存在")
 		return nil, false
 	}
-	var cred string
-	switch s.AuthType {
-	case "key":
-		if s.PrivateKey != "" {
-			cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-		}
-	default:
-		if s.Password != "" {
-			cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-		}
-	}
+	rn, err := runner.For(&s, cfg)
 	if err != nil {
-		resp.InternalError(c, "解密失败")
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
 		return nil, false
 	}
-	client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
-	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
-		return nil, false
-	}
-	return client, true
+	return rn, true
 }
 
 func searchHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
@@ -131,11 +114,11 @@ func searchHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
-		client, ok := getSSH(c, db, cfg)
+		client, ok := getRunner(c, db, cfg)
 		if !ok {
 			return
 		}
-		out, runErr := sshpool.Run(client, cmd)
+		out, runErr := client.Run(cmd)
 		// grep 无命中返回非零，这里不把它视为错误
 		lines := splitLines(out, req.Limit*(req.Context*2+1)+req.Limit)
 		truncated := false

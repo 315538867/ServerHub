@@ -31,7 +31,9 @@
 
 | 包 | 关键 API | 职责 |
 |---|---|---|
-| `sshpool` | `Connect(id, host, port, user, type, cred)` `Run(client, cmd)` `Dial(...)` `CollectMetrics(...)` `HumanizeErr` | SSH 连接池：以 serverID 复用 TCP；`Dial` 给长连接（终端、长流）；连接级 MaxSessions 共享 |
+| `sshpool` | `Connect(id, host, port, user, type, cred)` `Dial(...)` `CollectMetrics(client)` `CollectLocalMetrics()` `HumanizeErr` | SSH 连接池：以 serverID 复用 TCP；`Dial` 给长连接；`CollectLocalMetrics` 走 gopsutil 采集本机 |
+| `runner` | `For(server, cfg) Runner` `SSHClient(runner)` | 抽象执行层：`local` 走 `os/exec`，`ssh` 走 `sshpool`；统一 `NewSession`/`Run` 接口 |
+| `fsclient` | `For(server, cfg) Client` | 抽象文件层：`local` 走 `os`，`ssh` 走 `sftppool`；统一 `ReadDir`/`Open`/`Create`/`MkdirAll`/`Rename`/`Remove`/`Stat` 接口 |
 | `sftppool` | `Get(serverID, sshClient)` | SFTP 子系统连接池，复用 ssh client |
 | `wsstream` | `Stream(ws, client, cmd, Opts)` `OptsFromQuery` | 统一 WS 推送：4MB 行缓冲、include/exclude/regex 过滤、有界 channel、ping/pong、断开发 SIGTERM |
 | `auditq` | `New(db)` `Submit(log)` `Close()` | 审计日志异步队列：cap=2000 channel，500 批/1s flush，满则丢并 atomic 计数 |
@@ -69,6 +71,6 @@ idx_metrics_server_created (metrics(server_id, created_at DESC))
 
 `Load(path)` 读取 YAML；不存在则写入默认值。字段见 [架构概览 — 配置](./architecture.md) 与 `backend/config/config.go`。
 
-## backend/tray
+## 本机主服务器
 
-可选系统托盘集成（macOS/Windows）。`tray.Run(serve, port)` 包装 `r.Run`，托盘菜单可打开浏览器、退出。
+启动时 `database.Init` 自动确保存在 `id=1, name="本机", type="local"` 的 Server 记录。所有 API、调度器、部署器通过 `pkg/runner` 与 `pkg/fsclient` 统一处理 local vs ssh，`type=local` 的记录不可编辑/删除。

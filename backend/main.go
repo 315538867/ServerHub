@@ -34,7 +34,6 @@ import (
 	"github.com/serverhub/serverhub/pkg/scheduler"
 	"github.com/serverhub/serverhub/pkg/retention"
 	"github.com/serverhub/serverhub/pkg/auditq"
-	"github.com/serverhub/serverhub/tray"
 )
 
 // Version is injected at build time via ldflags.
@@ -159,12 +158,10 @@ func main() {
 
 	addr := fmt.Sprintf(":%d", cfg.Server.Port)
 	fmt.Printf("ServerHub %s  →  http://localhost%s/panel/\n", Version, addr)
-	tray.Run(func() {
-		if err := r.Run(addr); err != nil {
-			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
-			os.Exit(1)
-		}
-	}, cfg.Server.Port)
+	if err := r.Run(addr); err != nil {
+		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+		os.Exit(1)
+	}
 }
 
 func corsMiddleware() gin.HandlerFunc {

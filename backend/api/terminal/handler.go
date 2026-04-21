@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
@@ -24,12 +27,11 @@ var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		if origin == "" {
-			return true // non-browser client (e.g. curl, native app)
+			return true
 		}
-		// Allow same host (panel origin)
 		host := r.Host
 		return origin == "http://"+host || origin == "https://"+host ||
-			origin == "http://localhost:5173" // Vite dev server
+			origin == "http://localhost:5173"
 	},
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
@@ -42,14 +44,12 @@ type resizeMsg struct {
 }
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
-	// JWT is validated inside the handler via ?token= query param.
-	// This route must NOT use the Auth middleware (WS handshake can't set headers).
 	r.GET("/:id/terminal", handler(db, cfg))
 }
 
 func handler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// ── auth ──────────────────────────────────────────────────
+		// ── auth ──
 		tokenStr := c.Query("token")
 		if tokenStr == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "missing token"})
@@ -67,7 +67,7 @@ func handler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// ── find server ───────────────────────────────────────────
+		// ── find server ──
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "ID 格式错误"})
@@ -79,121 +79,190 @@ func handler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		// ── decrypt credentials ───────────────────────────────────
-		var cred string
-		switch s.AuthType {
-		case "key":
-			if s.PrivateKey != "" {
-				cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-			}
-		default:
-			if s.Password != "" {
-				cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-			}
-		}
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"code": 500, "msg": "解密失败"})
-			return
-		}
-
-		// ── SSH client (dedicated connection; not pooled) ────────
-		// Terminal sessions can live for hours, so we deliberately avoid
-		// reusing the pool client to prevent exhausting its MaxSessions
-		// budget (shared with scheduler, docker, nginx, metrics, etc).
-		client, err := sshpool.Dial(s.Host, s.Port, s.Username, s.AuthType, cred)
-		if err != nil {
-			c.JSON(http.StatusServiceUnavailable, gin.H{"code": 503, "msg": "ssh: " + err.Error()})
-			return
-		}
-		defer client.Close()
-
-		// ── upgrade to WebSocket ──────────────────────────────────
 		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 		if err != nil {
 			return
 		}
 		defer ws.Close()
 
-		// ── open SSH session with PTY ─────────────────────────────
-		session, err := client.NewSession()
-		if err != nil {
-			writeText(ws, "error: session: "+err.Error())
+		if s.Type == "local" {
+			runLocal(ws)
 			return
 		}
-		defer session.Close()
+		runSSH(ws, &s, cfg)
+	}
+}
 
-		modes := gossh.TerminalModes{
-			gossh.ECHO:          1,
-			gossh.TTY_OP_ISPEED: 38400,
-			gossh.TTY_OP_OSPEED: 38400,
+// runLocal spawns an interactive shell on the host running ServerHub via PTY.
+func runLocal(ws *websocket.Conn) {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/bash"
+	}
+	cmd := exec.Command(shell, "-i")
+	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		writeText(ws, "error: pty: "+err.Error())
+		return
+	}
+	defer ptmx.Close()
+	defer func() { _ = cmd.Process.Kill() }()
+
+	pumpPTY(ws, ptmx, func(rows, cols uint16) {
+		_ = pty.Setsize(ptmx, &pty.Winsize{Rows: rows, Cols: cols})
+	})
+	_ = cmd.Wait()
+}
+
+// runSSH proxies the WS to a dedicated SSH PTY session against a remote server.
+func runSSH(ws *websocket.Conn, s *model.Server, cfg *config.Config) {
+	var cred string
+	var err error
+	switch s.AuthType {
+	case "key":
+		if s.PrivateKey != "" {
+			cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
 		}
-		if err := session.RequestPty("xterm-256color", 24, 80, modes); err != nil {
-			writeText(ws, "error: pty: "+err.Error())
-			return
+	default:
+		if s.Password != "" {
+			cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
 		}
+	}
+	if err != nil {
+		writeText(ws, "error: decrypt: "+err.Error())
+		return
+	}
 
-		stdin, _ := session.StdinPipe()
-		stdout, _ := session.StdoutPipe()
-		stderr, _ := session.StderrPipe()
+	client, err := sshpool.Dial(s.Host, s.Port, s.Username, s.AuthType, cred)
+	if err != nil {
+		writeText(ws, "error: ssh: "+err.Error())
+		return
+	}
+	defer client.Close()
 
-		if err := session.Shell(); err != nil {
-			writeText(ws, "error: shell: "+err.Error())
-			return
-		}
+	session, err := client.NewSession()
+	if err != nil {
+		writeText(ws, "error: session: "+err.Error())
+		return
+	}
+	defer session.Close()
 
-		// ── pipe SSH output → WS (stdout + stderr, concurrent) ───
-		var wsMu sync.Mutex
-		writeBin := func(p []byte) {
-			wsMu.Lock()
-			defer wsMu.Unlock()
-			ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
-			ws.WriteMessage(websocket.BinaryMessage, p) //nolint:errcheck
-		}
+	modes := gossh.TerminalModes{
+		gossh.ECHO:          1,
+		gossh.TTY_OP_ISPEED: 38400,
+		gossh.TTY_OP_OSPEED: 38400,
+	}
+	if err := session.RequestPty("xterm-256color", 24, 80, modes); err != nil {
+		writeText(ws, "error: pty: "+err.Error())
+		return
+	}
 
-		var wg sync.WaitGroup
-		pipe := func(r io.Reader) {
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				buf := make([]byte, 4096)
-				for {
-					n, err := r.Read(buf)
-					if n > 0 {
-						cp := make([]byte, n)
-						copy(cp, buf[:n])
-						writeBin(cp)
-					}
-					if err != nil {
-						return
-					}
+	stdin, _ := session.StdinPipe()
+	stdout, _ := session.StdoutPipe()
+	stderr, _ := session.StderrPipe()
+
+	if err := session.Shell(); err != nil {
+		writeText(ws, "error: shell: "+err.Error())
+		return
+	}
+
+	var wsMu sync.Mutex
+	writeBin := func(p []byte) {
+		wsMu.Lock()
+		defer wsMu.Unlock()
+		ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		ws.WriteMessage(websocket.BinaryMessage, p) //nolint:errcheck
+	}
+
+	var wg sync.WaitGroup
+	pipe := func(r io.Reader) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			buf := make([]byte, 4096)
+			for {
+				n, err := r.Read(buf)
+				if n > 0 {
+					cp := make([]byte, n)
+					copy(cp, buf[:n])
+					writeBin(cp)
 				}
-			}()
-		}
-		pipe(stdout)
-		pipe(stderr)
+				if err != nil {
+					return
+				}
+			}
+		}()
+	}
+	pipe(stdout)
+	pipe(stderr)
 
-		// ── WS input → SSH stdin / resize ─────────────────────────
-		for {
-			msgType, data, err := ws.ReadMessage()
-			if err != nil {
+	for {
+		msgType, data, err := ws.ReadMessage()
+		if err != nil {
+			break
+		}
+		if msgType == websocket.TextMessage {
+			var msg resizeMsg
+			if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0 {
+				session.WindowChange(int(msg.Rows), int(msg.Cols))
+			}
+		} else {
+			if _, err := stdin.Write(data); err != nil {
 				break
 			}
-			if msgType == websocket.TextMessage {
-				var msg resizeMsg
-				if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0 {
-					session.WindowChange(int(msg.Rows), int(msg.Cols))
-				}
-			} else {
-				if _, err := stdin.Write(data); err != nil {
-					break
-				}
+		}
+	}
+	stdin.Close()
+	session.Wait()
+	wg.Wait()
+}
+
+// pumpPTY shuttles bytes between WS and a local PTY master.
+func pumpPTY(ws *websocket.Conn, ptmx *os.File, resize func(rows, cols uint16)) {
+	var wsMu sync.Mutex
+	writeBin := func(p []byte) {
+		wsMu.Lock()
+		defer wsMu.Unlock()
+		ws.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		ws.WriteMessage(websocket.BinaryMessage, p) //nolint:errcheck
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		buf := make([]byte, 4096)
+		for {
+			n, err := ptmx.Read(buf)
+			if n > 0 {
+				cp := make([]byte, n)
+				copy(cp, buf[:n])
+				writeBin(cp)
+			}
+			if err != nil {
+				return
 			}
 		}
+	}()
 
-		stdin.Close()
-		session.Wait()
-		wg.Wait()
+	for {
+		msgType, data, err := ws.ReadMessage()
+		if err != nil {
+			break
+		}
+		if msgType == websocket.TextMessage {
+			var msg resizeMsg
+			if json.Unmarshal(data, &msg) == nil && msg.Type == "resize" && msg.Cols > 0 && msg.Rows > 0 {
+				resize(uint16(msg.Rows), uint16(msg.Cols))
+			}
+		} else {
+			if _, err := ptmx.Write(data); err != nil {
+				break
+			}
+		}
 	}
+	_ = ptmx.Close()
+	<-done
 }
 
 func writeText(ws *websocket.Conn, msg string) {

@@ -38,6 +38,7 @@ export interface HealthData {
 export interface Server {
   id: number
   name: string
+  type: 'local' | 'ssh' | ''
   host: string
   port: number
   username: string

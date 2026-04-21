@@ -27,7 +27,9 @@
 `id, username (UQ), password (bcrypt), role(admin), mfa_secret, mfa_enabled, last_login, last_ip, created_at, updated_at`
 
 ### servers
-`id, name, host, port(默认22), username, auth_type(password|key), password (AES), private_key (AES), status(online|offline|unknown), last_check_at, remark, created_at, updated_at`
+`id, name, type(local|ssh), host, port(默认22), username, auth_type(password|key), password (AES), private_key (AES), status(online|offline|unknown), last_check_at, remark, created_at, updated_at`
+
+启动时自动 seed `id=1, type="local"` 一条本机记录，执行层经 `pkg/runner` / `pkg/fsclient` 根据 `type` 分流到 `os/exec` 或 SSH/SFTP。
 
 ### metrics
 `id, server_id(idx), cpu, mem, disk, load1, uptime, created_at`

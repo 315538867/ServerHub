@@ -13,13 +13,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/pkg/sftp"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/deployer"
+	"github.com/serverhub/serverhub/pkg/fsclient"
 	"github.com/serverhub/serverhub/pkg/resp"
-	"github.com/serverhub/serverhub/pkg/sshpool"
 	"gorm.io/gorm"
 )
 
@@ -371,41 +370,19 @@ func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		var cred string
-		switch s.AuthType {
-		case "key":
-			if s.PrivateKey != "" {
-				cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-			}
-		default:
-			if s.Password != "" {
-				cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-			}
-		}
+		fc, err := fsclient.For(&s, cfg)
 		if err != nil {
-			sendUpEvent("error", map[string]any{"msg": "解密 SSH 凭证失败"})
+			sendUpEvent("error", map[string]any{"msg": "文件客户端获取失败: " + err.Error()})
 			return
 		}
-
-		sshClient, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
-		if err != nil {
-			sendUpEvent("error", map[string]any{"msg": "SSH 连接失败: " + err.Error()})
-			return
-		}
-
-		sftpClient, err := sftp.NewClient(sshClient)
-		if err != nil {
-			sendUpEvent("error", map[string]any{"msg": "SFTP 会话失败: " + err.Error()})
-			return
-		}
-		defer sftpClient.Close()
+		defer fc.Close()
 
 		workDir := d.WorkDir
 		if workDir == "" {
 			workDir = "/tmp"
 		}
-		if err := sftpClient.MkdirAll(workDir); err != nil {
-			sendUpEvent("error", map[string]any{"msg": "创建远程目录失败: " + err.Error()})
+		if err := fc.MkdirAll(workDir); err != nil {
+			sendUpEvent("error", map[string]any{"msg": "创建目录失败: " + err.Error()})
 			return
 		}
 
@@ -415,9 +392,9 @@ func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		sendUpEvent("start", map[string]any{"filename": filename, "total": total})
 
-		dst, err := sftpClient.Create(remotePath)
+		dst, err := fc.Create(remotePath)
 		if err != nil {
-			sendUpEvent("error", map[string]any{"msg": "创建远程文件失败: " + err.Error()})
+			sendUpEvent("error", map[string]any{"msg": "创建文件失败: " + err.Error()})
 			return
 		}
 		defer dst.Close()

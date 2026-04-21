@@ -12,12 +12,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/crypto"
+	"github.com/serverhub/serverhub/pkg/fsclient"
 	"github.com/serverhub/serverhub/pkg/resp"
-	"github.com/serverhub/serverhub/pkg/sftppool"
-	"github.com/serverhub/serverhub/pkg/sshpool"
-	"github.com/pkg/sftp"
-	gossh "golang.org/x/crypto/ssh"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"gorm.io/gorm"
 )
 
@@ -43,45 +40,30 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.POST("/:id/files/chmod", chmodHandler(db, cfg))
 }
 
-// ctx resolves server ID, SSH client, and SFTP client from the request.
-// Returns false and writes response if anything fails.
-func ctx(c *gin.Context, db *gorm.DB, cfg *config.Config) (uint, *gossh.Client, *sftp.Client, bool) {
+// ctx loads the server, an FS client (sftp or local) and a Runner (for chmod/rm
+// where shelling out is simpler than walking the FS). Writes the response on error.
+func ctx(c *gin.Context, db *gorm.DB, cfg *config.Config) (*model.Server, fsclient.Client, runner.Runner, bool) {
 	sid, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
-		return 0, nil, nil, false
+		return nil, nil, nil, false
 	}
 	var s model.Server
 	if err := db.First(&s, sid).Error; err != nil {
 		resp.NotFound(c, "服务器不存在")
-		return 0, nil, nil, false
+		return nil, nil, nil, false
 	}
-	var cred string
-	switch s.AuthType {
-	case "key":
-		if s.PrivateKey != "" {
-			cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-		}
-	default:
-		if s.Password != "" {
-			cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-		}
-	}
+	fc, err := fsclient.For(&s, cfg)
 	if err != nil {
-		resp.InternalError(c, "解密失败")
-		return 0, nil, nil, false
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "文件客户端获取失败: "+err.Error())
+		return nil, nil, nil, false
 	}
-	sshClient, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+	rn, err := runner.For(&s, cfg)
 	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
-		return 0, nil, nil, false
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "执行器获取失败: "+err.Error())
+		return nil, nil, nil, false
 	}
-	sc, err := sftppool.Get(s.ID, sshClient)
-	if err != nil {
-		resp.InternalError(c, "SFTP 连接失败: "+err.Error())
-		return 0, nil, nil, false
-	}
-	return s.ID, sshClient, sc, true
+	return &s, fc, rn, true
 }
 
 func shellQuote(s string) string {
@@ -92,12 +74,12 @@ func shellQuote(s string) string {
 
 func listHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, _, sc, ok := ctx(c, db, cfg)
+		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
 			return
 		}
 		dirPath := c.DefaultQuery("path", "/")
-		entries, err := sc.ReadDir(dirPath)
+		entries, err := fc.ReadDir(dirPath)
 		if err != nil {
 			resp.InternalError(c, "读取目录失败: "+err.Error())
 			return
@@ -118,7 +100,7 @@ func listHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func contentGetHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, _, sc, ok := ctx(c, db, cfg)
+		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -127,7 +109,7 @@ func contentGetHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "路径不能为空")
 			return
 		}
-		f, err := sc.Open(filePath)
+		f, err := fc.Open(filePath)
 		if err != nil {
 			resp.InternalError(c, "打开文件失败: "+err.Error())
 			return
@@ -149,7 +131,7 @@ func contentGetHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func contentPutHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, _, sc, ok := ctx(c, db, cfg)
+		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -161,7 +143,7 @@ func contentPutHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "请求体格式错误")
 			return
 		}
-		f, err := sc.Create(body.Path)
+		f, err := fc.Create(body.Path)
 		if err != nil {
 			resp.InternalError(c, "创建文件失败: "+err.Error())
 			return
@@ -177,7 +159,7 @@ func contentPutHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func downloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, _, sc, ok := ctx(c, db, cfg)
+		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -186,7 +168,7 @@ func downloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "路径不能为空")
 			return
 		}
-		f, err := sc.Open(filePath)
+		f, err := fc.Open(filePath)
 		if err != nil {
 			resp.InternalError(c, "打开文件失败: "+err.Error())
 			return
@@ -201,7 +183,7 @@ func downloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, _, sc, ok := ctx(c, db, cfg)
+		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -218,7 +200,7 @@ func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		defer src.Close()
 		dest := path.Join(dir, path.Base(fh.Filename))
-		dst, err := sc.Create(dest)
+		dst, err := fc.Create(dest)
 		if err != nil {
 			resp.InternalError(c, "创建目标文件失败: "+err.Error())
 			return
@@ -234,7 +216,7 @@ func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func mkdirHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, _, sc, ok := ctx(c, db, cfg)
+		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -245,7 +227,7 @@ func mkdirHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "路径不能为空")
 			return
 		}
-		if err := sc.MkdirAll(body.Path); err != nil {
+		if err := fc.MkdirAll(body.Path); err != nil {
 			resp.InternalError(c, "创建目录失败: "+err.Error())
 			return
 		}
@@ -255,7 +237,7 @@ func mkdirHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func deleteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, sshClient, _, ok := ctx(c, db, cfg)
+		_, _, rn, ok := ctx(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -264,7 +246,7 @@ func deleteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "路径不能为空")
 			return
 		}
-		out, err := sshpool.Run(sshClient, "rm -rf "+shellQuote(filePath))
+		out, err := rn.Run("rm -rf " + shellQuote(filePath))
 		if err != nil {
 			resp.InternalError(c, strings.TrimSpace(out))
 			return
@@ -275,7 +257,7 @@ func deleteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func renameHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, _, sc, ok := ctx(c, db, cfg)
+		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -287,7 +269,7 @@ func renameHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "请求体格式错误")
 			return
 		}
-		if err := sc.Rename(body.OldPath, body.NewPath); err != nil {
+		if err := fc.Rename(body.OldPath, body.NewPath); err != nil {
 			resp.InternalError(c, "重命名失败: "+err.Error())
 			return
 		}
@@ -297,7 +279,7 @@ func renameHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func chmodHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		_, sshClient, _, ok := ctx(c, db, cfg)
+		_, _, rn, ok := ctx(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -309,7 +291,7 @@ func chmodHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "请求体格式错误")
 			return
 		}
-		out, err := sshpool.Run(sshClient, "chmod "+shellQuote(body.Mode)+" "+shellQuote(body.Path))
+		out, err := rn.Run("chmod " + shellQuote(body.Mode) + " " + shellQuote(body.Path))
 		if err != nil {
 			resp.InternalError(c, strings.TrimSpace(out))
 			return

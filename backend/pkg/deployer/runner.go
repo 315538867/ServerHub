@@ -11,8 +11,7 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
-	"github.com/serverhub/serverhub/pkg/sshpool"
-	gossh "golang.org/x/crypto/ssh"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"gorm.io/gorm"
 )
 
@@ -22,7 +21,7 @@ type Result struct {
 	Duration int
 }
 
-// Run executes a deployment via SSH.
+// Run executes a deployment via the appropriate Runner (SSH or local exec).
 // triggerSource: "manual" | "webhook" | "schedule" | "api"
 // onLine is called for each stdout line (pass nil for background runs).
 func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string, onLine func(string)) Result {
@@ -31,20 +30,15 @@ func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string
 		return Result{Output: "server not found", Success: false}
 	}
 
-	cred, err := decryptCred(s, cfg.Security.AESKey)
+	rn, err := runner.For(&s, cfg)
 	if err != nil {
-		return Result{Output: "decrypt failed", Success: false}
-	}
-
-	client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
-	if err != nil {
-		return Result{Output: "ssh: " + err.Error(), Success: false}
+		return Result{Output: "runner: " + err.Error(), Success: false}
 	}
 
 	now := time.Now()
 	db.Model(&app).Updates(map[string]any{"last_run_at": now, "last_status": "running"})
 
-	session, err := client.NewSession()
+	session, err := rn.NewSession()
 	if err != nil {
 		db.Model(&app).Update("last_status", "failed")
 		return Result{Output: "session: " + err.Error(), Success: false}
@@ -96,9 +90,8 @@ func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string
 		}
 		db.Model(&app).Updates(updates)
 
-		// Delete old image after successful version update
 		if app.ImageName != "" && oldVersion != "" && oldVersion != app.DesiredVersion {
-			go deleteOldImage(client, app.ImageName, oldVersion)
+			go deleteOldImage(rn, app.ImageName, oldVersion)
 		}
 	} else {
 		db.Model(&app).Updates(map[string]any{
@@ -110,7 +103,7 @@ func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string
 	return Result{Output: output, Success: success, Duration: duration}
 }
 
-// BuildCmd constructs the SSH command for the given app type.
+// BuildCmd constructs the shell command for the given app type.
 func BuildCmd(app model.Deploy, aesKey string) string {
 	envPrefix := buildEnvPrefix(app.EnvVars, aesKey)
 
@@ -120,7 +113,6 @@ func BuildCmd(app model.Deploy, aesKey string) string {
 		parts = append(parts, fmt.Sprintf("cd %s", shellQuote(app.WorkDir)))
 	}
 
-	// Write config files (all deploy types)
 	hasStartupSh := false
 	if app.ConfigFiles != "" {
 		var files []struct {
@@ -155,7 +147,7 @@ func BuildCmd(app model.Deploy, aesKey string) string {
 				fmt.Sprintf("docker compose -f %s up -d --build 2>&1", shellQuote(cf)),
 			)
 		}
-	default: // docker, native
+	default:
 		if hasStartupSh {
 			parts = append(parts, "bash startup.sh 2>&1")
 		} else if app.StartCmd != "" {
@@ -166,8 +158,8 @@ func BuildCmd(app model.Deploy, aesKey string) string {
 	return "bash -c " + shellQuote(envPrefix+"set -e; "+strings.Join(parts, " && "))
 }
 
-func deleteOldImage(client *gossh.Client, imageName, version string) {
-	sshpool.Run(client, fmt.Sprintf("docker rmi %s 2>/dev/null || true",
+func deleteOldImage(rn runner.Runner, imageName, version string) {
+	rn.Run(fmt.Sprintf("docker rmi %s 2>/dev/null || true",
 		shellQuote(imageName+":"+version)))
 }
 
@@ -207,19 +199,4 @@ func statusStr(ok bool) string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
-}
-
-func decryptCred(s model.Server, aesKey string) (string, error) {
-	switch s.AuthType {
-	case "key":
-		if s.PrivateKey == "" {
-			return "", nil
-		}
-		return crypto.Decrypt(s.PrivateKey, aesKey)
-	default:
-		if s.Password == "" {
-			return "", nil
-		}
-		return crypto.Decrypt(s.Password, aesKey)
-	}
 }

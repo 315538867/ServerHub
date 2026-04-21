@@ -20,22 +20,22 @@
 │   └──────────────────────────────────────────────────┘  │
 │   ┌──────────────────────────────────────────────────┐  │
 │   │ 服务层 (pkg/*)                                   │  │
-│   │  sshpool · sftppool · wsstream · auditq          │  │
-│   │  scheduler · deployer · retention · notify       │  │
-│   │  crypto · totp · resp                            │  │
+│   │  runner · fsclient · sshpool · sftppool          │  │
+│   │  wsstream · auditq · scheduler · deployer        │  │
+│   │  retention · notify · crypto · totp · resp       │  │
 │   └──────────────────────────────────────────────────┘  │
 │   ┌──────────────────────────────────────────────────┐  │
 │   │ 持久化: SQLite (WAL) — GORM models               │  │
 │   └──────────────────────────────────────────────────┘  │
-└────────────────────┬────────────────────────────────────┘
-                     │  SSH (22) / SFTP
-┌────────────────────▼────────────────────────────────────┐
-│  远端服务器 N 台                                        │
-│   sshd · docker · nginx · journalctl · certbot ...      │
-└─────────────────────────────────────────────────────────┘
+└──────┬───────────────────────────────────┬──────────────┘
+       │ os/exec · pty · gopsutil          │ SSH (22) / SFTP
+┌──────▼──────────┐        ┌───────────────▼──────────────┐
+│  本机 (type=local) │        │  远端服务器 N 台 (type=ssh)    │
+│  主服务器自身      │        │  sshd · docker · nginx ...   │
+└──────────────────┘        └──────────────────────────────┘
 ```
 
-定位：**主控 + SSH 拉模型**，无 Agent。规模 10~30 台舒适，>50 台需评估。
+定位：**主控 + 本机直采 + SSH 远端**，无 Agent。运行主机即 `id=1` 本机服务器。规模 10~30 台舒适，>50 台需评估。
 
 ## 请求生命周期
 
@@ -44,9 +44,9 @@
 3. `middleware.Audit` 复制请求/响应元数据，**异步**投递到 `auditq.Default`，不阻塞请求
 4. 业务 handler：
    - 普通查询：直接读 SQLite
-   - 远程操作：通过 `sshpool.Connect(serverID, ...)` 取池化连接，`sshpool.Run(client, cmd)` 执行
-   - 文件：`sftppool.Get(serverID, client)`
-   - 流式：`wsstream.Stream(ws, client, cmd, opts)` 推 WebSocket
+   - 远程操作：通过 `runner.For(&server, cfg)` 取执行器；`local` 走 `os/exec` + creack/pty，`ssh` 走 `sshpool` 池化连接
+   - 文件：`fsclient.For(&server, cfg)`，`local` 直操 `os`，`ssh` 走 `sftppool`
+   - 流式：`wsstream.Stream(ws, runner, cmd, opts)` 推 WebSocket
 5. 响应统一走 `pkg/resp` → `{code, msg, data}`
 
 ## 后台任务

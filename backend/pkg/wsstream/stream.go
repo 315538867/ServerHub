@@ -1,4 +1,4 @@
-// Package wsstream pipes a remote SSH command's stdout into a WebSocket,
+// Package wsstream pipes a remote command's stdout into a WebSocket,
 // with optional include/exclude line filtering, large line tolerance, and
 // proper goroutine cleanup on either side hanging up.
 package wsstream
@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	gossh "golang.org/x/crypto/ssh"
+	"github.com/serverhub/serverhub/pkg/runner"
 )
 
 const (
@@ -37,9 +37,9 @@ type msg struct {
 	Count int64  `json:"count,omitempty"`
 }
 
-// Stream runs cmd over an existing SSH client and forwards stdout/stderr to ws.
-// It blocks until the session ends or either peer disconnects.
-func Stream(ws *websocket.Conn, client *gossh.Client, cmd string, opts Opts) {
+// Stream runs cmd via the given Runner and forwards stdout to ws.
+// It blocks until the command ends or either peer disconnects.
+func Stream(ws *websocket.Conn, rn runner.Runner, cmd string, opts Opts) {
 	var writeMu sync.Mutex
 	send := func(m msg) error {
 		b, _ := json.Marshal(m)
@@ -55,7 +55,7 @@ func Stream(ws *websocket.Conn, client *gossh.Client, cmd string, opts Opts) {
 		return
 	}
 
-	sess, err := client.NewSession()
+	sess, err := rn.NewSession()
 	if err != nil {
 		_ = send(msg{Type: "error", Data: err.Error()})
 		return
@@ -67,7 +67,6 @@ func Stream(ws *websocket.Conn, client *gossh.Client, cmd string, opts Opts) {
 		_ = send(msg{Type: "error", Data: err.Error()})
 		return
 	}
-	sess.Stderr = nil
 
 	if err := sess.Start(cmd); err != nil {
 		_ = send(msg{Type: "error", Data: err.Error()})
@@ -154,7 +153,7 @@ func Stream(ws *websocket.Conn, client *gossh.Client, cmd string, opts Opts) {
 				return
 			}
 			if err := send(msg{Type: "output", Data: line}); err != nil {
-				_ = sess.Signal(gossh.SIGTERM)
+				_ = sess.Kill()
 				return
 			}
 		case <-flushTicker.C:
@@ -163,7 +162,7 @@ func Stream(ws *websocket.Conn, client *gossh.Client, cmd string, opts Opts) {
 				lastDropped = dropped
 			}
 		case <-done:
-			_ = sess.Signal(gossh.SIGTERM)
+			_ = sess.Kill()
 			return
 		}
 	}
