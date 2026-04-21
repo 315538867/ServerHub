@@ -9,6 +9,7 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/pkg/auditq"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"gorm.io/gorm"
@@ -47,6 +48,7 @@ func loginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		// Stops attackers who rotate IPs (botnets, residential proxies) from
 		// brute-forcing a single account.
 		if middleware.AccountLocked(req.Username) {
+			auditq.Security(req.Username, c.ClientIP(), "security:account_locked", 429, nil)
 			resp.Fail(c, http.StatusTooManyRequests, 1005, "账号暂时锁定，请稍后再试")
 			return
 		}
@@ -54,12 +56,16 @@ func loginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		var user model.User
 		if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
 			middleware.RecordAccountFailure(req.Username)
+			auditq.Security(req.Username, c.ClientIP(), "security:login_failed", 401,
+				map[string]any{"reason": "user_not_found"})
 			resp.Fail(c, http.StatusUnauthorized, 1001, "用户名或密码错误")
 			return
 		}
 
 		if !crypto.BcryptVerify(req.Password, user.Password) {
 			middleware.RecordAccountFailure(req.Username)
+			auditq.Security(req.Username, c.ClientIP(), "security:login_failed", 401,
+				map[string]any{"reason": "bad_password"})
 			resp.Fail(c, http.StatusUnauthorized, 1001, "用户名或密码错误")
 			return
 		}

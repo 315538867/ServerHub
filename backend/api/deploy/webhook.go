@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/pkg/auditq"
 	"github.com/serverhub/serverhub/pkg/deployer"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"gorm.io/gorm"
@@ -47,6 +48,8 @@ func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		ghSig := c.GetHeader("X-Hub-Signature-256")
 		glTok := c.GetHeader("X-Gitlab-Token")
 		if ghSig == "" && glTok == "" {
+			auditq.Security("webhook", c.ClientIP(), "security:webhook_signature_failed", 401,
+				map[string]any{"deploy_id": d.ID, "reason": "missing_header"})
 			resp.Fail(c, http.StatusUnauthorized, 401, "缺少签名或 Token 请求头")
 			return
 		}
@@ -58,11 +61,15 @@ func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			mac.Write(body)
 			expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 			if !hmac.Equal([]byte(ghSig), []byte(expected)) {
+				auditq.Security("webhook", c.ClientIP(), "security:webhook_signature_failed", 401,
+					map[string]any{"deploy_id": d.ID, "provider": "github"})
 				resp.Fail(c, http.StatusUnauthorized, 401, "签名验证失败")
 				return
 			}
 		} else if glTok != "" {
 			if !hmac.Equal([]byte(glTok), secret) {
+				auditq.Security("webhook", c.ClientIP(), "security:webhook_signature_failed", 401,
+					map[string]any{"deploy_id": d.ID, "provider": "gitlab"})
 				resp.Fail(c, http.StatusUnauthorized, 401, "Token 不匹配")
 				return
 			}

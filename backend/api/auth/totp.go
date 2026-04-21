@@ -8,6 +8,7 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/pkg/auditq"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/totp"
@@ -91,21 +92,28 @@ func totpLoginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		// Parse tmp token (role=tmp_totp)
 		claims, err := middleware.ParseToken(body.TmpToken, cfg.Security.JWTSecret)
 		if err != nil || claims.Role != "tmp_totp" {
+			auditq.Security("", c.ClientIP(), "security:mfa_token_invalid", 401, nil)
 			resp.Fail(c, http.StatusUnauthorized, 1001, "Token 无效")
 			return
 		}
 		var user model.User
 		if err := db.First(&user, claims.UserID).Error; err != nil {
+			auditq.Security(claims.Username, c.ClientIP(), "security:mfa_token_invalid", 401,
+				map[string]any{"reason": "user_not_found"})
 			resp.Fail(c, http.StatusUnauthorized, 1001, "用户不存在")
 			return
 		}
 		secret, err := crypto.Decrypt(user.MFASecret, cfg.Security.AESKey)
 		if err != nil {
+			auditq.Security(user.Username, c.ClientIP(), "security:totp_failed", 401,
+				map[string]any{"reason": "secret_decrypt_failed"})
 			resp.Fail(c, http.StatusUnauthorized, 1011, "TOTP 密钥无效")
 			return
 		}
 		step, ok := totp.VerifyAt(secret, body.Code, time.Now())
 		if !ok {
+			auditq.Security(user.Username, c.ClientIP(), "security:totp_failed", 401,
+				map[string]any{"reason": "bad_code"})
 			resp.Fail(c, http.StatusUnauthorized, 1011, "验证码错误")
 			return
 		}
@@ -114,6 +122,8 @@ func totpLoginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			Where("id = ? AND last_totp_step < ?", user.ID, step).
 			Update("last_totp_step", step)
 		if res.Error != nil || res.RowsAffected == 0 {
+			auditq.Security(user.Username, c.ClientIP(), "security:totp_replay", 401,
+				map[string]any{"step": step})
 			resp.Fail(c, http.StatusUnauthorized, 1011, "验证码已被使用")
 			return
 		}
