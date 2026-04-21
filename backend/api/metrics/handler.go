@@ -26,13 +26,21 @@ func overviewHandler(db *gorm.DB) gin.HandlerFunc {
 		var servers []model.Server
 		db.Order("id asc").Find(&servers)
 
+		// Fetch the latest metric per server in one query (was N+1 before:
+		// one SELECT per server on large fleets).
+		var latest []model.Metric
+		db.Where("id IN (?)",
+			db.Model(&model.Metric{}).
+				Select("MAX(id)").
+				Group("server_id"),
+		).Find(&latest)
+		byServer := make(map[uint]*model.Metric, len(latest))
+		for i := range latest {
+			byServer[latest[i].ServerID] = &latest[i]
+		}
+
 		result := make([]serverOverview, len(servers))
 		for i, s := range servers {
-			var m model.Metric
-			var mp *model.Metric
-			if err := db.Where("server_id = ?", s.ID).Order("created_at desc").First(&m).Error; err == nil {
-				mp = &m
-			}
 			result[i] = serverOverview{
 				ID:          s.ID,
 				Name:        s.Name,
@@ -40,7 +48,7 @@ func overviewHandler(db *gorm.DB) gin.HandlerFunc {
 				Port:        s.Port,
 				Status:      s.Status,
 				LastCheckAt: s.LastCheckAt,
-				Metric:      mp,
+				Metric:      byServer[s.ID],
 			}
 		}
 		resp.OK(c, result)
