@@ -1,27 +1,24 @@
 <template>
-  <div class="sl" :class="{ 'sl--fullscreen': isTerminal }">
-    <template v-if="!isTerminal">
-      <UiStateBanner
-        :title="server?.name ?? '加载中…'"
-        :status="bannerStatus"
-        :status-label="statusLabel"
-      >
-        <template #subtitle>
-          <span class="sl__sub">
-            <code class="sl__code">{{ server?.host }}:{{ server?.port }}</code>
-          </span>
-        </template>
-      </UiStateBanner>
+  <div class="sl">
+    <div class="sl__bar">
+      <div class="sl__title-row">
+        <StatusDot :status="server?.status ?? 'unknown'" :size="10" :ring="true" :pulse="server?.status === 'online'" />
+        <h1 class="sl__title">{{ server?.name ?? '加载中…' }}</h1>
+        <UiBadge v-if="statusLabel" :tone="statusTone">{{ statusLabel }}</UiBadge>
+      </div>
+      <div class="sl__meta">
+        <code class="sl__code">{{ server?.host }}:{{ server?.port }}</code>
+      </div>
+    </div>
 
-      <UiTabs
-        class="sl__tabs"
-        :model-value="activeTab"
-        :items="tabs"
-        @update:model-value="onTabChange"
-      />
-    </template>
+    <UiTabs
+      class="sl__tabs"
+      :model-value="activeTab"
+      :items="tabs"
+      @update:model-value="onTabChange"
+    />
 
-    <div class="sl__content" :class="{ 'sl__content--fullscreen': isTerminal }">
+    <div class="sl__content" :class="{ 'sl__content--terminal': isTerminal }">
       <router-view v-slot="{ Component, route: r }">
         <transition name="sl-fade" mode="out-in">
           <component :is="Component" :key="r.fullPath" />
@@ -35,8 +32,9 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServerStore } from '@/stores/server'
-import UiStateBanner from '@/components/ui/UiStateBanner.vue'
+import StatusDot from '@/components/ui/StatusDot.vue'
 import UiTabs from '@/components/ui/UiTabs.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -47,15 +45,15 @@ const server   = computed(() => serverStore.getById(serverId.value))
 const activeTab  = computed(() => route.path.split('/').pop() || 'overview')
 const isTerminal = computed(() => activeTab.value === 'terminal')
 
-const bannerStatus = computed(() => {
-  const s = server.value?.status
-  if (s === 'online') return 'online'
-  if (s === 'offline') return 'offline'
-  return 'unknown'
-}) as any
 const statusLabel = computed(() => {
   const s = server.value?.status ?? ''
-  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string,string>)[s] ?? '未知'
+  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string, string>)[s] ?? ''
+})
+const statusTone = computed<'success' | 'neutral' | 'danger'>(() => {
+  const s = server.value?.status ?? ''
+  if (s === 'online') return 'success'
+  if (s === 'offline') return 'neutral'
+  return 'neutral'
 })
 
 const tabs = [
@@ -80,31 +78,53 @@ onMounted(async () => {
 .sl {
   height: 100%;
   display: flex; flex-direction: column;
-  padding: var(--ui-space-4) var(--ui-space-5) 0;
-  background: var(--ui-bg-canvas);
+  background: var(--ui-bg);
   min-height: 0;
 }
-.sl--fullscreen { padding: 0; overflow: hidden; }
 
-.sl__sub { display: inline-flex; align-items: center; gap: var(--ui-space-2); }
+.sl__bar {
+  display: flex; flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-5) var(--space-8) var(--space-3);
+}
+.sl__title-row {
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.sl__title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  color: var(--ui-fg);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.sl__meta {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-sm);
+  color: var(--ui-fg-3);
+}
 .sl__code {
-  font-family: var(--ui-font-mono);
-  font-size: var(--ui-fs-xs);
-  background: var(--ui-bg-subtle);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  background: var(--ui-bg-2);
   border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-sm);
+  border-radius: var(--radius-sm);
   padding: 1px 6px;
   color: var(--ui-fg-2);
 }
 
-.sl__tabs { margin: 0 0 var(--ui-space-3); }
+.sl__tabs { margin: 0; padding: 0 var(--space-8); }
 
 .sl__content { flex: 1; min-height: 0; overflow-y: auto; }
-.sl__content--fullscreen { overflow: hidden; padding: 0; }
+.sl__content--terminal {
+  overflow: hidden;
+  padding: var(--space-4) var(--space-8) var(--space-6);
+}
 
 .sl-fade-enter-active {
-  animation: ui-slide-up var(--ui-dur-base) var(--ui-ease-standard);
+  transition: opacity var(--dur-base) var(--ease), transform var(--dur-base) var(--ease);
 }
-.sl-fade-leave-active { transition: opacity var(--ui-dur-fast); }
+.sl-fade-enter-from { opacity: 0; transform: translateY(4px); }
+.sl-fade-leave-active { transition: opacity var(--dur-fast) var(--ease); }
 .sl-fade-leave-to { opacity: 0; }
 </style>

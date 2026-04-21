@@ -1,10 +1,11 @@
 <template>
   <button
+    :type="nativeType"
     class="ui-icon-btn"
-    :class="[`ui-icon-btn--${variant}`, `ui-icon-btn--${size}`, active && 'is-active']"
-    :aria-label="ariaLabel"
-    :title="title"
+    :class="[`ui-icon-btn--${variant}`, `ui-icon-btn--${size}`, active && 'is-active', disabled && 'is-disabled']"
     :disabled="disabled"
+    :title="title"
+    :aria-label="ariaLabel || title"
     @click="$emit('click', $event)"
   >
     <slot />
@@ -13,22 +14,22 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{
-  variant?: 'ghost' | 'soft' | 'solid'
-  size?: 'sm' | 'md' | 'lg'
-  active?: boolean
-  disabled?: boolean
-  ariaLabel?: string
+interface Props {
+  variant?: 'ghost' | 'subtle' | 'outline'
+  size?: 'sm' | 'md'
   title?: string
+  ariaLabel?: string
+  disabled?: boolean
+  active?: boolean
   badge?: string | number
-}>(), {
+  nativeType?: 'button' | 'submit'
+}
+withDefaults(defineProps<Props>(), {
   variant: 'ghost',
   size: 'md',
-  active: false,
-  disabled: false,
+  nativeType: 'button',
 })
-
-defineEmits<{ (e: 'click', evt: MouseEvent): void }>()
+defineEmits<{ (e: 'click', ev: MouseEvent): void }>()
 </script>
 
 <style scoped>
@@ -37,40 +38,44 @@ defineEmits<{ (e: 'click', evt: MouseEvent): void }>()
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
-  border: 1px solid transparent;
-  color: var(--ui-fg-2);
-  border-radius: var(--ui-radius-md);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background-color var(--ui-dur-fast) var(--ui-ease-standard),
-              color var(--ui-dur-fast) var(--ui-ease-standard),
-              border-color var(--ui-dur-fast) var(--ui-ease-standard);
+  color: var(--ui-fg-2);
+  border: 1px solid transparent;
+  background: transparent;
+  transition: background-color var(--dur-fast) var(--ease),
+              color var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
 }
-.ui-icon-btn:hover:not(:disabled) { background: var(--ui-bg-hover); color: var(--ui-fg); }
-.ui-icon-btn:disabled { opacity: .4; cursor: not-allowed; }
-.ui-icon-btn.is-active { background: var(--ui-brand-soft); color: var(--ui-brand-fg); }
+.ui-icon-btn--sm { width: 28px; height: 28px; }
+.ui-icon-btn--md { width: 32px; height: 32px; }
 
-.ui-icon-btn--sm { width: 26px; height: 26px; font-size: 14px; }
-.ui-icon-btn--md { width: 30px; height: 30px; font-size: 15px; }
-.ui-icon-btn--lg { width: 36px; height: 36px; font-size: 16px; }
-
-.ui-icon-btn--soft  { background: var(--ui-bg-subtle); }
-.ui-icon-btn--solid { background: var(--ui-brand); color: #fff; }
-.ui-icon-btn--solid:hover:not(:disabled) { background: var(--ui-brand-hover); color: #fff; }
+.ui-icon-btn:focus-visible { box-shadow: var(--shadow-ring); }
+.ui-icon-btn:hover:not(.is-disabled) {
+  background: var(--ui-bg-2);
+  color: var(--ui-fg);
+}
+.ui-icon-btn.is-active {
+  background: var(--ui-brand-soft);
+  color: var(--ui-brand-fg);
+}
+.ui-icon-btn--subtle  { background: var(--ui-bg-2); }
+.ui-icon-btn--outline { border-color: var(--ui-border); }
+.ui-icon-btn--outline:hover { border-color: var(--ui-border-strong); }
+.ui-icon-btn.is-disabled { opacity: 0.5; cursor: not-allowed; }
 
 .ui-icon-btn__badge {
   position: absolute;
-  top: 0; right: 0;
-  transform: translate(40%, -40%);
+  top: -2px; right: -2px;
+  min-width: 16px; height: 16px;
+  padding: 0 4px;
   background: var(--ui-danger);
   color: #fff;
-  font-size: 9.5px;
-  font-weight: var(--ui-fw-semibold);
-  min-width: 14px; height: 14px;
-  padding: 0 4px;
-  border-radius: var(--ui-radius-pill);
+  border-radius: var(--radius-pill);
+  font-size: 10px;
+  font-weight: var(--fw-bold);
   display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--ui-bg-1);
   line-height: 1;
-  border: 1.5px solid var(--ui-bg-surface);
 }
 </style>

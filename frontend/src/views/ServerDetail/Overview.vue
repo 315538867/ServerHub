@@ -1,130 +1,81 @@
 <template>
-  <div class="page-container">
-    <!-- 顶部4个指标卡片 -->
+  <div class="ov-page">
     <div class="metrics-row">
-      <div class="metric-card section-block">
-        <div class="metric-label">CPU 使用率</div>
-        <div class="metric-value" :style="{ color: progressColor(latestMetric?.cpu ?? 0) }">
-          {{ (latestMetric?.cpu ?? 0).toFixed(1) }}<span class="metric-unit">%</span>
-        </div>
-        <t-progress
-          :percentage="+(latestMetric?.cpu ?? 0).toFixed(1)"
-          :color="progressColor(latestMetric?.cpu ?? 0)"
-          :stroke-width="6"
-          :show-label="false"
-        />
-      </div>
-      <div class="metric-card section-block">
-        <div class="metric-label">内存使用率</div>
-        <div class="metric-value" :style="{ color: progressColor(latestMetric?.mem ?? 0) }">
-          {{ (latestMetric?.mem ?? 0).toFixed(1) }}<span class="metric-unit">%</span>
-        </div>
-        <t-progress
-          :percentage="+(latestMetric?.mem ?? 0).toFixed(1)"
-          :color="progressColor(latestMetric?.mem ?? 0)"
-          :stroke-width="6"
-          :show-label="false"
-        />
-      </div>
-      <div class="metric-card section-block">
-        <div class="metric-label">磁盘使用率</div>
-        <div class="metric-value" :style="{ color: progressColor(latestMetric?.disk ?? 0) }">
-          {{ (latestMetric?.disk ?? 0).toFixed(1) }}<span class="metric-unit">%</span>
-        </div>
-        <t-progress
-          :percentage="+(latestMetric?.disk ?? 0).toFixed(1)"
-          :color="progressColor(latestMetric?.disk ?? 0)"
-          :stroke-width="6"
-          :show-label="false"
-        />
-      </div>
-      <div class="metric-card section-block">
-        <div class="metric-label">系统负载</div>
-        <div class="metric-value" style="color: var(--ui-fg)">
-          {{ latestMetric?.load1?.toFixed(2) ?? '—' }}
-        </div>
-        <div class="metric-sub">运行时间：{{ formatUptime(latestMetric?.uptime) }}</div>
-      </div>
+      <UiStatCard title="CPU 使用率" :value="(latestMetric?.cpu ?? 0).toFixed(1)" suffix="%">
+        <NProgress type="line" :percentage="+(latestMetric?.cpu ?? 0).toFixed(1)" :show-indicator="false" :height="4" :color="progressColor(latestMetric?.cpu ?? 0)" class="ov-bar" />
+      </UiStatCard>
+      <UiStatCard title="内存使用率" :value="(latestMetric?.mem ?? 0).toFixed(1)" suffix="%">
+        <NProgress type="line" :percentage="+(latestMetric?.mem ?? 0).toFixed(1)" :show-indicator="false" :height="4" :color="progressColor(latestMetric?.mem ?? 0)" class="ov-bar" />
+      </UiStatCard>
+      <UiStatCard title="磁盘使用率" :value="(latestMetric?.disk ?? 0).toFixed(1)" suffix="%">
+        <NProgress type="line" :percentage="+(latestMetric?.disk ?? 0).toFixed(1)" :show-indicator="false" :height="4" :color="progressColor(latestMetric?.disk ?? 0)" class="ov-bar" />
+      </UiStatCard>
+      <UiStatCard title="系统负载" :value="latestMetric?.load1?.toFixed(2) ?? '—'" :hint="`运行时间：${formatUptime(latestMetric?.uptime)}`" />
     </div>
 
-    <!-- 服务器基本信息 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span class="info-title">
-          <server-icon style="color: var(--ui-brand); font-size: 16px" />
-          服务器信息
-        </span>
-        <t-space size="small">
-          <t-button size="small" variant="outline" :loading="testing" @click="doTest">连接测试</t-button>
-          <t-button size="small" variant="outline" :loading="collecting" @click="doCollect">
-            <template #icon><refresh-icon /></template>
-            采集指标
-          </t-button>
-        </t-space>
-      </div>
-      <div class="info-grid">
-        <div class="info-item">
-          <span class="info-label">主机地址</span>
-          <span class="info-value mono">{{ server?.host }}:{{ server?.port }}</span>
+    <UiSection>
+      <template #title>
+        <span class="ov-title"><Server :size="16" /> 服务器信息</span>
+      </template>
+      <template #extra>
+        <UiButton variant="secondary" size="sm" :loading="testing" @click="doTest">连接测试</UiButton>
+        <UiButton variant="secondary" size="sm" :loading="collecting" @click="doCollect">
+          <template #icon><RefreshCw :size="14" /></template>
+          采集指标
+        </UiButton>
+      </template>
+      <UiCard padding="md">
+        <div class="ov-grid">
+          <div class="ov-cell"><span class="lbl">主机地址</span><code class="mono">{{ server?.host }}:{{ server?.port }}</code></div>
+          <div class="ov-cell"><span class="lbl">登录用户</span><span class="val">{{ server?.username }}</span></div>
+          <div class="ov-cell"><span class="lbl">认证方式</span><span class="val">{{ server?.auth_type === 'key' ? 'SSH 密钥' : '密码' }}</span></div>
+          <div class="ov-cell"><span class="lbl">连接状态</span><UiBadge :tone="statusTone(server?.status)">{{ statusText(server?.status) }}</UiBadge></div>
+          <div class="ov-cell"><span class="lbl">最后检测</span><span class="val time">{{ server?.last_check_at ? dayjs(server.last_check_at).format('MM-DD HH:mm:ss') : '—' }}</span></div>
+          <div class="ov-cell"><span class="lbl">备注</span><span class="val">{{ server?.remark || '—' }}</span></div>
         </div>
-        <div class="info-item">
-          <span class="info-label">登录用户</span>
-          <span class="info-value">{{ server?.username }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">认证方式</span>
-          <span class="info-value">{{ server?.auth_type === 'key' ? 'SSH 密钥' : '密码' }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">连接状态</span>
-          <span class="info-value">
-            <t-tag :theme="statusTheme(server?.status)" variant="light" size="small">
-              {{ statusText(server?.status) }}
-            </t-tag>
-          </span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">最后检测</span>
-          <span class="info-value time">{{ server?.last_check_at ? dayjs(server.last_check_at).format('MM-DD HH:mm:ss') : '—' }}</span>
-        </div>
-        <div class="info-item">
-          <span class="info-label">备注</span>
-          <span class="info-value">{{ server?.remark || '—' }}</span>
-        </div>
-      </div>
-    </div>
+      </UiCard>
+    </UiSection>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
-import { RefreshIcon, ServerIcon } from 'tdesign-icons-vue-next'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { NProgress, useMessage } from 'naive-ui'
+import { RefreshCw, Server } from 'lucide-vue-next'
 import dayjs from 'dayjs'
 import { useServerStore } from '@/stores/server'
 import { getServer, testServer, collectMetrics, getMetrics } from '@/api/servers'
-import type { Server, Metric } from '@/types/api'
+import type { Server as ServerT, Metric } from '@/types/api'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import UiStatCard from '@/components/ui/UiStatCard.vue'
 
 const route = useRoute()
 const serverStore = useServerStore()
+const message = useMessage()
 const serverId = computed(() => Number(route.params.serverId))
-const server = ref<Server | null>(null)
+const server = ref<ServerT | null>(null)
 const metrics = ref<Metric[]>([])
 const latestMetric = computed(() => metrics.value[0] ?? null)
 const testing = ref(false)
 const collecting = ref(false)
 
-function statusTheme(s?: string) {
-  return ({ online: 'success', offline: 'danger', unknown: 'default' } as Record<string, string>)[s ?? ''] ?? 'default'
+function statusTone(s?: string): 'success' | 'danger' | 'neutral' {
+  if (s === 'online') return 'success'
+  if (s === 'offline') return 'danger'
+  return 'neutral'
 }
 function statusText(s?: string) {
   return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string, string>)[s ?? ''] ?? '—'
 }
 function progressColor(v: number) {
-  if (v >= 90) return '#e34d59'
-  if (v >= 70) return '#ed7b2f'
-  return '#00a870'
+  const css = getComputedStyle(document.documentElement)
+  if (v >= 90) return css.getPropertyValue('--ui-danger').trim() || '#EF4444'
+  if (v >= 70) return css.getPropertyValue('--ui-warning').trim() || '#F59E0B'
+  return css.getPropertyValue('--ui-brand').trim() || '#3ECF8E'
 }
 function formatUptime(seconds?: number) {
   if (!seconds) return '—'
@@ -138,9 +89,9 @@ async function doTest() {
   testing.value = true
   try {
     const res = await testServer(serverId.value)
-    if (res.status === 'ok') { MessagePlugin.success('连接成功'); await serverStore.fetch() }
-    else MessagePlugin.error(`连接失败：${res.error ?? '未知错误'}`)
-  } catch { MessagePlugin.error('测试失败') }
+    if (res.status === 'ok') { message.success('连接成功'); await serverStore.fetch() }
+    else message.error(`连接失败：${res.error ?? '未知错误'}`)
+  } catch { message.error('测试失败') }
   finally { testing.value = false }
 }
 
@@ -149,8 +100,8 @@ async function doCollect() {
   try {
     await collectMetrics(serverId.value)
     metrics.value = await getMetrics(serverId.value, 1)
-    MessagePlugin.success('指标已更新')
-  } catch { MessagePlugin.error('采集失败') }
+    message.success('指标已更新')
+  } catch { message.error('采集失败') }
   finally { collecting.value = false }
 }
 
@@ -161,89 +112,43 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.ov-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+
 .metrics-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: var(--ui-space-4);
-  margin-bottom: var(--ui-space-4);
-  align-items: stretch;
+  gap: var(--space-3);
 }
+@media (max-width: 1080px) { .metrics-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px)  { .metrics-row { grid-template-columns: 1fr; } }
 
-.metric-card {
-  padding: var(--ui-space-4) var(--ui-space-6);
-  display: flex;
-  flex-direction: column;
-  min-height: 112px;
-  margin-bottom: 0 !important;
-}
+.ov-sub { font-size: var(--fs-xs); color: var(--ui-fg-3); margin-top: var(--space-2); }
+.ov-bar { margin-top: var(--space-2); }
 
-.metric-card :deep(.t-progress) {
-  margin-top: auto;
-}
+.ov-title { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ui-fg); }
 
-.metric-label {
-  font-size: 13px;
-  color: var(--ui-fg-3);
-  margin-bottom: var(--ui-space-2);
-}
-
-.metric-value {
-  font-size: 28px;
-  font-weight: 600;
-  line-height: 1;
-  margin-bottom: var(--ui-space-2);
-}
-
-.metric-unit {
-  font-size: 14px;
-  font-weight: 400;
-  margin-left: var(--ui-space-1);
-}
-
-.metric-sub {
-  font-size: 12px;
-  color: var(--ui-fg-3);
-  margin-top: auto;
-}
-
-.info-title {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-}
-
-.info-grid {
+.ov-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--ui-space-4) var(--ui-space-6);
-  padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-6);
 }
+@media (max-width: 720px) { .ov-grid { grid-template-columns: 1fr; } }
 
-.info-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-space-1);
+.ov-cell { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.ov-cell .lbl { flex-shrink: 0; width: 80px; font-size: var(--fs-xs); color: var(--ui-fg-3); }
+.ov-cell .val {
+  font-size: var(--fs-sm); color: var(--ui-fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
 }
+.ov-cell .val.time { font-size: var(--fs-xs); color: var(--ui-fg-3); }
 
-.info-label {
-  font-size: 12px;
-  color: var(--ui-fg-3);
-}
-
-.info-value {
-  font-size: 13px;
-  color: var(--ui-fg);
-  font-weight: 500;
-}
-
-.info-value.mono {
-  font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;
-  font-size: 12px;
-}
-
-.info-value.time {
-  font-size: 12px;
-  color: var(--ui-fg-3);
-  font-weight: 400;
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  background: var(--ui-bg-2);
+  border: 1px solid var(--ui-border);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--ui-fg-2);
 }
 </style>

@@ -42,7 +42,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           'vendor-vue': ['vue', 'vue-router', 'pinia'],
-          'vendor-ui': ['tdesign-vue-next', 'tdesign-icons-vue-next'],
+          'vendor-ui': ['naive-ui', 'lucide-vue-next'],
           'vendor-charts': ['echarts'],
         },
       },

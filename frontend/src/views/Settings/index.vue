@@ -1,125 +1,130 @@
 <template>
-  <div class="page-container settings-page">
-    <!-- 系统设置 -->
-    <div class="section-block">
-      <div class="section-title"><span>系统设置</span></div>
-      <div class="settings-body">
-        <t-form :data="settingsForm" label-width="200px" colon>
-          <div class="settings-group-label">基础配置</div>
-          <t-form-item label="面板名称">
-            <t-input v-model="settingsForm['panel_name']" placeholder="ServerHub" class="settings-input" />
-          </t-form-item>
-          <t-form-item label="时区">
-            <t-input v-model="settingsForm['timezone']" placeholder="Asia/Shanghai" class="settings-input" />
-          </t-form-item>
-          <t-form-item label="指标采集间隔 (分钟)">
-            <t-input-number v-model="settingsForm['metrics_interval']" :min="1" :max="60" class="settings-num" />
-          </t-form-item>
+  <div class="set-page">
+    <UiSection title="系统设置">
+      <UiCard padding="lg">
+        <NForm :model="settingsForm" label-placement="left" label-width="200">
+          <div class="set-group">基础配置</div>
+          <NFormItem label="面板名称">
+            <NInput v-model:value="settingsForm['panel_name']" placeholder="ServerHub" class="set-inp" />
+          </NFormItem>
+          <NFormItem label="时区">
+            <NInput v-model:value="settingsForm['timezone']" placeholder="Asia/Shanghai" class="set-inp" />
+          </NFormItem>
+          <NFormItem label="指标采集间隔 (分钟)">
+            <NInputNumber v-model:value="settingsForm['metrics_interval']" :min="1" :max="60" class="set-num" />
+          </NFormItem>
 
-          <div class="settings-group-label">告警阈值</div>
-          <t-form-item label="告警冷却时间 (分钟)">
-            <t-input-number v-model="settingsForm['alert_cooldown_min']" :min="5" :max="1440" class="settings-num" />
-          </t-form-item>
-          <t-form-item label="CPU 告警阈值 (%)">
-            <t-input-number v-model="settingsForm['alert_cpu_threshold']" :min="1" :max="100" class="settings-num" />
-          </t-form-item>
-          <t-form-item label="内存告警阈值 (%)">
-            <t-input-number v-model="settingsForm['alert_mem_threshold']" :min="1" :max="100" class="settings-num" />
-          </t-form-item>
-          <t-form-item label="磁盘告警阈值 (%)">
-            <t-input-number v-model="settingsForm['alert_disk_threshold']" :min="1" :max="100" class="settings-num" />
-          </t-form-item>
-          <t-form-item label="SSL 到期预警 (天)">
-            <t-input-number v-model="settingsForm['alert_ssl_days']" :min="1" :max="90" class="settings-num" />
-          </t-form-item>
+          <div class="set-group">告警阈值</div>
+          <NFormItem label="告警冷却时间 (分钟)">
+            <NInputNumber v-model:value="settingsForm['alert_cooldown_min']" :min="5" :max="1440" class="set-num" />
+          </NFormItem>
+          <NFormItem label="CPU 告警阈值 (%)">
+            <NInputNumber v-model:value="settingsForm['alert_cpu_threshold']" :min="1" :max="100" class="set-num" />
+          </NFormItem>
+          <NFormItem label="内存告警阈值 (%)">
+            <NInputNumber v-model:value="settingsForm['alert_mem_threshold']" :min="1" :max="100" class="set-num" />
+          </NFormItem>
+          <NFormItem label="磁盘告警阈值 (%)">
+            <NInputNumber v-model:value="settingsForm['alert_disk_threshold']" :min="1" :max="100" class="set-num" />
+          </NFormItem>
+          <NFormItem label="SSL 到期预警 (天)">
+            <NInputNumber v-model:value="settingsForm['alert_ssl_days']" :min="1" :max="90" class="set-num" />
+          </NFormItem>
 
-          <div class="settings-group-label">运维配置</div>
-          <t-form-item label="证书自动续签 (天前)">
-            <t-input-number v-model="settingsForm['cert_renew_days']" :min="1" :max="60" class="settings-num" />
-          </t-form-item>
-          <t-form-item label="部署日志保留 (天)">
-            <t-input-number v-model="settingsForm['deploy_log_keep_days']" :min="1" :max="365" class="settings-num" />
-          </t-form-item>
+          <div class="set-group">运维配置</div>
+          <NFormItem label="证书自动续签 (天前)">
+            <NInputNumber v-model:value="settingsForm['cert_renew_days']" :min="1" :max="60" class="set-num" />
+          </NFormItem>
+          <NFormItem label="部署日志保留 (天)">
+            <NInputNumber v-model:value="settingsForm['deploy_log_keep_days']" :min="1" :max="365" class="set-num" />
+          </NFormItem>
 
-          <t-form-item>
-            <t-button theme="primary" :loading="savingSettings" @click="saveSettings">保存设置</t-button>
-          </t-form-item>
-        </t-form>
-      </div>
-    </div>
+          <NFormItem label=" " :show-label="false">
+            <UiButton variant="primary" size="md" :loading="savingSettings" @click="saveSettings">保存设置</UiButton>
+          </NFormItem>
+        </NForm>
+      </UiCard>
+    </UiSection>
 
-    <!-- 两步验证 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span>两步验证（TOTP）</span>
-        <t-tag v-if="meUser?.mfa_enabled" theme="success" variant="light" size="small">已启用</t-tag>
-        <t-tag v-else theme="warning" variant="light" size="small">未启用</t-tag>
-      </div>
-      <div class="settings-body">
+    <UiSection>
+      <template #title>
+        <span class="set-title">两步验证（TOTP）</span>
+        <UiBadge :tone="meUser?.mfa_enabled ? 'success' : 'warning'">
+          {{ meUser?.mfa_enabled ? '已启用' : '未启用' }}
+        </UiBadge>
+      </template>
+      <UiCard padding="lg">
         <div v-if="!totpSetupMode">
-          <p class="settings-desc">两步验证可为您的账号增加额外安全保护。启用后每次登录除密码外还需提供验证码。</p>
-          <t-button v-if="!meUser?.mfa_enabled" theme="primary" @click="startTotpSetup">启用两步验证</t-button>
-          <t-button v-else theme="danger" variant="outline" @click="disableTotp">禁用两步验证</t-button>
+          <p class="set-desc">两步验证可为您的账号增加额外安全保护。启用后每次登录除密码外还需提供验证码。</p>
+          <UiButton v-if="!meUser?.mfa_enabled" variant="primary" size="md" @click="startTotpSetup">启用两步验证</UiButton>
+          <UiButton v-else variant="danger" size="md" @click="disableTotp">禁用两步验证</UiButton>
         </div>
         <div v-else class="totp-setup">
-          <p class="settings-desc">1. 使用 Google Authenticator 或 Authy 扫描下方信息</p>
-          <t-descriptions :column="1" bordered class="totp-desc" size="small">
-            <t-descriptions-item label="密钥（手动输入）">
+          <p class="set-desc">1. 使用 Google Authenticator 或 Authy 扫描下方信息</p>
+          <div class="totp-info">
+            <div class="totp-row">
+              <span class="totp-label">密钥（手动输入）</span>
               <span class="totp-secret">{{ totpSecret }}</span>
-            </t-descriptions-item>
-            <t-descriptions-item label="OTP URI">
+            </div>
+            <div class="totp-row">
+              <span class="totp-label">OTP URI</span>
               <span class="totp-uri">{{ totpUri }}</span>
-            </t-descriptions-item>
-          </t-descriptions>
-          <p class="settings-desc">2. 扫描后输入 App 中显示的 6 位验证码以完成绑定</p>
-          <div class="totp-confirm-row">
-            <t-input v-model="confirmCode" placeholder="6 位验证码" :maxlength="6" class="totp-input" />
-            <t-button theme="primary" :loading="confirmingTotp" @click="confirmTotp">确认绑定</t-button>
-            <t-button variant="outline" @click="totpSetupMode = false">取消</t-button>
+            </div>
+          </div>
+          <p class="set-desc">2. 扫描后输入 App 中显示的 6 位验证码以完成绑定</p>
+          <div class="totp-actions">
+            <NInput v-model:value="confirmCode" placeholder="6 位验证码" :maxlength="6" class="totp-input" />
+            <UiButton variant="primary" size="md" :loading="confirmingTotp" @click="confirmTotp">确认绑定</UiButton>
+            <UiButton variant="secondary" size="md" @click="totpSetupMode = false">取消</UiButton>
           </div>
         </div>
-      </div>
-    </div>
+      </UiCard>
+    </UiSection>
 
-    <!-- 操作日志 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span>操作日志</span>
-        <div class="audit-filters">
-          <t-input v-model="auditFilter.username" placeholder="用户名" class="filter-input-sm" clearable @change="loadAudit" />
-          <t-input v-model="auditFilter.path" placeholder="路径" class="filter-input-md" clearable @change="loadAudit" />
-          <t-select v-model="auditFilter.status" placeholder="状态" class="filter-input-sm" clearable @change="loadAudit">
-            <t-option label="成功 2xx" value="2" />
-            <t-option label="客户端错误 4xx" value="4" />
-            <t-option label="服务错误 5xx" value="5" />
-          </t-select>
-          <t-button variant="outline" size="small" @click="loadAudit">刷新</t-button>
+    <UiSection title="操作日志">
+      <template #extra>
+        <NInput v-model:value="auditFilter.username" placeholder="用户名" size="small" clearable class="filter-sm" @blur="loadAudit" />
+        <NInput v-model:value="auditFilter.path" placeholder="路径" size="small" clearable class="filter-md" @blur="loadAudit" />
+        <NSelect v-model:value="auditFilter.status" placeholder="状态" size="small" clearable :options="statusOptions" class="filter-sm" @update:value="loadAudit" />
+        <UiButton variant="secondary" size="sm" @click="loadAudit">
+          <template #icon><RefreshCw :size="14" /></template>
+          刷新
+        </UiButton>
+      </template>
+      <UiCard padding="none">
+        <NDataTable
+          :columns="auditColumns"
+          :data="auditLogs"
+          :loading="auditLoading"
+          :row-key="(row: AuditLog) => row.id"
+          size="small"
+          :bordered="false"
+        />
+        <div class="pg-row">
+          <NPagination v-model:page="auditPage" :page-size="50" :item-count="auditTotal" show-quick-jumper @update:page="loadAudit" />
         </div>
-      </div>
-      <div class="settings-body settings-body--table">
-        <t-table :data="auditLogs" :columns="auditColumns" :loading="auditLoading" row-key="id" size="small" stripe>
-          <template #created_at="{ row }">{{ fmtTime(row.created_at) }}</template>
-          <template #method="{ row }">
-            <t-tag :theme="methodTheme(row.method)" variant="light" size="small">{{ row.method }}</t-tag>
-          </template>
-          <template #status_code="{ row }">
-            <t-tag :theme="statusCodeTheme(row.status)" variant="light" size="small">{{ row.status }}</t-tag>
-          </template>
-        </t-table>
-        <div class="pagination-row">
-          <t-pagination v-model:current="auditPage" :page-size="50" :total="auditTotal" show-total @change="loadAudit" />
-        </div>
-      </div>
-    </div>
+      </UiCard>
+    </UiSection>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { ref, reactive, onMounted, h } from 'vue'
+import {
+  NForm, NFormItem, NInput, NInputNumber, NSelect,
+  NDataTable, NPagination, useMessage,
+} from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { RefreshCw } from 'lucide-vue-next'
 import { getSettings, putSettings, getAuditLogs, type AuditLog } from '@/api/settings'
 import { totpSetup, totpConfirm, totpDisable, getMe } from '@/api/auth'
 import type { User } from '@/types/api'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+
+const message = useMessage()
 
 const settingsForm = reactive<Record<string, any>>({
   panel_name: '',
@@ -150,7 +155,7 @@ async function saveSettings() {
     const payload: Record<string, string> = {}
     Object.entries(settingsForm).forEach(([k, v]) => { payload[k] = String(v) })
     await putSettings(payload)
-    MessagePlugin.success('设置已保存')
+    message.success('设置已保存')
   } finally {
     savingSettings.value = false
   }
@@ -177,11 +182,11 @@ async function confirmTotp() {
   confirmingTotp.value = true
   try {
     await totpConfirm(totpSecret.value, confirmCode.value)
-    MessagePlugin.success('两步验证已启用')
+    message.success('两步验证已启用')
     totpSetupMode.value = false
     await loadMe()
   } catch {
-    MessagePlugin.error('验证码错误，请重试')
+    message.error('验证码错误，请重试')
   } finally {
     confirmingTotp.value = false
   }
@@ -189,7 +194,7 @@ async function confirmTotp() {
 
 async function disableTotp() {
   await totpDisable()
-  MessagePlugin.success('两步验证已禁用')
+  message.success('两步验证已禁用')
   await loadMe()
 }
 
@@ -199,15 +204,36 @@ const auditPage = ref(1)
 const auditLoading = ref(false)
 const auditFilter = reactive({ username: '', path: '', status: '' })
 
-const auditColumns = [
-  { colKey: 'created_at', title: '时间', width: 160 },
-  { colKey: 'username', title: '用户', width: 100 },
-  { colKey: 'method', title: '方法', width: 80 },
-  { colKey: 'path', title: '路径', minWidth: 200, ellipsis: true },
-  { colKey: 'status_code', title: '状态', width: 80 },
-  { colKey: 'ip', title: 'IP', width: 130 },
-  { colKey: 'latency_ms', title: '延迟(ms)', width: 90 },
+const statusOptions = [
+  { label: '成功 2xx', value: '2' },
+  { label: '客户端错误 4xx', value: '4' },
+  { label: '服务错误 5xx', value: '5' },
 ]
+
+function methodTone(m: string): 'success' | 'warning' | 'danger' | 'neutral' {
+  return ({ GET: 'neutral', POST: 'success', PUT: 'warning', DELETE: 'danger' } as Record<string, 'success' | 'warning' | 'danger' | 'neutral'>)[m] ?? 'neutral'
+}
+function statusTone(s: number): 'success' | 'warning' | 'danger' {
+  if (s >= 500) return 'danger'
+  if (s >= 400) return 'warning'
+  return 'success'
+}
+function fmtTime(t: string) {
+  return new Date(t).toLocaleString('zh-CN', { hour12: false })
+}
+
+const auditColumns = computedColumns()
+function computedColumns(): DataTableColumns<AuditLog> {
+  return [
+    { title: '时间', key: 'created_at', width: 170, render: (row) => fmtTime(row.created_at) },
+    { title: '用户', key: 'username', width: 100 },
+    { title: '方法', key: 'method', width: 80, render: (row) => h(UiBadge, { tone: methodTone(row.method) }, () => row.method) },
+    { title: '路径', key: 'path', minWidth: 200, ellipsis: { tooltip: true } },
+    { title: '状态', key: 'status', width: 80, render: (row) => h(UiBadge, { tone: statusTone(row.status) }, () => String(row.status)) },
+    { title: 'IP', key: 'ip', width: 130 },
+    { title: '延迟(ms)', key: 'latency_ms', width: 90 },
+  ]
+}
 
 async function loadAudit() {
   auditLoading.value = true
@@ -222,93 +248,81 @@ async function loadAudit() {
   } finally { auditLoading.value = false }
 }
 
-function fmtTime(t: string) {
-  return new Date(t).toLocaleString('zh-CN', { hour12: false })
-}
-function methodTheme(m: string) {
-  return ({ GET: 'default', POST: 'success', PUT: 'warning', DELETE: 'danger' } as Record<string, string>)[m] ?? 'default'
-}
-function statusCodeTheme(s: number) {
-  if (s >= 500) return 'danger'
-  if (s >= 400) return 'warning'
-  return 'success'
-}
-
 onMounted(async () => {
   await Promise.all([loadSettings(), loadMe(), loadAudit()])
 })
 </script>
 
 <style scoped>
-.settings-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-space-4);
-}
+.set-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.set-title { display: inline-flex; align-items: center; gap: var(--space-2); }
 
-.settings-body {
-  padding: var(--ui-space-6);
-}
-.settings-body--table {
-  padding: 0 var(--ui-space-6) var(--ui-space-4);
-}
-
-.settings-group-label {
-  font-size: 12px;
-  font-weight: 600;
+.set-group {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
   color: var(--ui-fg-3);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: var(--ui-space-4) 0 var(--ui-space-2);
+  padding: var(--space-3) 0 var(--space-2);
   border-bottom: 1px solid var(--ui-border);
-  margin-bottom: var(--ui-space-4);
+  margin-bottom: var(--space-3);
 }
-.settings-group-label:first-child { padding-top: 0; }
+.set-group:first-child { padding-top: 0; }
 
-.settings-desc {
-  font-size: 13px;
+.set-desc {
+  font-size: var(--fs-sm);
   color: var(--ui-fg-3);
-  margin: 0 0 var(--ui-space-4);
+  margin: 0 0 var(--space-4);
   line-height: 1.6;
 }
 
-.settings-input { width: 240px; }
-.settings-num   { width: 160px; }
+.set-inp { width: 240px; }
+.set-num { width: 160px; }
 
-/* TOTP */
-.totp-setup { max-width: 560px; }
-.totp-desc  { margin: var(--ui-space-4) 0; }
+.totp-setup { max-width: 600px; }
+.totp-info {
+  margin: var(--space-3) 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.totp-row {
+  display: flex; align-items: flex-start;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--ui-border);
+  gap: var(--space-3);
+}
+.totp-row:last-child { border-bottom: none; }
+.totp-label {
+  flex-shrink: 0;
+  width: 140px;
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+}
 .totp-secret {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   word-break: break-all;
-  color: var(--ui-brand);
+  color: var(--ui-brand-fg);
 }
 .totp-uri {
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
   word-break: break-all;
   color: var(--ui-fg-3);
 }
-.totp-confirm-row {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  margin-top: var(--ui-space-2);
+.totp-actions {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 .totp-input { width: 200px; }
 
-/* 审计过滤 */
-.audit-filters {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  flex-wrap: wrap;
-}
-.filter-input-sm { width: 120px; }
-.filter-input-md { width: 160px; }
+.filter-sm { width: 120px; }
+.filter-md { width: 160px; }
 
-.pagination-row {
-  display: flex;
-  justify-content: flex-end;
-  padding: var(--ui-space-4) 0 var(--ui-space-1);
+.pg-row {
+  display: flex; justify-content: flex-end;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--ui-border);
 }
 </style>

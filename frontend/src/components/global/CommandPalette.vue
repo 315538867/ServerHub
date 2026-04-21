@@ -3,7 +3,7 @@
     <div v-if="open" class="cp-overlay" @click.self="close" @keydown.esc="close">
       <div class="cp-box" role="dialog" aria-label="命令面板">
         <div class="cp-input-wrap">
-          <span class="cp-input-icon">⌘</span>
+          <Search :size="16" class="cp-input-icon" />
           <input
             ref="inputRef"
             v-model="query"
@@ -15,7 +15,7 @@
             @keydown.enter.prevent="executeCurrent"
             @keydown.esc="close"
           />
-          <kbd class="cp-input-esc">esc</kbd>
+          <kbd class="cp-kbd">esc</kbd>
         </div>
 
         <div ref="listRef" class="cp-list">
@@ -23,10 +23,10 @@
             <div v-for="group in grouped" :key="group.label" class="cp-group">
               <div class="cp-group-label">{{ group.label }}</div>
               <div
-                v-for="(item, gi) in group.items"
+                v-for="item in group.items"
                 :key="item.id"
                 :class="['cp-item', { 'cp-item--active': item._idx === cursor }]"
-                @mouseenter="cursor = item._idx"
+                @mouseenter="cursor = item._idx!"
                 @click="execute(item)"
                 :data-idx="item._idx"
               >
@@ -38,13 +38,13 @@
                 <span v-if="item.shortcut" class="cp-item-shortcut">
                   <kbd v-for="k in item.shortcut.split('+')" :key="k">{{ k }}</kbd>
                 </span>
-                <span v-else class="cp-item-hint">↵</span>
+                <ChevronRight v-else :size="14" class="cp-item-hint" />
               </div>
             </div>
           </template>
 
           <div v-else class="cp-empty">
-            <div class="cp-empty-icon">🔍</div>
+            <SearchX :size="28" class="cp-empty-icon" />
             <div class="cp-empty-text">未找到匹配项</div>
           </div>
         </div>
@@ -64,6 +64,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import { Search, SearchX, ChevronRight } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useServerStore } from '@/stores/server'
 
@@ -90,16 +91,13 @@ interface CmdItem {
   _idx?: number
 }
 
-// ── 全局快捷键 ⌘D / ⌘L（⌘K 由 MainLayout 处理） ─────────────────────────────
 function onGlobalKey(e: KeyboardEvent) {
   const isMod = e.metaKey || e.ctrlKey
-  // ⌘D 部署当前应用
   if (isMod && e.key.toLowerCase() === 'd' && currentAppId.value) {
     e.preventDefault()
     router.push(`/apps/${currentAppId.value}/deploy`)
     return
   }
-  // ⌘L 日志
   if (isMod && e.key.toLowerCase() === 'l' && currentAppId.value) {
     e.preventDefault()
     router.push(`/apps/${currentAppId.value}/ops/logs`)
@@ -112,7 +110,6 @@ const currentAppId = computed(() => {
   return m ? m[1] : ''
 })
 
-function toggle() { open.value ? close() : openPalette() }
 function openPalette() {
   open.value = true
   query.value = ''
@@ -121,7 +118,6 @@ function openPalette() {
 }
 function close() { open.value = false }
 
-// ── 候选项构造 ──────────────────────────────────────────────────────────────
 const navItems = computed<CmdItem[]>(() => [
   { id: 'nav:dashboard',  group: '页面', icon: '🏠', title: '工作台',     action: () => router.push('/dashboard') },
   { id: 'nav:apps',       group: '页面', icon: '📋', title: '应用列表',   action: () => router.push('/apps') },
@@ -168,7 +164,6 @@ const serverItems = computed<CmdItem[]>(() =>
   }))
 )
 
-// 上下文操作（仅在某应用页内）
 const contextItems = computed<CmdItem[]>(() => {
   if (!currentAppId.value) return []
   const id = currentAppId.value
@@ -189,7 +184,6 @@ const allItems = computed(() => [
   ...serverItems.value,
 ])
 
-// 模糊匹配：拆词 + 全部命中
 function fuzzy(item: CmdItem, kw: string): boolean {
   if (!kw) return true
   const hay = `${item.title} ${item.subtitle || ''} ${item.keywords || ''}`.toLowerCase()
@@ -258,7 +252,7 @@ defineExpose({ open: openPalette, close })
   position: fixed;
   inset: 0;
   z-index: 9999;
-  background: var(--ui-bg-overlay);
+  background: var(--ui-overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
@@ -268,92 +262,74 @@ defineExpose({ open: openPalette, close })
 }
 .cp-box {
   width: min(680px, 92vw);
-  background: var(--ui-bg-elevated);
+  background: var(--ui-bg-1);
   border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-xl);
-  box-shadow: var(--ui-shadow-xl), 0 0 0 1px var(--ui-border-subtle);
+  border-radius: var(--radius-md);
+  box-shadow: 0 24px 48px -12px rgba(0,0,0,0.35);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   max-height: 70vh;
   position: relative;
 }
-.cp-box::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  background: radial-gradient(120% 100% at 0% 0%, var(--ui-brand-soft) 0%, transparent 60%);
-  opacity: .55;
-}
 
 .cp-input-wrap {
-  position: relative;
   display: flex;
   align-items: center;
-  gap: var(--ui-space-3);
-  padding: var(--ui-space-3) var(--ui-space-5);
-  border-bottom: 1px solid var(--ui-border-subtle);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--ui-border);
 }
-.cp-input-icon {
-  font-size: 16px;
-  color: var(--ui-brand);
-  font-weight: 700;
-  filter: drop-shadow(0 0 6px var(--ui-brand-soft));
-}
+.cp-input-icon { color: var(--ui-brand); flex-shrink: 0; }
 .cp-input {
   flex: 1;
   border: 0;
   outline: 0;
   background: transparent;
-  font-size: var(--ui-fs-md);
+  font-size: var(--fs-md);
   color: var(--ui-fg);
-  font-weight: var(--ui-fw-medium);
+  font-weight: var(--fw-medium);
 }
-.cp-input::placeholder { color: var(--ui-fg-placeholder); font-weight: 400; }
-.cp-input-esc {
-  font-size: var(--ui-fs-2xs);
+.cp-input::placeholder { color: var(--ui-fg-4); font-weight: 400; }
+.cp-kbd {
+  font-size: var(--fs-xs);
   padding: 2px 8px;
   border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-sm);
+  border-radius: var(--radius-sm);
   color: var(--ui-fg-3);
-  background: var(--ui-bg-subtle);
-  font-family: var(--ui-font-mono);
+  background: var(--ui-bg-2);
+  font-family: var(--font-mono);
 }
 
 .cp-list {
-  position: relative;
   flex: 1;
   overflow-y: auto;
-  padding: var(--ui-space-2) 0;
+  padding: var(--space-2) 0;
   min-height: 90px;
 }
-.cp-group { padding: var(--ui-space-1) 0 var(--ui-space-2); animation: ui-fade-in var(--ui-dur-base) var(--ui-ease-standard); }
+.cp-group { padding: var(--space-1) 0 var(--space-2); }
 .cp-group-label {
-  font-size: var(--ui-fs-2xs);
+  font-size: var(--fs-xs);
   letter-spacing: .1em;
   text-transform: uppercase;
   color: var(--ui-fg-4);
-  font-weight: var(--ui-fw-semibold);
-  padding: var(--ui-space-2) var(--ui-space-5) var(--ui-space-1);
+  font-weight: var(--fw-semibold);
+  padding: var(--space-2) var(--space-4) var(--space-1);
 }
 .cp-item {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-3);
-  padding: 8px var(--ui-space-5);
-  margin: 0 var(--ui-space-2);
-  border-radius: var(--ui-radius-md);
+  gap: var(--space-3);
+  padding: 8px var(--space-4);
+  margin: 0 var(--space-2);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: background var(--ui-dur-fast) var(--ui-ease-standard),
-              transform var(--ui-dur-fast) var(--ui-ease-standard);
+  transition: background var(--dur-fast) var(--ease);
   position: relative;
 }
-.cp-item:hover { background: var(--ui-bg-hover); }
+.cp-item:hover { background: var(--ui-bg-2); }
 .cp-item--active {
   background: var(--ui-brand-soft);
-  transform: translateX(2px);
 }
 .cp-item--active::before {
   content: '';
@@ -362,41 +338,34 @@ defineExpose({ open: openPalette, close })
   width: 3px;
   background: var(--ui-brand);
   border-radius: 0 3px 3px 0;
-  animation: ui-slide-right var(--ui-dur-base) var(--ui-ease-standard);
 }
 .cp-item-icon {
   font-size: 16px;
   width: 24px; height: 24px;
   display: grid; place-items: center;
-  text-align: center;
   flex-shrink: 0;
-  background: var(--ui-bg-subtle);
-  border-radius: var(--ui-radius-sm);
-  border: 1px solid var(--ui-border-subtle);
-}
-.cp-item--active .cp-item-icon {
-  background: var(--ui-bg-surface);
-  border-color: var(--ui-brand);
-  color: var(--ui-brand);
+  background: var(--ui-bg-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ui-border);
 }
 .cp-item-text { flex: 1; min-width: 0; }
 .cp-item-title {
-  font-size: var(--ui-fs-sm);
+  font-size: var(--fs-sm);
   color: var(--ui-fg);
-  font-weight: var(--ui-fw-medium);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .cp-item-title :deep(mark) {
-  background: linear-gradient(180deg, transparent 60%, var(--ui-brand-soft-2) 60%);
-  color: var(--ui-brand);
-  font-weight: var(--ui-fw-semibold);
+  background: var(--ui-brand-soft);
+  color: var(--ui-brand-fg);
+  font-weight: var(--fw-semibold);
   padding: 0 1px;
   border-radius: 2px;
 }
 .cp-item-sub {
-  font-size: var(--ui-fs-xs);
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
   white-space: nowrap;
   overflow: hidden;
@@ -405,98 +374,79 @@ defineExpose({ open: openPalette, close })
 }
 .cp-item-sub :deep(mark) {
   background: var(--ui-brand-soft);
-  color: var(--ui-brand);
+  color: var(--ui-brand-fg);
   padding: 0 2px;
   border-radius: 2px;
 }
 .cp-item-shortcut { display: inline-flex; gap: 4px; }
 .cp-item-shortcut kbd {
-  font-size: var(--ui-fs-2xs);
+  font-size: var(--fs-xs);
   padding: 2px 6px;
   border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-sm);
-  background: var(--ui-bg-surface);
+  border-radius: var(--radius-sm);
+  background: var(--ui-bg-2);
   color: var(--ui-fg-2);
-  font-family: var(--ui-font-mono);
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
   min-width: 18px;
   text-align: center;
-  box-shadow: 0 1px 0 var(--ui-border);
 }
 .cp-item-hint {
-  font-size: var(--ui-fs-sm);
   color: var(--ui-brand);
   opacity: 0;
-  transition: opacity var(--ui-dur-fast), transform var(--ui-dur-fast);
+  transition: opacity var(--dur-fast) var(--ease);
 }
-.cp-item--active .cp-item-hint {
-  opacity: 1;
-  animation: cp-arrow .8s var(--ui-ease-standard) infinite;
-}
-@keyframes cp-arrow {
-  0%, 100% { transform: translateX(0); }
-  50%      { transform: translateX(3px); }
-}
+.cp-item--active .cp-item-hint { opacity: 1; }
 
 .cp-empty {
   text-align: center;
-  padding: var(--ui-space-8) 0;
+  padding: var(--space-8) 0;
   color: var(--ui-fg-3);
-  animation: ui-fade-in var(--ui-dur-base) var(--ui-ease-standard);
 }
 .cp-empty-icon {
-  font-size: 32px;
-  margin-bottom: var(--ui-space-2);
+  margin-bottom: var(--space-2);
   opacity: 0.7;
-  animation: ui-pulse 2s var(--ui-ease-standard) infinite;
 }
-.cp-empty-text { font-size: var(--ui-fs-sm); font-weight: var(--ui-fw-medium); }
+.cp-empty-text { font-size: var(--fs-sm); font-weight: var(--fw-medium); }
 
 .cp-footer {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-4);
-  padding: 8px var(--ui-space-5);
-  border-top: 1px solid var(--ui-border-subtle);
-  background: var(--ui-bg-subtle);
-  font-size: var(--ui-fs-2xs);
+  gap: var(--space-4);
+  padding: 8px var(--space-4);
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-bg-2);
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
 }
 .cp-footer kbd {
-  font-size: var(--ui-fs-2xs);
+  font-size: var(--fs-xs);
   padding: 1px 5px;
   border: 1px solid var(--ui-border);
-  border-radius: 3px;
-  background: var(--ui-bg-surface);
+  border-radius: var(--radius-sm);
+  background: var(--ui-bg-1);
   margin-right: 4px;
-  font-family: var(--ui-font-mono);
+  font-family: var(--font-mono);
   color: var(--ui-fg-2);
 }
 .cp-footer-spacer { flex: 1; }
 
 .cp-fade-enter-active,
 .cp-fade-leave-active {
-  transition: opacity var(--ui-dur-base) var(--ui-ease-standard);
+  transition: opacity var(--dur-base) var(--ease);
 }
 .cp-fade-enter-from,
 .cp-fade-leave-to { opacity: 0; }
 .cp-fade-enter-active .cp-box {
-  animation: cp-pop var(--ui-dur-base) var(--ui-ease-spring);
+  animation: cp-pop var(--dur-base) var(--ease);
 }
 .cp-fade-leave-active .cp-box {
-  transition: transform var(--ui-dur-fast), opacity var(--ui-dur-fast);
+  transition: transform var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
 }
 .cp-fade-leave-to .cp-box { transform: translateY(-12px) scale(.98); opacity: 0; }
 
 @keyframes cp-pop {
   0%   { transform: translateY(-16px) scale(.96); opacity: 0; }
-  60%  { transform: translateY(2px)   scale(1.01); opacity: 1; }
-  100% { transform: translateY(0)     scale(1); }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .cp-fade-enter-active .cp-box,
-  .cp-item--active .cp-item-hint,
-  .cp-empty-icon { animation: none; }
+  100% { transform: translateY(0)     scale(1);   opacity: 1; }
 }
 </style>

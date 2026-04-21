@@ -1,13 +1,11 @@
 <template>
   <div v-if="app?.container_name" class="ops-bar" :class="barStateClass">
-    <!-- 左：状态 -->
     <div class="bar-section bar-section--status">
       <span class="bar-dot" />
       <span class="bar-name" :title="app.container_name">{{ app.container_name }}</span>
       <span class="bar-state">{{ stateText }}</span>
     </div>
 
-    <!-- 中：元信息 -->
     <div class="bar-section bar-section--meta">
       <template v-if="container">
         <div class="bar-kv">
@@ -28,44 +26,54 @@
       </div>
     </div>
 
-    <!-- 右：快捷操作 -->
     <div class="bar-section bar-section--actions">
-      <t-button
+      <UiButton
         v-if="container && container.state !== 'running'"
-        size="small" theme="success" variant="outline"
+        variant="success" size="sm"
         :loading="acting === 'start'"
         @click="doAction('start')"
-      >启动</t-button>
-      <t-button
+      >
+        <template #icon><Play :size="13" /></template>
+        启动
+      </UiButton>
+      <UiButton
         v-if="container?.state === 'running'"
-        size="small" theme="warning" variant="outline"
+        variant="warning" size="sm"
         :loading="acting === 'stop'"
         @click="doAction('stop')"
-      >停止</t-button>
-      <t-button
+      >
+        <template #icon><Square :size="13" /></template>
+        停止
+      </UiButton>
+      <UiButton
         v-if="container"
-        size="small" variant="outline"
+        variant="secondary" size="sm"
         :loading="acting === 'restart'"
         @click="doAction('restart')"
-      >重启</t-button>
-      <t-button size="small" variant="text" :loading="loading" @click="refresh" title="刷新">
-        <template #icon><refresh-icon /></template>
-      </t-button>
+      >
+        <template #icon><RotateCw :size="13" /></template>
+        重启
+      </UiButton>
+      <UiButton variant="ghost" size="sm" :loading="loading" @click="refresh()" title="刷新">
+        <template #icon><RefreshCw :size="13" /></template>
+      </UiButton>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import { RefreshIcon } from 'tdesign-icons-vue-next'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { useMessage } from 'naive-ui'
+import { Play, Square, RotateCw, RefreshCw } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { getContainers, containerAction } from '@/api/docker'
 import type { ContainerItem } from '@/api/docker'
+import UiButton from '@/components/ui/UiButton.vue'
 
 const props = defineProps<{ appId: number }>()
 const emit = defineEmits<{ (e: 'changed'): void }>()
 
+const message = useMessage()
 const appStore = useAppStore()
 const app = computed(() => appStore.getById(props.appId))
 const serverId = computed(() => app.value?.server_id ?? 0)
@@ -105,17 +113,17 @@ async function doAction(action: 'start' | 'stop' | 'restart') {
   acting.value = action
   try {
     await containerAction(serverId.value, container.value.id, action)
-    MessagePlugin.success(({ start: '已启动', stop: '已停止', restart: '已重启' } as Record<string, string>)[action])
+    message.success(({ start: '已启动', stop: '已停止', restart: '已重启' } as Record<string, string>)[action])
     await refresh()
     emit('changed')
-  } catch { MessagePlugin.error('操作失败') }
+  } catch { message.error('操作失败') }
   finally { acting.value = '' }
 }
 
 function startPoll() { stopPoll(); timer = setInterval(() => refresh(true), 10000) }
 function stopPoll() { if (timer) { clearInterval(timer); timer = null } }
 
-watch(() => props.appId, () => { refresh(); })
+watch(() => props.appId, () => { refresh() })
 onMounted(() => { refresh(); startPoll() })
 onBeforeUnmount(stopPoll)
 </script>
@@ -124,54 +132,54 @@ onBeforeUnmount(stopPoll)
 .ops-bar {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-6);
-  padding: var(--ui-space-2) var(--ui-space-4);
-  background: var(--ui-bg-surface);
+  gap: var(--space-5);
+  padding: var(--space-2) var(--space-4);
+  background: var(--ui-bg-2);
   border: 1px solid var(--ui-border);
-  border-radius: 8px;
-  margin: 0 0 var(--ui-space-2);
-  border-left: 3px solid #999;
+  border-radius: var(--radius-md);
+  margin: 0 0 var(--space-3);
+  border-left: 3px solid var(--ui-border);
   flex-wrap: wrap;
 }
-.ops-bar--ok      { border-left-color: #67c23a; }
-.ops-bar--warn    { border-left-color: #e6a23c; }
-.ops-bar--down    { border-left-color: #e34d59; }
-.ops-bar--unknown { border-left-color: #999; }
+.ops-bar--ok      { border-left-color: var(--ui-success); }
+.ops-bar--warn    { border-left-color: var(--ui-warning); }
+.ops-bar--down    { border-left-color: var(--ui-danger); }
+.ops-bar--unknown { border-left-color: var(--ui-border); }
 
-.bar-section { display: flex; align-items: center; gap: var(--ui-space-2); min-width: 0; }
+.bar-section { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .bar-section--status { flex-shrink: 0; min-width: 220px; }
 .bar-section--meta {
   flex: 1;
-  gap: var(--ui-space-4);
+  gap: var(--space-4);
   color: var(--ui-fg-3);
-  font-size: 12.5px;
+  font-size: var(--fs-xs);
   overflow: hidden;
   min-width: 0;
 }
-.bar-section--actions { flex-shrink: 0; gap: var(--ui-space-2); margin-left: auto; }
+.bar-section--actions { flex-shrink: 0; gap: var(--space-2); margin-left: auto; }
 
 .bar-dot {
   width: 8px; height: 8px; border-radius: 50%;
-  background: #999;
+  background: var(--ui-fg-4);
   flex-shrink: 0;
 }
 .ops-bar--ok .bar-dot {
-  background: #67c23a;
-  box-shadow: 0 0 0 3px color-mix(in srgb, #67c23a 25%, transparent);
+  background: var(--ui-success);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-success) 25%, transparent);
   animation: bar-pulse 2s ease-in-out infinite;
 }
-.ops-bar--warn .bar-dot { background: #e6a23c; box-shadow: 0 0 0 3px color-mix(in srgb, #e6a23c 25%, transparent); }
-.ops-bar--down .bar-dot { background: #e34d59; }
+.ops-bar--warn .bar-dot { background: var(--ui-warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-warning) 25%, transparent); }
+.ops-bar--down .bar-dot { background: var(--ui-danger); }
 
 @keyframes bar-pulse {
-  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, #67c23a 25%, transparent); }
-  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, #67c23a 10%, transparent); }
+  0%, 100% { box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-success) 25%, transparent); }
+  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--ui-success) 10%, transparent); }
 }
 
 .bar-name {
-  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
-  font-weight: 600;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fs-sm);
   color: var(--ui-fg);
   max-width: 180px;
   overflow: hidden;
@@ -179,31 +187,30 @@ onBeforeUnmount(stopPoll)
   white-space: nowrap;
 }
 .bar-state {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
-  padding-left: var(--ui-space-1);
   border-left: 1px solid var(--ui-border);
-  margin-left: var(--ui-space-1);
-  padding-left: var(--ui-space-2);
+  margin-left: var(--space-1);
+  padding-left: var(--space-2);
 }
 
 .bar-kv {
   display: inline-flex;
   align-items: center;
-  gap: var(--ui-space-2);
+  gap: var(--space-2);
   min-width: 0;
   max-width: 100%;
 }
 .bar-kv--ports { max-width: 300px; }
 .bar-k {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
   text-transform: uppercase;
   letter-spacing: .3px;
   flex-shrink: 0;
 }
 .bar-v {
-  font-size: 12px;
+  font-size: var(--fs-xs);
   color: var(--ui-fg);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -211,15 +218,15 @@ onBeforeUnmount(stopPoll)
   min-width: 0;
 }
 code.bar-v {
-  background: var(--ui-bg-subtle, rgba(0,0,0,.04));
+  background: var(--ui-bg-1);
   padding: 1px 5px;
-  border-radius: 3px;
-  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
 }
-.bar-kv--missing { color: #e34d59; font-size: 12px; }
+.bar-kv--missing { color: var(--ui-danger-fg); font-size: var(--fs-xs); }
 
 @media (max-width: 900px) {
-  .bar-section--meta { flex-basis: 100%; order: 3; padding-top: var(--ui-space-1); border-top: 1px dashed var(--ui-border); margin-top: var(--ui-space-1); }
+  .bar-section--meta { flex-basis: 100%; order: 3; padding-top: var(--space-1); border-top: 1px dashed var(--ui-border); margin-top: var(--space-1); }
   .bar-section--actions { margin-left: 0; }
 }
 </style>

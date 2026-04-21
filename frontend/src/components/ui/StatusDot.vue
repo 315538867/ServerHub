@@ -3,27 +3,23 @@
     class="ui-dot"
     :class="[`ui-dot--${resolved}`, { 'ui-dot--pulse': pulse, 'ui-dot--ring': ring }]"
     :style="{ '--dot-size': `${size}px` }"
-    :title="title"
+    :title="label"
   />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 
-export type UiStatus =
-  | 'online' | 'success' | 'running'
-  | 'offline' | 'stopped'
-  | 'error' | 'failed' | 'danger'
-  | 'warning' | 'pending' | 'deploying'
-  | 'unknown' | 'muted'
+export type UiStatus = 'online' | 'offline' | 'error' | 'warning' | 'unknown' | 'pending' | 'running' | 'stopped'
 
-const props = withDefaults(defineProps<{
+interface Props {
   status?: UiStatus | string
   size?: number
   pulse?: boolean
   ring?: boolean
-  title?: string
-}>(), {
+  label?: string
+}
+const props = withDefaults(defineProps<Props>(), {
   status: 'unknown',
   size: 8,
   pulse: false,
@@ -32,11 +28,11 @@ const props = withDefaults(defineProps<{
 
 const resolved = computed(() => {
   const s = (props.status || '').toLowerCase()
-  if (['online', 'success', 'running', 'ok'].includes(s)) return 'success'
-  if (['offline', 'stopped'].includes(s)) return 'muted'
-  if (['error', 'failed', 'danger'].includes(s)) return 'danger'
-  if (['warning', 'pending', 'deploying'].includes(s)) return 'warning'
-  if (['muted'].includes(s)) return 'muted'
+  if (['online', 'running', 'active', 'ok', 'success', 'healthy'].includes(s)) return 'online'
+  if (['offline', 'stopped', 'inactive'].includes(s)) return 'offline'
+  if (['error', 'failed', 'fail', 'danger'].includes(s)) return 'error'
+  if (['warning', 'warn', 'degraded'].includes(s)) return 'warning'
+  if (['pending', 'deploying', 'loading', 'starting'].includes(s)) return 'pending'
   return 'unknown'
 })
 </script>
@@ -44,25 +40,36 @@ const resolved = computed(() => {
 <style scoped>
 .ui-dot {
   display: inline-block;
-  width: var(--dot-size);
-  height: var(--dot-size);
+  width: var(--dot-size, 8px);
+  height: var(--dot-size, 8px);
   border-radius: 50%;
+  background: var(--ui-fg-4);
   flex-shrink: 0;
-  background: var(--ui-muted);
-  vertical-align: middle;
   position: relative;
 }
-.ui-dot--success { background: var(--ui-success); }
-.ui-dot--danger  { background: var(--ui-danger); }
+.ui-dot--online  { background: var(--ui-success); }
+.ui-dot--offline { background: var(--ui-fg-4); }
+.ui-dot--error   { background: var(--ui-danger); }
 .ui-dot--warning { background: var(--ui-warning); }
-.ui-dot--muted   { background: var(--ui-muted); }
-.ui-dot--unknown { background: var(--ui-fg-placeholder); }
+.ui-dot--pending { background: var(--ui-info); }
+.ui-dot--unknown { background: var(--ui-fg-4); }
 
-.ui-dot--ring.ui-dot--success { box-shadow: 0 0 0 3px rgba(22, 163, 74, .18); }
-.ui-dot--ring.ui-dot--danger  { box-shadow: 0 0 0 3px rgba(220, 38, 38, .18); }
-.ui-dot--ring.ui-dot--warning { box-shadow: 0 0 0 3px rgba(217, 119, 6, .18); }
+.ui-dot--ring::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.18;
+  pointer-events: none;
+}
+.ui-dot--online.ui-dot--ring::after { color: var(--ui-success); }
+.ui-dot--error.ui-dot--ring::after  { color: var(--ui-danger); }
+.ui-dot--pending.ui-dot--ring::after{ color: var(--ui-info); }
 
-.ui-dot--pulse.ui-dot--success { animation: ui-status-pulse 2.4s var(--ui-ease-standard) infinite; }
-.ui-dot--pulse.ui-dot--warning { animation: ui-status-pulse 1.6s var(--ui-ease-standard) infinite; }
-.ui-dot--pulse.ui-dot--danger  { animation: ui-status-pulse 1.2s var(--ui-ease-standard) infinite; }
+.ui-dot--pulse { animation: ui-dot-pulse 2.2s ease-in-out infinite; }
+@keyframes ui-dot-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; }
+  50%      { box-shadow: 0 0 0 4px transparent; }
+}
 </style>

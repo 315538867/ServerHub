@@ -1,174 +1,147 @@
 <template>
-  <div class="page-container notifications-page">
-    <!-- 告警规则 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span>告警规则</span>
-        <div class="title-actions">
-          <t-button theme="primary" size="small" @click="openCreateRule">
-            <template #icon><add-icon /></template>
-            添加规则
-          </t-button>
-          <t-button variant="outline" size="small" :loading="rulesLoading" @click="loadRules">刷新</t-button>
-        </div>
-      </div>
-      <div class="block-body">
-        <t-table :data="rules" :columns="ruleColumns" :loading="rulesLoading" row-key="id" size="small" stripe>
-          <template #server="{ row }">{{ row.server_id ? serverName(row.server_id) : '所有服务器' }}</template>
-          <template #metric="{ row }">
-            <t-tag theme="default" variant="light" size="small">{{ metricLabel(row.metric) }}</t-tag>
-          </template>
-          <template #condition="{ row }">
-            {{ row.metric !== 'offline' ? `${row.operator === 'gt' ? '>' : '<'} ${row.threshold}%` : '离线' }}
-          </template>
-          <template #enabled="{ row }">
-            <t-switch v-model="row.enabled" size="small" @change="toggleRule(row)" />
-          </template>
-          <template #operations="{ row }">
-            <t-popconfirm content="确认删除此规则？" @confirm="deleteRuleItem(row)">
-              <t-link theme="danger">删除</t-link>
-            </t-popconfirm>
-          </template>
-        </t-table>
-      </div>
-    </div>
+  <div class="ntf-page">
+    <UiSection title="告警规则">
+      <template #extra>
+        <UiButton variant="primary" size="sm" @click="openCreateRule">
+          <template #icon><Plus :size="14" /></template>
+          添加规则
+        </UiButton>
+        <UiButton variant="secondary" size="sm" :loading="rulesLoading" @click="loadRules">
+          <template #icon><RefreshCw :size="14" /></template>
+          刷新
+        </UiButton>
+      </template>
+      <UiCard padding="none">
+        <NDataTable
+          :columns="ruleColumns"
+          :data="rules"
+          :loading="rulesLoading"
+          :row-key="(row: AlertRule) => row.id"
+          size="small"
+          :bordered="false"
+        />
+      </UiCard>
+    </UiSection>
 
-    <!-- 通知渠道 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span>通知渠道</span>
-        <div class="title-actions">
-          <t-button theme="primary" size="small" @click="openCreateChannel">
-            <template #icon><add-icon /></template>
-            添加渠道
-          </t-button>
-          <t-button variant="outline" size="small" :loading="channelsLoading" @click="loadChannels">刷新</t-button>
-        </div>
-      </div>
-      <div class="block-body">
-        <t-table :data="channels" :columns="channelColumns" :loading="channelsLoading" row-key="id" size="small" stripe>
-          <template #type="{ row }">
-            <t-tag theme="default" variant="light" size="small">{{ channelTypeLabel(row.type) }}</t-tag>
-          </template>
-          <template #enabled="{ row }">
-            <t-switch v-model="row.enabled" size="small" @change="toggleChannel(row)" />
-          </template>
-          <template #operations="{ row }">
-            <t-space size="small">
-              <t-link theme="primary" @click="doTestChannel(row)">测试</t-link>
-              <t-popconfirm content="确认删除此渠道？" @confirm="deleteChannelItem(row)">
-                <t-link theme="danger">删除</t-link>
-              </t-popconfirm>
-            </t-space>
-          </template>
-        </t-table>
-      </div>
-    </div>
+    <UiSection title="通知渠道">
+      <template #extra>
+        <UiButton variant="primary" size="sm" @click="openCreateChannel">
+          <template #icon><Plus :size="14" /></template>
+          添加渠道
+        </UiButton>
+        <UiButton variant="secondary" size="sm" :loading="channelsLoading" @click="loadChannels">
+          <template #icon><RefreshCw :size="14" /></template>
+          刷新
+        </UiButton>
+      </template>
+      <UiCard padding="none">
+        <NDataTable
+          :columns="channelColumns"
+          :data="channels"
+          :loading="channelsLoading"
+          :row-key="(row: NotifyChannel) => row.id"
+          size="small"
+          :bordered="false"
+        />
+      </UiCard>
+    </UiSection>
 
-    <!-- 告警历史 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span>告警历史</span>
-        <div class="title-actions">
-          <t-button variant="outline" size="small" :loading="eventsLoading" @click="loadEvents">刷新</t-button>
-          <t-popconfirm content="确认清理30天前的历史记录？" @confirm="doClearEvents">
-          <t-button theme="warning" variant="outline" size="small">清理旧记录</t-button>
-          </t-popconfirm>
+    <UiSection title="告警历史">
+      <template #extra>
+        <UiButton variant="secondary" size="sm" :loading="eventsLoading" @click="loadEvents">
+          <template #icon><RefreshCw :size="14" /></template>
+          刷新
+        </UiButton>
+        <NPopconfirm @positive-click="doClearEvents" positive-text="清理" negative-text="取消">
+          <template #trigger>
+            <UiButton variant="warning" size="sm">清理旧记录</UiButton>
+          </template>
+          确认清理 30 天前的历史记录？
+        </NPopconfirm>
+      </template>
+      <UiCard padding="none">
+        <NDataTable
+          :columns="eventColumns"
+          :data="events"
+          :loading="eventsLoading"
+          :row-key="(row: AlertEvent) => row.id"
+          size="small"
+          :bordered="false"
+        />
+        <div class="pg-row">
+          <NPagination v-model:page="eventsPage" :page-size="50" :item-count="eventsTotal" show-quick-jumper @update:page="loadEvents" />
         </div>
-      </div>
-      <div class="block-body">
-        <t-table :data="events" :columns="eventColumns" :loading="eventsLoading" row-key="id" size="small" stripe>
-          <template #sent_at="{ row }">{{ formatTime(row.sent_at) }}</template>
-          <template #server="{ row }">{{ serverName(row.server_id) }}</template>
-          <template #value="{ row }">{{ row.value ? row.value.toFixed(1) : '—' }}</template>
-        </t-table>
-        <div class="pagination-row">
-          <t-pagination
-            v-model:current="eventsPage"
-            :page-size="50"
-            :total="eventsTotal"
-            show-total
-            @change="loadEvents"
-          />
-        </div>
-      </div>
-    </div>
+      </UiCard>
+    </UiSection>
 
-    <!-- 添加规则弹窗 -->
-    <t-dialog
-      v-model:visible="ruleVisible"
-      header="添加告警规则"
-      width="440px"
-      :confirm-btn="{ content: '创建', loading: ruleSaving }"
-      @confirm="confirmCreateRule"
-    >
-      <t-form :data="ruleForm" label-width="90px" size="small" colon>
-        <t-form-item label="服务器">
-          <t-select v-model="ruleForm.server_id" placeholder="所有服务器" clearable class="full-width">
-            <t-option v-for="s in servers" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
-          </t-select>
-        </t-form-item>
-        <t-form-item label="指标">
-          <t-select v-model="ruleForm.metric" class="full-width">
-            <t-option label="CPU 使用率" value="cpu" />
-            <t-option label="内存使用率" value="mem" />
-            <t-option label="磁盘使用率" value="disk" />
-            <t-option label="服务器离线" value="offline" />
-          </t-select>
-        </t-form-item>
+    <NModal v-model:show="ruleVisible" preset="card" title="添加告警规则" style="width: 480px" :bordered="false">
+      <NForm :model="ruleForm" label-placement="left" label-width="100">
+        <NFormItem label="服务器">
+          <NSelect v-model:value="ruleForm.server_id" placeholder="所有服务器" clearable :options="serverOptions" />
+        </NFormItem>
+        <NFormItem label="指标">
+          <NSelect v-model:value="ruleForm.metric" :options="metricOptions" />
+        </NFormItem>
         <template v-if="ruleForm.metric !== 'offline'">
-          <t-form-item label="条件">
-            <t-radio-group v-model="ruleForm.operator">
-              <t-radio value="gt">大于 (&gt;)</t-radio>
-              <t-radio value="lt">小于 (&lt;)</t-radio>
-            </t-radio-group>
-          </t-form-item>
-          <t-form-item label="阈值 (%)">
-            <t-input-number v-model="ruleForm.threshold" :min="0" :max="100" class="full-width" />
-          </t-form-item>
+          <NFormItem label="条件">
+            <NRadioGroup v-model:value="ruleForm.operator">
+              <NRadio value="gt">大于 (&gt;)</NRadio>
+              <NRadio value="lt">小于 (&lt;)</NRadio>
+            </NRadioGroup>
+          </NFormItem>
+          <NFormItem label="阈值 (%)">
+            <NInputNumber v-model:value="ruleForm.threshold" :min="0" :max="100" style="width: 100%" />
+          </NFormItem>
         </template>
-        <t-form-item label="持续次数">
-          <t-input-number v-model="ruleForm.duration" :min="1" :max="10" class="full-width" />
-          <div class="form-hint">连续触发 N 次才发告警，防止抖动</div>
-        </t-form-item>
-      </t-form>
-    </t-dialog>
+        <NFormItem label="持续次数">
+          <div style="width: 100%">
+            <NInputNumber v-model:value="ruleForm.duration" :min="1" :max="10" style="width: 100%" />
+            <div class="form-hint">连续触发 N 次才发告警，防止抖动</div>
+          </div>
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="ruleVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="ruleSaving" @click="confirmCreateRule">创建</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- 添加渠道弹窗 -->
-    <t-dialog
-      v-model:visible="channelVisible"
-      header="添加通知渠道"
-      width="500px"
-      :confirm-btn="{ content: '创建', loading: channelSaving }"
-      @confirm="confirmCreateChannel"
-    >
-      <t-form :data="channelForm" label-width="100px" size="small" colon>
-        <t-form-item label="名称">
-          <t-input v-model="channelForm.name" placeholder="我的企微机器人" />
-        </t-form-item>
-        <t-form-item label="类型">
-          <t-select v-model="channelForm.type" class="full-width">
-            <t-option label="企业微信机器人" value="webhook_wechat" />
-            <t-option label="钉钉机器人" value="webhook_dingtalk" />
-            <t-option label="自定义 Webhook" value="custom" />
-          </t-select>
-        </t-form-item>
-        <t-form-item label="Webhook URL">
-          <t-input v-model="channelForm.url" placeholder="https://qyapi.weixin.qq.com/..." />
-        </t-form-item>
-        <t-form-item label="消息模板">
-          <t-textarea v-model="channelForm.template" :autosize="{ minRows: 3 }"
+    <NModal v-model:show="channelVisible" preset="card" title="添加通知渠道" style="width: 540px" :bordered="false">
+      <NForm :model="channelForm" label-placement="left" label-width="100">
+        <NFormItem label="名称">
+          <NInput v-model:value="channelForm.name" placeholder="我的企微机器人" />
+        </NFormItem>
+        <NFormItem label="类型">
+          <NSelect v-model:value="channelForm.type" :options="channelTypeOptions" />
+        </NFormItem>
+        <NFormItem label="Webhook URL">
+          <NInput v-model:value="channelForm.url" placeholder="https://qyapi.weixin.qq.com/..." />
+        </NFormItem>
+        <NFormItem label="消息模板">
+          <NInput v-model:value="channelForm.template" type="textarea" :autosize="{ minRows: 3 }"
             placeholder="留空使用默认模板，可用变量: {{.Server}} {{.Metric}} {{.Value}} {{.Time}}" />
-        </t-form-item>
-      </t-form>
-    </t-dialog>
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="channelVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="channelSaving" @click="confirmCreateChannel">创建</UiButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { MessagePlugin } from 'tdesign-vue-next'
-import { AddIcon } from 'tdesign-icons-vue-next'
+import { ref, computed, onMounted, h } from 'vue'
+import {
+  NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect,
+  NRadioGroup, NRadio, NSwitch, NPopconfirm, NPagination, useMessage,
+} from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { Plus, RefreshCw } from 'lucide-vue-next'
 import dayjs from 'dayjs'
 import { getServers } from '@/api/servers'
 import {
@@ -178,8 +151,12 @@ import {
 } from '@/api/alerts'
 import type { AlertRule, AlertEvent, NotifyChannel } from '@/api/alerts'
 import type { Server } from '@/types/api'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
 
-const activeTab = ref('rules')
+const message = useMessage()
 const servers = ref<Server[]>([])
 
 function serverName(id: number) {
@@ -193,27 +170,74 @@ function channelTypeLabel(t: string) {
 }
 function formatTime(t: string) { return dayjs(t).format('MM-DD HH:mm:ss') }
 
-const ruleColumns = [
-  { colKey: 'server', title: '服务器', width: 140 },
-  { colKey: 'metric', title: '指标', width: 90 },
-  { colKey: 'condition', title: '条件', width: 160 },
-  { colKey: 'duration', title: '持续次数', width: 90 },
-  { colKey: 'enabled', title: '状态', width: 80 },
-  { colKey: 'operations', title: '操作', width: 80, align: 'center' as const },
+const serverOptions = computed(() => servers.value.map(s => ({ label: `${s.name} (${s.host})`, value: s.id })))
+const metricOptions = [
+  { label: 'CPU 使用率', value: 'cpu' },
+  { label: '内存使用率', value: 'mem' },
+  { label: '磁盘使用率', value: 'disk' },
+  { label: '服务器离线', value: 'offline' },
 ]
-const channelColumns = [
-  { colKey: 'name', title: '名称', minWidth: 140 },
-  { colKey: 'type', title: '类型', width: 140 },
-  { colKey: 'template', title: '消息模板', minWidth: 200, ellipsis: true },
-  { colKey: 'enabled', title: '状态', width: 80 },
-  { colKey: 'operations', title: '操作', width: 120, align: 'center' as const },
+const channelTypeOptions = [
+  { label: '企业微信机器人', value: 'webhook_wechat' },
+  { label: '钉钉机器人', value: 'webhook_dingtalk' },
+  { label: '自定义 Webhook', value: 'custom' },
 ]
-const eventColumns = [
-  { colKey: 'sent_at', title: '时间', width: 160 },
-  { colKey: 'server', title: '服务器', width: 130 },
-  { colKey: 'message', title: '消息', minWidth: 300, ellipsis: true },
-  { colKey: 'value', title: '值', width: 80 },
-]
+
+const ruleColumns = computed<DataTableColumns<AlertRule>>(() => [
+  { title: '服务器', key: 'server', width: 160, render: (row) => row.server_id ? serverName(row.server_id) : '所有服务器' },
+  { title: '指标', key: 'metric', width: 90, render: (row) => h(UiBadge, { tone: 'neutral' }, () => metricLabel(row.metric)) },
+  {
+    title: '条件', key: 'condition', width: 160,
+    render: (row) => row.metric !== 'offline' ? `${row.operator === 'gt' ? '>' : '<'} ${row.threshold}%` : '离线',
+  },
+  { title: '持续次数', key: 'duration', width: 90 },
+  {
+    title: '状态', key: 'enabled', width: 80,
+    render: (row) => h(NSwitch, { value: row.enabled, size: 'small', 'onUpdate:value': (v: boolean) => { row.enabled = v; toggleRule(row) } }),
+  },
+  {
+    title: '操作', key: 'ops', width: 80, fixed: 'right' as const, align: 'center' as const,
+    render: (row) => h(NPopconfirm, {
+      onPositiveClick: () => deleteRuleItem(row),
+      positiveText: '删除', negativeText: '取消',
+    }, {
+      trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+        () => h('span', { class: 'text-danger' }, '删除')),
+      default: () => '确认删除此规则？',
+    }),
+  },
+])
+
+const channelColumns = computed<DataTableColumns<NotifyChannel>>(() => [
+  { title: '名称', key: 'name', minWidth: 160, ellipsis: { tooltip: true } },
+  { title: '类型', key: 'type', width: 140, render: (row) => h(UiBadge, { tone: 'neutral' }, () => channelTypeLabel(row.type)) },
+  { title: '消息模板', key: 'template', minWidth: 200, ellipsis: { tooltip: true } },
+  {
+    title: '状态', key: 'enabled', width: 80,
+    render: (row) => h(NSwitch, { value: row.enabled, size: 'small', 'onUpdate:value': (v: boolean) => { row.enabled = v; toggleChannel(row) } }),
+  },
+  {
+    title: '操作', key: 'ops', width: 130, fixed: 'right' as const, align: 'center' as const,
+    render: (row) => h('div', { class: 'cell-ops' }, [
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => doTestChannel(row) }, () => '测试'),
+      h(NPopconfirm, {
+        onPositiveClick: () => deleteChannelItem(row),
+        positiveText: '删除', negativeText: '取消',
+      }, {
+        trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+          () => h('span', { class: 'text-danger' }, '删除')),
+        default: () => '确认删除此渠道？',
+      }),
+    ]),
+  },
+])
+
+const eventColumns = computed<DataTableColumns<AlertEvent>>(() => [
+  { title: '时间', key: 'sent_at', width: 170, render: (row) => formatTime(row.sent_at) },
+  { title: '服务器', key: 'server', width: 140, render: (row) => serverName(row.server_id) },
+  { title: '消息', key: 'message', minWidth: 300, ellipsis: { tooltip: true } },
+  { title: '值', key: 'value', width: 80, render: (row) => row.value ? row.value.toFixed(1) : '—' },
+])
 
 const rules = ref<AlertRule[]>([])
 const rulesLoading = ref(false)
@@ -239,10 +263,10 @@ async function confirmCreateRule() {
       threshold: ruleForm.value.threshold,
       duration: ruleForm.value.duration,
     })
-    MessagePlugin.success('规则已创建')
+    message.success('规则已创建')
     ruleVisible.value = false
     await loadRules()
-  } catch (e: any) { MessagePlugin.error(e?.response?.data?.msg ?? '创建失败') }
+  } catch (e: any) { message.error(e?.response?.data?.msg ?? '创建失败') }
   finally { ruleSaving.value = false }
 }
 async function toggleRule(row: AlertRule) { await updateRule(row.id, { enabled: row.enabled }) }
@@ -264,22 +288,22 @@ function openCreateChannel() {
 }
 async function confirmCreateChannel() {
   if (!channelForm.value.name || !channelForm.value.url) {
-    MessagePlugin.warning('请填写名称和 URL')
+    message.warning('请填写名称和 URL')
     return
   }
   channelSaving.value = true
   try {
     await createChannel(channelForm.value)
-    MessagePlugin.success('渠道已添加')
+    message.success('渠道已添加')
     channelVisible.value = false
     await loadChannels()
-  } catch (e: any) { MessagePlugin.error(e?.response?.data?.msg ?? '创建失败') }
+  } catch (e: any) { message.error(e?.response?.data?.msg ?? '创建失败') }
   finally { channelSaving.value = false }
 }
 async function toggleChannel(row: NotifyChannel) { await updateChannel(row.id, { enabled: row.enabled }) }
 async function doTestChannel(row: NotifyChannel) {
-  try { await testChannel(row.id); MessagePlugin.success('测试消息已发送') }
-  catch (e: any) { MessagePlugin.error(e?.response?.data?.msg ?? '发送失败') }
+  try { await testChannel(row.id); message.success('测试消息已发送') }
+  catch (e: any) { message.error(e?.response?.data?.msg ?? '发送失败') }
 }
 async function deleteChannelItem(row: NotifyChannel) { await deleteChannel(row.id); await loadChannels() }
 
@@ -298,7 +322,7 @@ async function loadEvents() {
 }
 async function doClearEvents() {
   await clearEvents()
-  MessagePlugin.success('已清理')
+  message.success('已清理')
   await loadEvents()
 }
 
@@ -309,33 +333,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.notifications-page {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ui-space-4);
+.ntf-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.form-hint { font-size: var(--fs-xs); color: var(--ui-fg-3); margin-top: var(--space-1); }
+.pg-row {
+  display: flex; justify-content: flex-end;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--ui-border);
 }
-
-.block-body {
-  padding: var(--ui-space-4) var(--ui-space-6);
-}
-
-.title-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-}
-
-.full-width { width: 100%; }
-
-.pagination-row {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: var(--ui-space-4);
-}
-
-.form-hint {
-  font-size: 11px;
-  color: var(--ui-fg-3);
-  margin-top: var(--ui-space-1);
-}
+:deep(.cell-ops) { display: inline-flex; gap: var(--space-1); }
+:deep(.text-danger) { color: var(--ui-danger-fg); }
 </style>

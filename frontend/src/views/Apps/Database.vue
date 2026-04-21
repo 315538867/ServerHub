@@ -1,164 +1,159 @@
 <template>
-  <div class="page-container">
+  <div class="db-page">
     <template v-if="conn">
-      <!-- 连接信息 -->
-      <div class="section-block">
-        <div class="section-title">
-          <span class="title-text">
+      <UiSection>
+        <template #title>
+          <span class="db-title">
             数据库连接
-            <t-tag :theme="testTheme" variant="light" size="small" class="conn-status">
-              <span class="dot" :class="testResult || 'unknown'" />
+            <UiBadge :tone="testTone">
+              <span class="db-dot" :class="testResult || 'unknown'" />
               {{ testResult === 'ok' ? '在线' : testResult === 'fail' ? '离线' : '未检测' }}
-            </t-tag>
+            </UiBadge>
           </span>
-          <t-space size="small">
-            <t-button size="small" :loading="testing" @click="doTest">连接测试</t-button>
-            <t-button size="small" variant="outline" @click="goGlobalDB">管理全部连接</t-button>
-            <t-button v-if="canUnbind" size="small" variant="outline" theme="danger" @click="unbindConn">解除绑定</t-button>
-          </t-space>
-        </div>
-        <div class="desc-wrap">
-          <t-descriptions :column="2">
-            <t-descriptions-item label="名称">{{ conn.name }}</t-descriptions-item>
-            <t-descriptions-item label="类型"><t-tag size="small" variant="light">{{ conn.type.toUpperCase() }}</t-tag></t-descriptions-item>
-            <t-descriptions-item label="主机"><code class="mono">{{ conn.host }}:{{ conn.port }}</code></t-descriptions-item>
-            <t-descriptions-item label="用户">{{ conn.username || '—' }}</t-descriptions-item>
-            <t-descriptions-item label="数据库">{{ conn.database || '—' }}</t-descriptions-item>
-            <t-descriptions-item label="服务器">{{ serverName }}</t-descriptions-item>
-          </t-descriptions>
-        </div>
-      </div>
+        </template>
+        <template #extra>
+          <UiButton variant="secondary" size="sm" :loading="testing" @click="doTest(false)">连接测试</UiButton>
+          <UiButton variant="secondary" size="sm" @click="goGlobalDB">管理全部连接</UiButton>
+          <UiButton v-if="canUnbind" variant="danger" size="sm" @click="unbindConn">解除绑定</UiButton>
+        </template>
+        <UiCard padding="md">
+          <div class="db-desc">
+            <div class="db-desc__cell"><span class="lbl">名称</span><span class="val">{{ conn.name }}</span></div>
+            <div class="db-desc__cell"><span class="lbl">类型</span><UiBadge tone="info">{{ conn.type.toUpperCase() }}</UiBadge></div>
+            <div class="db-desc__cell"><span class="lbl">主机</span><code class="mono">{{ conn.host }}:{{ conn.port }}</code></div>
+            <div class="db-desc__cell"><span class="lbl">用户</span><span class="val">{{ conn.username || '—' }}</span></div>
+            <div class="db-desc__cell"><span class="lbl">数据库</span><span class="val">{{ conn.database || '—' }}</span></div>
+            <div class="db-desc__cell"><span class="lbl">服务器</span><span class="val">{{ serverName }}</span></div>
+          </div>
+        </UiCard>
+      </UiSection>
 
-      <!-- MySQL 数据库列表 -->
-      <template v-if="conn.type === 'mysql'">
-        <div class="section-block">
-          <div class="section-title">
-            <span class="title-text">数据库列表 <span class="count-badge">{{ databases.length }}</span></span>
-            <t-space size="small">
-              <t-input
-                v-model="dbFilter"
-                size="small" clearable
-                placeholder="过滤库名"
-                class="filter-input"
-              >
-                <template #prefix-icon><t-icon name="search" /></template>
-              </t-input>
-              <t-button size="small" theme="primary" @click="openCreateDB">新建</t-button>
-              <t-button size="small" variant="outline" :loading="dbLoading" @click="loadDBs">刷新</t-button>
-            </t-space>
-          </div>
-          <div class="table-wrap">
-            <t-table :data="filteredDatabases" :columns="dbColumns" :loading="dbLoading" row-key="name" stripe size="small" empty="暂无数据库">
-              <template #name="{ row }"><code class="mono">{{ row.name }}</code></template>
-              <template #operations="{ row }">
-                <t-popconfirm :content="`确认删除数据库 ${row.name}？此操作不可恢复`" @confirm="dropDB(row.name)">
-                  <t-button theme="danger" size="small" variant="text">删除</t-button>
-                </t-popconfirm>
-              </template>
-            </t-table>
-          </div>
-        </div>
-      </template>
+      <UiSection v-if="conn.type === 'mysql'">
+        <template #title>
+          <span class="db-title">
+            数据库列表 <UiBadge tone="neutral">{{ databases.length }}</UiBadge>
+          </span>
+        </template>
+        <template #extra>
+          <NInput v-model:value="dbFilter" placeholder="过滤库名" size="small" clearable class="filter-inp">
+            <template #prefix><Search :size="14" /></template>
+          </NInput>
+          <UiButton variant="primary" size="sm" @click="openCreateDB">新建</UiButton>
+          <UiButton variant="secondary" size="sm" :loading="dbLoading" @click="loadDBs">刷新</UiButton>
+        </template>
+        <UiCard padding="none">
+          <NDataTable
+            :columns="dbColumns"
+            :data="filteredDatabases"
+            :loading="dbLoading"
+            :row-key="(row: { name: string }) => row.name"
+            size="small"
+            :bordered="false"
+          />
+        </UiCard>
+      </UiSection>
 
-      <!-- Redis 状态 -->
-      <template v-if="conn.type === 'redis'">
-        <div class="section-block">
-          <div class="section-title">
-            <span class="title-text">Redis 状态</span>
-            <t-space size="small">
-              <t-input
-                v-model="redisFilter"
-                size="small" clearable
-                placeholder="过滤键"
-                class="filter-input"
-              >
-                <template #prefix-icon><t-icon name="search" /></template>
-              </t-input>
-              <t-button size="small" variant="outline" :loading="redisLoading" @click="loadRedisInfo">刷新</t-button>
-            </t-space>
-          </div>
-          <div class="table-wrap">
-            <t-table :data="filteredRedisRows" :columns="redisColumns" :loading="redisLoading" row-key="key" stripe size="small" empty="暂无数据">
-              <template #key="{ row }"><code class="mono">{{ row.key }}</code></template>
-            </t-table>
-          </div>
-        </div>
-      </template>
+      <UiSection v-if="conn.type === 'redis'" title="Redis 状态">
+        <template #extra>
+          <NInput v-model:value="redisFilter" placeholder="过滤键" size="small" clearable class="filter-inp">
+            <template #prefix><Search :size="14" /></template>
+          </NInput>
+          <UiButton variant="secondary" size="sm" :loading="redisLoading" @click="loadRedisInfo">刷新</UiButton>
+        </template>
+        <UiCard padding="none">
+          <NDataTable
+            :columns="redisColumns"
+            :data="filteredRedisRows"
+            :loading="redisLoading"
+            :row-key="(row: { key: string }) => row.key"
+            size="small"
+            :bordered="false"
+          />
+        </UiCard>
+      </UiSection>
     </template>
 
-    <!-- ── 未绑定：新版友好空态 ─────────────────────────────────────── -->
-    <div v-else-if="!loading" class="empty-hero">
-      <div class="eh-icon">🗄️</div>
-      <div class="eh-title">该应用未关联数据库连接</div>
-      <div class="eh-subtitle">你可以绑定一个现有连接，或新建一个</div>
-
-      <div class="eh-actions">
-        <!-- 绑定现有 -->
-        <div class="eh-card">
-          <div class="eh-card-title">🔗 绑定现有连接</div>
-          <div class="eh-card-body">
-            <t-select
-              v-model="bindConnId"
+    <div v-else-if="!loading" class="db-empty">
+      <div class="db-empty__icon">🗄️</div>
+      <div class="db-empty__title">该应用未关联数据库连接</div>
+      <div class="db-empty__sub">你可以绑定一个现有连接，或新建一个</div>
+      <div class="db-empty__grid">
+        <UiCard padding="md">
+          <div class="db-empty__card-title">🔗 绑定现有连接</div>
+          <div class="db-empty__card-body">
+            <NSelect
+              v-model:value="bindConnId"
               placeholder="选择连接"
               :options="availableConnOptions"
               size="small"
               clearable
               :disabled="availableConnOptions.length === 0"
             />
-            <div v-if="availableConnOptions.length === 0" class="eh-card-hint">
+            <div v-if="availableConnOptions.length === 0" class="db-empty__hint">
               {{ app?.server_id ? '该服务器下暂无数据库连接' : '应用尚未绑定服务器' }}
             </div>
-            <t-button
-              theme="primary"
-              size="small"
-              :disabled="!bindConnId"
-              :loading="binding"
-              @click="doBind"
-            >绑定</t-button>
+            <UiButton variant="primary" size="sm" :disabled="!bindConnId" :loading="binding" @click="doBind">绑定</UiButton>
           </div>
-        </div>
-
-        <!-- 新建 -->
-        <div class="eh-card">
-          <div class="eh-card-title">➕ 新建连接</div>
-          <div class="eh-card-body">
-            <div class="eh-card-hint">跳转到「全局数据库」管理页，新建一个连接后回到本 Tab 绑定</div>
-            <t-button size="small" variant="outline" @click="goGlobalDB">去新建</t-button>
+        </UiCard>
+        <UiCard padding="md">
+          <div class="db-empty__card-title">➕ 新建连接</div>
+          <div class="db-empty__card-body">
+            <div class="db-empty__hint">跳转到「全局数据库」管理页，新建一个连接后回到本 Tab 绑定</div>
+            <UiButton variant="secondary" size="sm" @click="goGlobalDB">去新建</UiButton>
           </div>
-        </div>
+        </UiCard>
       </div>
     </div>
 
-    <!-- 新建数据库对话框 -->
-    <t-dialog
-      v-model:visible="createDBVisible"
-      header="新建数据库"
-      width="400px"
-      confirm-btn="创建"
-      @confirm="confirmCreateDB"
+    <NModal
+      v-model:show="createDBVisible"
+      preset="card"
+      title="新建数据库"
+      style="width: 420px"
+      :bordered="false"
     >
-      <t-form :data="createDBForm" label-width="80px" colon>
-        <t-form-item label="库名"><t-input v-model="createDBForm.name" placeholder="my_database" /></t-form-item>
-        <t-form-item label="字符集"><t-input v-model="createDBForm.charset" placeholder="utf8mb4（默认）" /></t-form-item>
-      </t-form>
-    </t-dialog>
+      <NForm :model="createDBForm" label-placement="left" label-width="80">
+        <NFormItem label="库名">
+          <NInput v-model:value="createDBForm.name" placeholder="my_database" />
+        </NFormItem>
+        <NFormItem label="字符集">
+          <NInput v-model:value="createDBForm.charset" placeholder="utf8mb4（默认）" />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="createDBVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" @click="confirmCreateDB">创建</UiButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { MessagePlugin } from 'tdesign-vue-next'
+import {
+  NInput, NSelect, NDataTable, NModal, NForm, NFormItem, NPopconfirm, useMessage,
+} from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { Search } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useServerStore } from '@/stores/server'
 import { updateApp } from '@/api/application'
 import { listConns, testConn, mysqlDatabases, mysqlCreateDatabase, mysqlDropDatabase, redisInfo } from '@/api/database'
 import type { DBConn } from '@/api/database'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
 
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const serverStore = useServerStore()
+const message = useMessage()
+
 const appId = computed(() => Number(route.params.appId))
 const app = computed(() => appStore.getById(appId.value))
 
@@ -179,24 +174,39 @@ const redisFilter = ref('')
 const createDBVisible = ref(false)
 const createDBForm = ref({ name: '', charset: '' })
 
-// 绑定态
 const bindConnId = ref<number | null>(null)
 const binding = ref(false)
 
-const dbColumns = [
-  { colKey: 'name', title: '数据库名', minWidth: 200 },
-  { colKey: 'operations', title: '操作', width: 120, fixed: 'right' as const },
+const dbColumns = computed<DataTableColumns<{ name: string }>>(() => [
+  {
+    title: '数据库名', key: 'name', minWidth: 200,
+    render: (row) => h('code', { class: 'mono' }, row.name),
+  },
+  {
+    title: '操作', key: 'ops', width: 120, fixed: 'right' as const,
+    render: (row) => h(NPopconfirm, {
+      onPositiveClick: () => dropDB(row.name),
+      positiveText: '删除', negativeText: '取消',
+    }, {
+      trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+        () => h('span', { class: 'text-danger' }, '删除')),
+      default: () => `确认删除数据库 ${row.name}？此操作不可恢复`,
+    }),
+  },
+])
+
+const redisColumns: DataTableColumns<{ key: string; val: string }> = [
+  {
+    title: '键', key: 'key', width: 220,
+    render: (row) => h('code', { class: 'mono' }, row.key),
+  },
+  { title: '值', key: 'val', minWidth: 300, ellipsis: { tooltip: true } },
 ]
 
-const redisColumns = [
-  { colKey: 'key', title: '键', width: 220 },
-  { colKey: 'val', title: '值', minWidth: 300, ellipsis: true },
-]
-
-const testTheme = computed(() => {
+const testTone = computed<any>(() => {
   if (testResult.value === 'ok') return 'success'
   if (testResult.value === 'fail') return 'danger'
-  return 'default'
+  return 'neutral'
 })
 
 const canUnbind = computed(() => !!app.value?.db_conn_id)
@@ -242,8 +252,8 @@ async function loadConn() {
 async function doTest(silent = false) {
   if (!conn.value) return
   testing.value = true
-  try { await testConn(conn.value.id); testResult.value = 'ok'; if (!silent) MessagePlugin.success('连接正常') }
-  catch { testResult.value = 'fail'; if (!silent) MessagePlugin.error('连接失败') }
+  try { await testConn(conn.value.id); testResult.value = 'ok'; if (!silent) message.success('连接正常') }
+  catch { testResult.value = 'fail'; if (!silent) message.error('连接失败') }
   finally { testing.value = false }
 }
 
@@ -253,7 +263,7 @@ async function loadDBs() {
   try {
     const dbs = await mysqlDatabases(conn.value.id)
     databases.value = dbs.map(name => ({ name }))
-  } catch { MessagePlugin.error('加载失败') }
+  } catch { message.error('加载失败') }
   finally { dbLoading.value = false }
 }
 
@@ -263,14 +273,14 @@ async function confirmCreateDB() {
   if (!conn.value || !createDBForm.value.name) return
   try {
     await mysqlCreateDatabase(conn.value.id, createDBForm.value.name, createDBForm.value.charset || undefined)
-    MessagePlugin.success('已创建'); createDBVisible.value = false; await loadDBs()
-  } catch { MessagePlugin.error('创建失败') }
+    message.success('已创建'); createDBVisible.value = false; await loadDBs()
+  } catch { message.error('创建失败') }
 }
 
 async function dropDB(name: string) {
   if (!conn.value) return
-  try { await mysqlDropDatabase(conn.value.id, name); MessagePlugin.success('已删除'); await loadDBs() }
-  catch { MessagePlugin.error('删除失败') }
+  try { await mysqlDropDatabase(conn.value.id, name); message.success('已删除'); await loadDBs() }
+  catch { message.error('删除失败') }
 }
 
 async function loadRedisInfo() {
@@ -279,7 +289,7 @@ async function loadRedisInfo() {
   try {
     const info = await redisInfo(conn.value.id)
     redisInfoRows.value = Object.entries(info).map(([key, val]) => ({ key, val }))
-  } catch { MessagePlugin.error('加载失败') }
+  } catch { message.error('加载失败') }
   finally { redisLoading.value = false }
 }
 
@@ -288,13 +298,13 @@ async function doBind() {
   binding.value = true
   try {
     await updateApp(app.value.id, { ...app.value, db_conn_id: bindConnId.value } as any)
-    MessagePlugin.success('已绑定')
+    message.success('已绑定')
     await appStore.fetch()
     await loadConn()
     if (conn.value?.type === 'mysql') loadDBs()
     if (conn.value?.type === 'redis') loadRedisInfo()
     doTest(true)
-  } catch { MessagePlugin.error('绑定失败') }
+  } catch { message.error('绑定失败') }
   finally { binding.value = false }
 }
 
@@ -302,11 +312,11 @@ async function unbindConn() {
   if (!app.value) return
   try {
     await updateApp(app.value.id, { ...app.value, db_conn_id: null } as any)
-    MessagePlugin.success('已解除绑定')
+    message.success('已解除绑定')
     await appStore.fetch()
     conn.value = null
     testResult.value = ''
-  } catch { MessagePlugin.error('解除失败') }
+  } catch { message.error('解除失败') }
 }
 
 function goGlobalDB() { router.push('/database') }
@@ -325,74 +335,71 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.desc-wrap { padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6); }
-:deep(.t-descriptions__label) { color: var(--ui-fg-3); font-size: 13px; width: 80px; }
-:deep(.t-descriptions__content) { font-size: 13px; }
-.table-wrap { padding: 0 var(--ui-space-6) var(--ui-space-4); }
-:deep(.t-table td) { font-size: 13px; }
+.db-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
 
-.mono {
-  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
-  font-size: 12.5px;
-  background: var(--ui-bg-subtle, rgba(0,0,0,.04));
-  padding: 1px 6px;
-  border-radius: 3px;
-  color: var(--ui-fg);
-}
-
-.conn-status { margin-left: var(--ui-space-2); display: inline-flex; align-items: center; gap: var(--ui-space-1); }
-.conn-status .dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: #999;
+.db-title { display: inline-flex; align-items: center; gap: var(--space-2); }
+.db-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--ui-fg-4);
   display: inline-block;
 }
-.conn-status .dot.ok { background: #67c23a; box-shadow: 0 0 0 2px color-mix(in srgb, #67c23a 25%, transparent); }
-.conn-status .dot.fail { background: #e34d59; box-shadow: 0 0 0 2px color-mix(in srgb, #e34d59 25%, transparent); }
+.db-dot.ok   { background: var(--ui-success); }
+.db-dot.fail { background: var(--ui-danger); }
 
-.count-badge {
-  font-size: 11px;
-  color: var(--ui-fg-3);
-  background: color-mix(in srgb, var(--ui-fg) 6%, transparent);
-  padding: 1px 8px;
-  border-radius: 10px;
-  margin-left: var(--ui-space-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.filter-input { width: 180px; }
-
-/* 空态 */
-.empty-hero {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: var(--ui-space-8) var(--ui-space-6);
-  text-align: center;
-  background: var(--ui-bg-surface);
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-}
-.eh-icon { font-size: 42px; margin-bottom: var(--ui-space-4); opacity: 0.85; }
-.eh-title { font-size: 15px; font-weight: 600; color: var(--ui-fg); }
-.eh-subtitle { font-size: 13px; color: var(--ui-fg-3); margin-top: var(--ui-space-1); }
-.eh-actions {
-  margin-top: var(--ui-space-6);
+.db-desc {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--ui-space-4);
-  width: 100%;
-  max-width: 640px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-6);
 }
-.eh-card {
+@media (max-width: 720px) { .db-desc { grid-template-columns: 1fr; } }
+.db-desc__cell {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) 0;
+  min-width: 0;
+}
+.db-desc__cell .lbl {
+  flex-shrink: 0; width: 80px;
+  font-size: var(--fs-xs); color: var(--ui-fg-3);
+}
+.db-desc__cell .val {
+  font-size: var(--fs-sm); color: var(--ui-fg);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+
+.filter-inp { width: 180px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+:deep(.mono) {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  background: var(--ui-bg-2);
   border: 1px solid var(--ui-border);
-  border-radius: 8px;
-  padding: var(--ui-space-4);
-  background: color-mix(in srgb, var(--ui-fg) 2%, transparent);
-  text-align: left;
-  display: flex;
-  flex-direction: column;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  color: var(--ui-fg-2);
 }
-.eh-card-title { font-size: 13px; font-weight: 600; color: var(--ui-fg); margin-bottom: var(--ui-space-2); }
-.eh-card-body { display: flex; flex-direction: column; gap: var(--ui-space-2); }
-.eh-card-hint { font-size: 12px; color: var(--ui-fg-3); line-height: 1.5; }
+:deep(.text-danger) { color: var(--ui-danger-fg); }
+
+.db-empty {
+  display: flex; flex-direction: column; align-items: center;
+  padding: var(--space-10) var(--space-6);
+  text-align: center;
+  background: var(--ui-bg-1);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+}
+.db-empty__icon { font-size: 42px; margin-bottom: var(--space-3); opacity: 0.8; }
+.db-empty__title { font-size: var(--fs-md); font-weight: var(--fw-semibold); color: var(--ui-fg); }
+.db-empty__sub { font-size: var(--fs-sm); color: var(--ui-fg-3); margin-top: var(--space-1); }
+.db-empty__grid {
+  margin-top: var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-3);
+  width: 100%; max-width: 640px;
+}
+.db-empty__card-title { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--ui-fg); margin-bottom: var(--space-3); text-align: left; }
+.db-empty__card-body { display: flex; flex-direction: column; gap: var(--space-2); text-align: left; }
+.db-empty__hint { font-size: var(--fs-xs); color: var(--ui-fg-3); line-height: var(--lh-relaxed); }
 </style>

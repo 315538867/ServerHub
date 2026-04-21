@@ -1,80 +1,68 @@
 <template>
-  <div class="page-container">
-
-    <!-- 加载中 -->
-    <div v-if="loading" class="section-block empty-block">
-      <t-loading />
+  <div class="dp-page">
+    <div v-if="loading" class="dp-loading">
+      <NSpin size="medium" />
     </div>
 
-    <!-- ===== 向导：未关联部署配置 ===== -->
     <template v-else-if="!app?.deploy_id">
-      <div class="wizard-card">
+      <UiCard padding="lg" class="wizard-card">
         <div class="wizard-header">
           <div class="wizard-title">选择部署方式</div>
           <div class="wizard-subtitle">为该应用创建一个部署配置，配置完成后即可一键部署</div>
         </div>
 
         <div class="type-cards">
-          <div class="type-card" :class="{ active: wizardType === 'docker-compose' }" @click="wizardType = 'docker-compose'">
-            <div class="type-card-icon">⚙️</div>
-            <div class="type-card-title">Docker Compose</div>
-            <div class="type-card-desc">使用 docker-compose.yml 编排多个容器，支持 pull + up -d</div>
-          </div>
-          <div class="type-card" :class="{ active: wizardType === 'docker' }" @click="wizardType = 'docker'">
-            <div class="type-card-icon">🐳</div>
-            <div class="type-card-title">Docker 单容器</div>
-            <div class="type-card-desc">拉取指定镜像，执行 docker run 命令启动单个容器</div>
-          </div>
-          <div class="type-card" :class="{ active: wizardType === 'native' }" @click="wizardType = 'native'">
-            <div class="type-card-icon">📦</div>
-            <div class="type-card-title">文件部署</div>
-            <div class="type-card-desc">上传可执行文件（jar / binary / zip）到服务器并运行</div>
+          <div
+            v-for="t in wizardOptions" :key="t.value"
+            class="type-card" :class="{ 'is-active': wizardType === t.value }"
+            @click="wizardType = t.value"
+          >
+            <div class="type-card__icon">{{ t.icon }}</div>
+            <div class="type-card__title">{{ t.label }}</div>
+            <div class="type-card__desc">{{ t.desc }}</div>
           </div>
         </div>
 
         <template v-if="wizardType">
           <div class="wizard-divider">基础配置</div>
-          <div class="form-grid wizard-form-grid">
+          <div class="form-grid">
             <div class="form-field">
               <label class="form-label">工作目录 <span class="form-required">*</span></label>
-              <t-input v-model="wizardForm.work_dir" :placeholder="app ? `/srv/apps/${app.name}` : '/srv/apps/myapp'" />
+              <NInput v-model:value="wizardForm.work_dir" :placeholder="app ? `/srv/apps/${app.name}` : '/srv/apps/myapp'" />
               <span class="form-hint">在远程服务器上的项目根目录</span>
             </div>
             <template v-if="wizardType === 'docker-compose'">
               <div class="form-field">
                 <label class="form-label">Compose 文件</label>
-                <t-input v-model="wizardForm.compose_file" placeholder="docker-compose.yml" />
+                <NInput v-model:value="wizardForm.compose_file" placeholder="docker-compose.yml" />
               </div>
               <div class="form-field">
                 <label class="form-label">镜像名称</label>
-                <t-input v-model="wizardForm.image_name" placeholder="nginx（版本追踪用，可选）" />
+                <NInput v-model:value="wizardForm.image_name" placeholder="nginx（版本追踪用，可选）" />
               </div>
               <div class="form-field">
                 <label class="form-label">期望版本</label>
-                <t-input v-model="wizardForm.desired_version" placeholder="latest（可选）" />
+                <NInput v-model:value="wizardForm.desired_version" placeholder="latest（可选）" />
               </div>
             </template>
             <template v-if="wizardType === 'docker'">
               <div class="form-field">
                 <label class="form-label">镜像名称 <span class="form-required">*</span></label>
-                <t-input v-model="wizardForm.image_name" placeholder="nginx" />
+                <NInput v-model:value="wizardForm.image_name" placeholder="nginx" />
               </div>
               <div class="form-field">
                 <label class="form-label">期望版本 <span class="form-required">*</span></label>
-                <t-input v-model="wizardForm.desired_version" placeholder="latest" />
+                <NInput v-model:value="wizardForm.desired_version" placeholder="latest" />
               </div>
             </template>
           </div>
 
-          <!-- 运行时选择（native / docker 类型） -->
           <template v-if="wizardType !== 'docker-compose'">
             <div class="wizard-divider">运行环境 <span class="divider-hint">选择后自动生成 startup.sh 模板</span></div>
             <div class="runtime-chips">
               <div
-                v-for="rt in RUNTIMES"
-                :key="rt.value"
-                class="runtime-chip"
-                :class="{ active: wizardRuntime === rt.value }"
+                v-for="rt in RUNTIMES" :key="rt.value"
+                class="runtime-chip" :class="{ 'is-active': wizardRuntime === rt.value }"
                 @click="selectWizardRuntime(rt.value)"
               >
                 <span class="rt-icon">{{ rt.icon }}</span>
@@ -83,92 +71,109 @@
             </div>
           </template>
           <div class="wizard-footer">
-            <t-button theme="primary" size="large" :loading="creating" @click="createAndLink">创建并关联部署配置</t-button>
+            <UiButton variant="primary" :loading="creating" @click="createAndLink">创建并关联部署配置</UiButton>
           </div>
         </template>
-      </div>
+      </UiCard>
     </template>
 
-    <!-- ===== 主视图：已关联部署配置 ===== -->
     <template v-else-if="deploy">
-
-      <!-- 驾驶舱 Hero：粘性顶部状态条 + 主操作 -->
-      <deploy-hero
-        :deploy="deploy"
-        :running="running"
-        @run="doRun('run')"
-        @rollback="doRun('rollback')"
-        @stop="stopRun"
-      />
-
-      <!-- S1: 配置信息 -->
-      <div class="section-block">
-        <div class="section-title">
-          <span>配置信息</span>
-          <t-space v-if="!editMode" size="small">
-            <t-button size="small" variant="outline" @click="startEdit">编辑</t-button>
-          </t-space>
-          <t-space v-else size="small">
-            <t-button size="small" theme="primary" :loading="saving" @click="saveEdit">保存</t-button>
-            <t-button size="small" variant="outline" @click="cancelEdit">取消</t-button>
-          </t-space>
+      <Teleport to="#app-bar-actions">
+        <div class="deploy-bar" :class="deployBarClass">
+          <div class="deploy-bar__status">
+            <span class="deploy-bar__dot" :class="dotClass" />
+            <span class="deploy-bar__label">{{ syncStatusLabel }}</span>
+            <template v-if="deploy.actual_version || deploy.desired_version">
+              <code class="deploy-bar__ver">{{ deploy.actual_version || '—' }}</code>
+              <template v-if="deploy.desired_version && deploy.desired_version !== deploy.actual_version">
+                <span class="deploy-bar__arrow">→</span>
+                <code class="deploy-bar__ver deploy-bar__ver--target">{{ deploy.desired_version }}</code>
+              </template>
+            </template>
+          </div>
+          <div class="deploy-bar__actions">
+            <template v-if="!running">
+              <UiButton variant="primary" size="sm" @click="doRun('run')">
+                <template #icon><Play :size="12" /></template>
+                立即部署
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                size="sm"
+                :disabled="!deploy.previous_version"
+                @click="doRun('rollback')"
+              >
+                <template #icon><RotateCcw :size="12" /></template>
+                回滚
+              </UiButton>
+            </template>
+            <template v-else>
+              <span class="deploy-bar__running">
+                <Loader2 :size="12" class="spin" />
+                部署中…
+              </span>
+              <UiButton variant="danger" size="sm" @click="stopRun">中止</UiButton>
+            </template>
+          </div>
         </div>
-        <div class="config-body">
-          <!-- 查看模式 -->
-          <t-descriptions v-if="!editMode" :column="3">
-            <t-descriptions-item label="部署方式">
-              <t-tag size="small" variant="light" theme="default">{{ typeLabel(deploy.type) }}</t-tag>
-            </t-descriptions-item>
-            <t-descriptions-item label="同步状态">
-              <t-tag :theme="syncTheme(deploy.sync_status)" variant="light" size="small">{{ syncLabel(deploy.sync_status) }}</t-tag>
-            </t-descriptions-item>
-            <t-descriptions-item label="最后运行">{{ deploy.last_run_at ? fmtTime(deploy.last_run_at) : '—' }}</t-descriptions-item>
-            <t-descriptions-item label="工作目录">{{ deploy.work_dir || '—' }}</t-descriptions-item>
-            <t-descriptions-item v-if="deploy.type === 'docker-compose'" label="Compose 文件">{{ deploy.compose_file || '—' }}</t-descriptions-item>
-            <t-descriptions-item v-if="deploy.type !== 'native'" label="镜像名称">{{ deploy.image_name || '—' }}</t-descriptions-item>
-            <t-descriptions-item v-if="deploy.type !== 'docker-compose' && deploy.start_cmd" label="启动命令">{{ deploy.start_cmd }}</t-descriptions-item>
-            <t-descriptions-item v-if="deploy.runtime" label="运行时">
-              <t-tag size="small" variant="light" theme="default">{{ RUNTIME_LABELS[deploy.runtime] ?? deploy.runtime }}</t-tag>
-            </t-descriptions-item>
-            <t-descriptions-item v-if="deploy.type !== 'native'" label="期望版本">{{ deploy.desired_version || '—' }}</t-descriptions-item>
-            <t-descriptions-item v-if="deploy.type !== 'native'" label="实际版本">{{ deploy.actual_version || '—' }}</t-descriptions-item>
-            <t-descriptions-item v-if="deploy.type !== 'native'" label="上一版本">{{ deploy.previous_version || '—' }}</t-descriptions-item>
-          </t-descriptions>
-          <!-- 编辑模式 -->
+      </Teleport>
+
+      <UiSection title="配置信息">
+        <template #extra>
+          <template v-if="!editMode">
+            <UiButton variant="secondary" size="sm" @click="startEdit">编辑</UiButton>
+          </template>
+          <template v-else>
+            <UiButton variant="secondary" size="sm" @click="cancelEdit">取消</UiButton>
+            <UiButton variant="primary" size="sm" :loading="saving" @click="saveEdit">保存</UiButton>
+          </template>
+        </template>
+        <UiCard padding="md">
+          <div v-if="!editMode" class="cfg-grid">
+            <div class="cfg-cell"><span class="lbl">部署方式</span><UiBadge tone="neutral">{{ typeLabel(deploy.type) }}</UiBadge></div>
+            <div class="cfg-cell"><span class="lbl">同步状态</span><UiBadge :tone="syncTone(deploy.sync_status)">{{ syncLabel(deploy.sync_status) }}</UiBadge></div>
+            <div class="cfg-cell"><span class="lbl">最后运行</span><span class="val">{{ deploy.last_run_at ? fmtTime(deploy.last_run_at) : '—' }}</span></div>
+            <div class="cfg-cell"><span class="lbl">工作目录</span><code class="mono">{{ deploy.work_dir || '—' }}</code></div>
+            <div v-if="deploy.type === 'docker-compose'" class="cfg-cell"><span class="lbl">Compose 文件</span><span class="val">{{ deploy.compose_file || '—' }}</span></div>
+            <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">镜像名称</span><span class="val">{{ deploy.image_name || '—' }}</span></div>
+            <div v-if="deploy.type !== 'docker-compose' && deploy.start_cmd" class="cfg-cell"><span class="lbl">启动命令</span><code class="mono">{{ deploy.start_cmd }}</code></div>
+            <div v-if="deploy.runtime" class="cfg-cell"><span class="lbl">运行时</span><UiBadge tone="neutral">{{ RUNTIME_LABELS[deploy.runtime] ?? deploy.runtime }}</UiBadge></div>
+            <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">期望版本</span><span class="val">{{ deploy.desired_version || '—' }}</span></div>
+            <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">实际版本</span><span class="val">{{ deploy.actual_version || '—' }}</span></div>
+            <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">上一版本</span><span class="val">{{ deploy.previous_version || '—' }}</span></div>
+          </div>
           <div v-else class="form-grid">
             <div class="form-field">
               <label class="form-label">工作目录</label>
-              <t-input v-model="editForm.work_dir" />
+              <NInput v-model:value="editForm.work_dir" />
             </div>
             <template v-if="editForm.type === 'docker-compose'">
               <div class="form-field">
                 <label class="form-label">Compose 文件</label>
-                <t-input v-model="editForm.compose_file" />
+                <NInput v-model:value="editForm.compose_file" />
               </div>
               <div class="form-field">
                 <label class="form-label">镜像名称</label>
-                <t-input v-model="editForm.image_name" />
+                <NInput v-model:value="editForm.image_name" />
               </div>
             </template>
             <template v-if="editForm.type === 'docker'">
               <div class="form-field">
                 <label class="form-label">镜像名称</label>
-                <t-input v-model="editForm.image_name" />
+                <NInput v-model:value="editForm.image_name" />
               </div>
             </template>
             <template v-if="editForm.type !== 'docker-compose'">
               <div class="form-field form-field--full">
                 <label class="form-label">启动命令 <span class="form-hint">（可选，有 startup.sh 时此项被忽略）</span></label>
-                <t-input v-model="editForm.start_cmd" placeholder="作为 startup.sh 的备用方案" />
+                <NInput v-model:value="editForm.start_cmd" placeholder="作为 startup.sh 的备用方案" />
               </div>
               <div class="form-field form-field--full">
                 <label class="form-label">运行时</label>
                 <div class="runtime-chips runtime-chips--sm">
                   <div
-                    v-for="rt in RUNTIMES"
-                    :key="rt.value"
-                    class="runtime-chip"
-                    :class="{ active: editForm.runtime === rt.value }"
+                    v-for="rt in RUNTIMES" :key="rt.value"
+                    class="runtime-chip" :class="{ 'is-active': editForm.runtime === rt.value }"
                     @click="selectEditRuntime(rt.value)"
                   >
                     <span class="rt-icon">{{ rt.icon }}</span>
@@ -179,57 +184,51 @@
             </template>
             <div class="form-field">
               <label class="form-label">期望版本</label>
-              <t-input v-model="editForm.desired_version" />
+              <NInput v-model:value="editForm.desired_version" />
             </div>
           </div>
-        </div>
-      </div>
+        </UiCard>
+      </UiSection>
 
-      <!-- S_CF: 配置文件 -->
-      <div class="section-block">
-        <div class="section-title">
-          <span>配置文件</span>
-          <t-space size="small">
-            <t-button size="small" variant="outline" :loading="cfSaving" @click="saveCfList">保存</t-button>
-            <t-button size="small" theme="primary" @click="openCfEditor(null)">添加文件</t-button>
-          </t-space>
-        </div>
-        <div class="cf-body">
+      <UiSection title="配置文件">
+        <template #extra>
+          <UiButton variant="secondary" size="sm" :loading="cfSaving" @click="saveCfList">保存</UiButton>
+          <UiButton variant="primary" size="sm" @click="openCfEditor(null)">添加文件</UiButton>
+        </template>
+        <UiCard padding="md">
           <div v-if="cfList.length === 0" class="cf-empty">
             暂无配置文件。添加 <code>startup.sh</code> 将在部署时自动执行；亦可添加 <code>application.yml</code>、<code>config.toml</code> 等配套文件。
           </div>
           <div v-for="(f, i) in cfList" :key="i" class="cf-row">
             <span class="cf-name">{{ f.name }}</span>
             <span class="cf-ext-badge">{{ getExtBadge(f.name) }}</span>
-            <t-space size="small" class="cf-actions-inline">
-              <t-button size="small" variant="text" @click="openCfEditor(i)">编辑</t-button>
-              <t-button size="small" variant="text" theme="danger" @click="deleteCfItem(i)">删除</t-button>
-            </t-space>
+            <div class="cf-actions">
+              <UiButton variant="ghost" size="sm" @click="openCfEditor(i)">编辑</UiButton>
+              <UiButton variant="ghost" size="sm" @click="deleteCfItem(i)">
+                <span class="text-danger">删除</span>
+              </UiButton>
+            </div>
           </div>
-        </div>
-      </div>
+        </UiCard>
+      </UiSection>
 
-      <!-- S2: 操作台 -->
-      <div class="section-block">
-        <div class="section-title">
-          <span>操作台</span>
-          <t-space v-if="!running" size="small">
-            <t-button theme="primary" size="small" @click="doRun('run')">立即部署</t-button>
-            <t-button
-              size="small"
+      <UiSection title="操作台">
+        <template #extra>
+          <template v-if="!running">
+            <UiButton variant="primary" size="sm" @click="doRun('run')">立即部署</UiButton>
+            <UiButton
+              variant="secondary" size="sm"
               :disabled="!deploy.previous_version"
-              :title="deploy.previous_version ? `回滚到 ${deploy.previous_version}` : '无历史版本'"
               @click="doRun('rollback')"
-            >回滚{{ deploy.previous_version ? ` (→ ${deploy.previous_version})` : '' }}</t-button>
-          </t-space>
-          <t-button v-else size="small" theme="danger" variant="outline" @click="stopRun">中止</t-button>
-        </div>
+            >回滚{{ deploy.previous_version ? ` (→ ${deploy.previous_version})` : '' }}</UiButton>
+          </template>
+          <UiButton v-else variant="danger" size="sm" @click="stopRun">中止</UiButton>
+        </template>
 
-        <!-- 文件上传区 (native type) -->
-        <div v-if="deploy.type === 'native'" class="upload-area">
+        <UiCard v-if="deploy.type === 'native'" padding="md" class="upload-card">
           <div
             class="upload-zone"
-            :class="{ 'upload-zone--active': !!uploadFile, 'upload-zone--drag': isDragging }"
+            :class="{ 'is-active': !!uploadFile, 'is-drag': isDragging }"
             @dragover.prevent="isDragging = true"
             @dragleave.prevent="isDragging = false"
             @drop.prevent="onFileDrop"
@@ -237,179 +236,162 @@
           >
             <input ref="fileInputRef" type="file" class="file-input-hidden" @change="onFileChange" />
             <template v-if="!uploadFile">
-              <div class="upload-zone-icon">📁</div>
-              <div class="upload-zone-text">拖拽文件到此处，或点击选择文件</div>
-              <div class="upload-zone-hint">支持任意可执行文件（jar、binary、zip 等）</div>
+              <div class="upload-zone__icon">📁</div>
+              <div class="upload-zone__text">拖拽文件到此处，或点击选择文件</div>
+              <div class="upload-zone__hint">支持任意可执行文件（jar、binary、zip 等）</div>
             </template>
             <template v-else>
-              <div class="upload-zone-icon">📄</div>
-              <div class="upload-zone-text">{{ uploadFile.name }}</div>
-              <div class="upload-zone-hint">{{ fmtBytes(uploadFile.size) }}</div>
+              <div class="upload-zone__icon">📄</div>
+              <div class="upload-zone__text">{{ uploadFile.name }}</div>
+              <div class="upload-zone__hint">{{ fmtBytes(uploadFile.size) }}</div>
             </template>
           </div>
 
-          <div v-if="uploading || uploadPhase === 'done'" class="upload-progress-area">
-            <div class="upload-progress-header">
+          <div v-if="uploading || uploadPhase === 'done'" class="upload-progress">
+            <div class="upload-progress__head">
               <span>{{ uploadPhase === 'uploading' ? '正在上传文件到服务器...' : uploadPhase === 'transferring' ? '正在传输到远程主机...' : '传输完成 ✓' }}</span>
-              <span v-if="uploadTotal > 0" class="upload-size-text">{{ fmtBytes(uploadProgress) }} / {{ fmtBytes(uploadTotal) }}</span>
+              <span v-if="uploadTotal > 0" class="upload-size">{{ fmtBytes(uploadProgress) }} / {{ fmtBytes(uploadTotal) }}</span>
             </div>
-            <t-progress v-if="uploadTotal > 0" :percentage="Math.min(Math.round(uploadProgress / uploadTotal * 100), 100)" />
+            <NProgress
+              v-if="uploadTotal > 0"
+              :percentage="Math.min(Math.round(uploadProgress / uploadTotal * 100), 100)"
+              :show-indicator="false"
+            />
           </div>
 
           <div class="upload-actions">
-            <t-button theme="primary" size="small" :loading="uploading" :disabled="!uploadFile" @click="doUpload">上传到服务器</t-button>
-            <t-button v-if="uploadFile && !uploading" size="small" variant="outline" @click="clearUpload">清除选择</t-button>
+            <UiButton variant="primary" size="sm" :loading="uploading" :disabled="!uploadFile" @click="doUpload">上传到服务器</UiButton>
+            <UiButton v-if="uploadFile && !uploading" variant="secondary" size="sm" @click="clearUpload">清除选择</UiButton>
           </div>
+        </UiCard>
 
-          <t-divider>运行控制</t-divider>
-        </div>
-
-        <!-- SSE 终端输出 -->
-        <div class="terminal-wrap">
-          <div v-if="runStatus" class="terminal-status-bar">
-            <t-tag
-              :theme="runStatus === 'success' ? 'success' : 'danger'"
-              variant="light"
-              size="small"
-            >{{ runStatus === 'success' ? '部署成功' : '部署失败' }}</t-tag>
+        <UiCard padding="md" class="terminal-card">
+          <div v-if="runStatus" class="term-status">
+            <UiBadge :tone="runStatus === 'success' ? 'success' : 'danger'">
+              {{ runStatus === 'success' ? '部署成功' : '部署失败' }}
+            </UiBadge>
           </div>
-          <div v-else-if="running" class="terminal-status-bar">
-            <t-tag theme="warning" variant="light" size="small">执行中…</t-tag>
+          <div v-else-if="running" class="term-status">
+            <UiBadge tone="warning">执行中…</UiBadge>
           </div>
           <pre v-if="outputLines.length > 0 || running" ref="termRef" class="deploy-terminal">{{ outputLines.join('\n') }}</pre>
           <div v-else class="terminal-placeholder">点击「立即部署」执行部署，输出将实时显示在此处</div>
-        </div>
-      </div>
+        </UiCard>
+      </UiSection>
 
-      <!-- S3: 环境变量 -->
-      <div class="section-block">
-        <div class="section-title">
-          <span>环境变量</span>
-          <t-space size="small">
-            <t-button size="small" variant="outline" :loading="envLoading" @click="loadEnv">刷新</t-button>
-            <t-button size="small" variant="outline" @click="addEnvRow">添加变量</t-button>
-            <t-button size="small" theme="primary" :loading="envSaving" @click="saveEnv">保存全部</t-button>
-          </t-space>
-        </div>
-        <div class="env-body">
+      <UiSection title="环境变量">
+        <template #extra>
+          <UiButton variant="secondary" size="sm" :loading="envLoading" @click="loadEnv">刷新</UiButton>
+          <UiButton variant="secondary" size="sm" @click="addEnvRow">添加变量</UiButton>
+          <UiButton variant="primary" size="sm" :loading="envSaving" @click="saveEnv">保存全部</UiButton>
+        </template>
+        <UiCard padding="md">
           <div v-if="!envLoading && envVars.length === 0" class="env-empty">暂无环境变量，点击「添加变量」新增</div>
           <div v-for="(v, i) in envVars" :key="i" class="env-row">
-            <t-input v-model="v.key" placeholder="变量名（如 PORT）" class="env-key" size="small" />
-            <div class="env-value-wrap">
-              <t-input
-                v-model="v.value"
-                :type="v.secret && !v._revealed ? 'password' : 'text'"
-                placeholder="变量值"
-                class="env-value"
-                size="small"
-              />
-            </div>
-            <t-checkbox v-model="v.secret" size="small" @change="onSecretToggle(v)">Secret</t-checkbox>
-            <t-button v-if="v.secret" size="small" variant="text" @click="v._revealed = !v._revealed">
+            <NInput v-model:value="v.key" placeholder="变量名（如 PORT）" class="env-key" size="small" />
+            <NInput
+              v-model:value="v.value"
+              :type="v.secret && !v._revealed ? 'password' : 'text'"
+              placeholder="变量值"
+              class="env-value"
+              size="small"
+            />
+            <NCheckbox v-model:checked="v.secret" @update:checked="onSecretToggle(v)">Secret</NCheckbox>
+            <UiButton v-if="v.secret" variant="ghost" size="sm" @click="v._revealed = !v._revealed">
               {{ v._revealed ? '隐藏' : '显示' }}
-            </t-button>
-            <t-button size="small" variant="text" theme="danger" @click="removeEnvRow(i)">删除</t-button>
+            </UiButton>
+            <UiButton variant="ghost" size="sm" @click="removeEnvRow(i)">
+              <span class="text-danger">删除</span>
+            </UiButton>
           </div>
-        </div>
-      </div>
+        </UiCard>
+      </UiSection>
 
-      <!-- S4: Webhook -->
-      <div class="section-block">
-        <div class="section-title">Webhook</div>
-        <div class="webhook-body">
+      <UiSection title="Webhook">
+        <UiCard padding="md">
           <template v-if="webhookInfo">
             <div class="webhook-row">
               <span class="webhook-label">Webhook URL</span>
-              <div class="webhook-value-wrap">
-                <code class="webhook-url">{{ webhookInfo.url }}</code>
-                <t-button size="small" variant="text" @click="copyText(webhookInfo.url, '链接已复制')">复制</t-button>
-              </div>
+              <code class="webhook-url">{{ webhookInfo.url }}</code>
+              <UiButton variant="ghost" size="sm" @click="copyText(webhookInfo.url, '链接已复制')">复制</UiButton>
             </div>
             <div class="webhook-row">
               <span class="webhook-label">Secret Token</span>
-              <div class="webhook-value-wrap">
-                <code class="webhook-url">{{ showSecret ? webhookInfo.secret : '••••••••••••••••••••••••' }}</code>
-                <t-button size="small" variant="text" @click="showSecret = !showSecret">{{ showSecret ? '隐藏' : '显示' }}</t-button>
-                <t-button size="small" variant="text" @click="copyText(webhookInfo.secret, 'Secret 已复制')">复制</t-button>
-              </div>
+              <code class="webhook-url">{{ showSecret ? webhookInfo.secret : '••••••••••••••••••••••••' }}</code>
+              <UiButton variant="ghost" size="sm" @click="showSecret = !showSecret">{{ showSecret ? '隐藏' : '显示' }}</UiButton>
+              <UiButton variant="ghost" size="sm" @click="copyText(webhookInfo.secret, 'Secret 已复制')">复制</UiButton>
             </div>
-            <t-alert
-              theme="info"
-              message="支持 GitHub（X-Hub-Signature-256 HMAC 签名）和 GitLab（X-Gitlab-Token 原始 token 对比），推送时自动触发部署"
+            <NAlert
+              type="info"
+              title="支持 GitHub（X-Hub-Signature-256 HMAC 签名）和 GitLab（X-Gitlab-Token 原始 token 对比），推送时自动触发部署"
               class="webhook-alert"
             />
           </template>
           <div v-else class="env-empty">加载中...</div>
-        </div>
-      </div>
+        </UiCard>
+      </UiSection>
 
-      <!-- S5: 部署历史 -->
-      <div class="section-block">
-        <div class="section-title">
-          <span>部署历史</span>
-          <t-button size="small" variant="outline" :loading="logsLoading" @click="loadLogs">刷新</t-button>
-        </div>
-        <div class="table-wrap">
-          <t-table
-            :data="logs"
+      <UiSection title="部署历史">
+        <template #extra>
+          <UiButton variant="secondary" size="sm" :loading="logsLoading" @click="loadLogs">
+            <template #icon><RefreshCw :size="14" /></template>
+            刷新
+          </UiButton>
+        </template>
+        <UiCard padding="none">
+          <NDataTable
             :columns="logColumns"
+            :data="logs"
             :loading="logsLoading"
-            row-key="id"
-            stripe
+            :row-key="(row: DeployLog) => row.id"
             size="small"
-          >
-            <template #status="{ row }">
-              <t-tag :theme="row.status === 'success' ? 'success' : 'danger'" variant="light" size="small">
-                {{ row.status === 'success' ? '成功' : '失败' }}
-              </t-tag>
-            </template>
-            <template #duration="{ row }">{{ row.duration }}s</template>
-            <template #expandedRow="{ row }">
-              <pre class="log-detail">{{ row.output }}</pre>
-            </template>
-          </t-table>
-        </div>
-      </div>
+            :bordered="false"
+          />
+        </UiCard>
+      </UiSection>
 
-      <!-- CodeMirror 配置文件编辑器 Dialog -->
-      <t-dialog
-        v-model:visible="editorVisible"
-        :header="editorIsNew ? '添加配置文件' : `编辑：${editorFileName}`"
-        width="720px"
-        class="code-editor-dialog"
-        :confirm-btn="{ content: '保存', loading: editorSaving }"
-        :cancel-btn="{ content: '取消' }"
-        @confirm="saveCfEditor"
-        @closed="destroyCfEditor"
+      <NModal
+        v-model:show="editorVisible"
+        preset="card"
+        :title="editorIsNew ? '添加配置文件' : `编辑：${editorFileName}`"
+        style="width: 760px"
+        :bordered="false"
+        @after-leave="destroyCfEditor"
       >
         <div class="cf-editor-toolbar">
-          <t-input
+          <NInput
             v-if="editorIsNew"
-            v-model="editorFileName"
+            v-model:value="editorFileName"
             placeholder="文件名（如 startup.sh）"
             size="small"
             style="width: 220px"
           />
           <span v-else class="cf-editor-filename">{{ editorFileName }}</span>
           <input ref="cfFileInputRef" type="file" style="display:none" @change="onCfFileUpload" />
-          <t-button size="small" variant="outline" @click="cfFileInputRef?.click()">上传本地文件</t-button>
+          <UiButton variant="secondary" size="sm" @click="cfFileInputRef?.click()">上传本地文件</UiButton>
         </div>
         <div ref="cfEditorEl" class="code-editor" />
-      </t-dialog>
-
+        <template #footer>
+          <div class="modal-foot">
+            <UiButton variant="secondary" size="sm" @click="editorVisible = false">取消</UiButton>
+            <UiButton variant="primary" size="sm" :loading="editorSaving" @click="saveCfEditor">保存</UiButton>
+          </div>
+        </template>
+      </NModal>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import { useRoute } from 'vue-router'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { NInput, NCheckbox, NAlert, NModal, NDataTable, NProgress, NSpin, useMessage } from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { RefreshCw, Play, RotateCcw, Loader2 } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { getDeploy, createDeploy, updateDeploy, getDeployLogs, getDeployEnv, putDeployEnv, getWebhookInfo } from '@/api/deploy'
 import { updateApp } from '@/api/application'
-import DeployHero from '@/components/apps/DeployHero.vue'
 import type { Deploy, DeployLog, DeployForm, ConfigFile } from '@/types/api'
 import type { EnvVar } from '@/api/deploy'
 import { EditorView, basicSetup } from 'codemirror'
@@ -423,12 +405,12 @@ import { html } from '@codemirror/lang-html'
 import { StreamLanguage } from '@codemirror/language'
 import { toml } from '@codemirror/legacy-modes/mode/toml'
 import { properties } from '@codemirror/legacy-modes/mode/properties'
-
-// ── Local types ────────────────────────────────────────────────────────────
+import UiSection from '@/components/ui/UiSection.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
 
 type LocalEnvVar = EnvVar & { _revealed: boolean }
-
-// ── Runtime constants ──────────────────────────────────────────────────────
 
 const RUNTIMES = [
   { value: 'java',   icon: '☕', label: 'Java'   },
@@ -496,23 +478,24 @@ function parseCfJson(raw: string): ConfigFile[] {
   try { return JSON.parse(raw) } catch { return [] }
 }
 
-// ── Route & store ─────────────────────────────────────────────────────────
-
 const route = useRoute()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+const message = useMessage()
 const appId = computed(() => Number(route.params.appId))
 const app = computed(() => appStore.getById(appId.value))
-
-// ── Core data ──────────────────────────────────────────────────────────────
 
 const deploy = ref<Deploy | null>(null)
 const loading = ref(false)
 
-// ── Config files state ─────────────────────────────────────────────────────
-
 const cfList = ref<ConfigFile[]>([])
 const cfSaving = ref(false)
+
+const wizardOptions = [
+  { value: 'docker-compose', icon: '⚙️', label: 'Docker Compose', desc: '使用 docker-compose.yml 编排多个容器，支持 pull + up -d' },
+  { value: 'docker', icon: '🐳', label: 'Docker 单容器', desc: '拉取指定镜像，执行 docker run 命令启动单个容器' },
+  { value: 'native', icon: '📦', label: '文件部署', desc: '上传可执行文件（jar / binary / zip）到服务器并运行' },
+] as const
 
 async function saveCfList() {
   if (!deploy.value) return
@@ -520,17 +503,15 @@ async function saveCfList() {
   try {
     await updateDeploy(deploy.value.id, { ...deploy.value, config_files: JSON.stringify(cfList.value) } as any)
     deploy.value = await getDeploy(deploy.value.id)
-    MessagePlugin.success('配置文件已保存')
+    message.success('配置文件已保存')
   } catch (e: any) {
-    MessagePlugin.error(e?.message || '保存失败')
+    message.error(e?.message || '保存失败')
   } finally {
     cfSaving.value = false
   }
 }
 
 function deleteCfItem(i: number) { cfList.value.splice(i, 1) }
-
-// ── CodeMirror editor (config files) ──────────────────────────────────────
 
 const editorVisible = ref(false)
 const editorIsNew = ref(false)
@@ -543,13 +524,9 @@ let cfEditorView: EditorView | null = null
 
 function openCfEditor(idx: number | null) {
   if (idx === null) {
-    editorIsNew.value = true
-    editorFileName.value = ''
-    editorEditIdx.value = -1
+    editorIsNew.value = true; editorFileName.value = ''; editorEditIdx.value = -1
   } else {
-    editorIsNew.value = false
-    editorFileName.value = cfList.value[idx].name
-    editorEditIdx.value = idx
+    editorIsNew.value = false; editorFileName.value = cfList.value[idx].name; editorEditIdx.value = idx
   }
   editorVisible.value = true
   nextTick(() => initCfEditor(idx !== null ? cfList.value[idx].content : ''))
@@ -570,15 +547,12 @@ function destroyCfEditor() { cfEditorView?.destroy(); cfEditorView = null }
 
 async function saveCfEditor() {
   const fname = editorFileName.value.trim()
-  if (!fname) { MessagePlugin.warning('请输入文件名'); return }
+  if (!fname) { message.warning('请输入文件名'); return }
   const content = cfEditorView?.state.doc.toString() ?? ''
   editorSaving.value = true
   try {
-    if (editorIsNew.value) {
-      cfList.value.push({ name: fname, content })
-    } else {
-      cfList.value[editorEditIdx.value] = { name: fname, content }
-    }
+    if (editorIsNew.value) cfList.value.push({ name: fname, content })
+    else cfList.value[editorEditIdx.value] = { name: fname, content }
     await saveCfList()
     editorVisible.value = false
   } finally {
@@ -600,13 +574,8 @@ function onCfFileUpload(e: Event) {
   ;(e.target as HTMLInputElement).value = ''
 }
 
-// ── Wizard runtime ─────────────────────────────────────────────────────────
-
 const wizardRuntime = ref('')
-
-function selectWizardRuntime(rt: string) {
-  wizardRuntime.value = rt
-}
+function selectWizardRuntime(rt: string) { wizardRuntime.value = rt }
 
 async function loadDeploy() {
   const deployId = app.value?.deploy_id
@@ -626,14 +595,9 @@ watch(() => app.value?.deploy_id, (newId) => {
   else deploy.value = null
 })
 
-// ── Wizard ─────────────────────────────────────────────────────────────────
-
 const wizardType = ref<'docker-compose' | 'docker' | 'native' | ''>('')
 const wizardForm = reactive({
-  work_dir: '',
-  compose_file: 'docker-compose.yml',
-  image_name: '',
-  desired_version: '',
+  work_dir: '', compose_file: 'docker-compose.yml', image_name: '', desired_version: '',
 })
 const creating = ref(false)
 
@@ -649,9 +613,9 @@ watch(wizardType, () => {
 
 async function createAndLink() {
   if (!app.value || !wizardType.value) return
-  if (!wizardForm.work_dir) { MessagePlugin.warning('请填写工作目录'); return }
+  if (!wizardForm.work_dir) { message.warning('请填写工作目录'); return }
   if (wizardType.value === 'docker' && !wizardForm.image_name) {
-    MessagePlugin.warning('Docker 单容器需要填写镜像名称'); return
+    message.warning('Docker 单容器需要填写镜像名称'); return
   }
   creating.value = true
   try {
@@ -683,15 +647,13 @@ async function createAndLink() {
       db_conn_id: app.value.db_conn_id,
     })
     await appStore.fetch()
-    MessagePlugin.success('部署配置已创建并关联')
+    message.success('部署配置已创建并关联')
   } catch (e: any) {
-    MessagePlugin.error(e?.message || '创建失败')
+    message.error(e?.message || '创建失败')
   } finally {
     creating.value = false
   }
 }
-
-// ── Config edit ────────────────────────────────────────────────────────────
 
 const editMode = ref(false)
 const saving = ref(false)
@@ -729,15 +691,13 @@ async function saveEdit() {
     deploy.value = await getDeploy(deploy.value.id)
     cfList.value = parseCfJson(deploy.value.config_files)
     editMode.value = false
-    MessagePlugin.success('配置已保存')
+    message.success('配置已保存')
   } catch (e: any) {
-    MessagePlugin.error(e?.message || '保存失败')
+    message.error(e?.message || '保存失败')
   } finally {
     saving.value = false
   }
 }
-
-// ── Run / Rollback (SSE) ───────────────────────────────────────────────────
 
 const running = ref(false)
 const runStatus = ref('')
@@ -747,9 +707,7 @@ let runAbort: AbortController | null = null
 
 async function doRun(endpoint: 'run' | 'rollback') {
   if (!deploy.value) return
-  running.value = true
-  runStatus.value = ''
-  outputLines.value = []
+  running.value = true; runStatus.value = ''; outputLines.value = []
   runAbort = new AbortController()
   try {
     const res = await fetch(`/panel/api/v1/deploys/${deploy.value.id}/${endpoint}`, {
@@ -763,7 +721,7 @@ async function doRun(endpoint: 'run' | 'rollback') {
         nextTick(() => { if (termRef.value) termRef.value.scrollTop = termRef.value.scrollHeight })
       } else if (evt.type === 'done') {
         runStatus.value = evt.line
-        MessagePlugin[evt.line === 'success' ? 'success' : 'error'](evt.line === 'success' ? '部署成功' : '部署失败')
+        message[evt.line === 'success' ? 'success' : 'error'](evt.line === 'success' ? '部署成功' : '部署失败')
       }
     })
   } catch (e: any) {
@@ -796,8 +754,6 @@ async function consumeSSE(res: Response, onEvent: (evt: { type: string; line: st
   }
 }
 
-// ── File upload (native type) ──────────────────────────────────────────────
-
 const fileInputRef = ref<HTMLInputElement>()
 const uploadFile = ref<File | null>(null)
 const uploading = ref(false)
@@ -819,19 +775,15 @@ function onFileDrop(e: DragEvent) {
 }
 
 function clearUpload() {
-  uploadFile.value = null
-  uploadPhase.value = ''
-  uploadProgress.value = 0
-  uploadTotal.value = 0
+  uploadFile.value = null; uploadPhase.value = ''
+  uploadProgress.value = 0; uploadTotal.value = 0
   if (fileInputRef.value) fileInputRef.value.value = ''
 }
 
 async function doUpload() {
   if (!deploy.value || !uploadFile.value) return
-  uploading.value = true
-  uploadPhase.value = 'uploading'
-  uploadProgress.value = 0
-  uploadTotal.value = 0
+  uploading.value = true; uploadPhase.value = 'uploading'
+  uploadProgress.value = 0; uploadTotal.value = 0
   uploadAbort = new AbortController()
   const formData = new FormData()
   formData.append('file', uploadFile.value)
@@ -843,28 +795,17 @@ async function doUpload() {
       signal: uploadAbort.signal,
     })
     await consumeSSE(res, (evt) => {
-      if (evt.type === 'start') {
-        uploadPhase.value = 'transferring'
-        uploadTotal.value = evt.total ?? 0
-      } else if (evt.type === 'progress') {
-        uploadProgress.value = evt.bytes ?? 0
-        uploadTotal.value = evt.total ?? uploadTotal.value
-      } else if (evt.type === 'done') {
-        uploadPhase.value = 'done'
-        uploadProgress.value = uploadTotal.value
-        MessagePlugin.success(`文件已传输至远程服务器：${evt.path}`)
-      } else if (evt.type === 'error') {
-        MessagePlugin.error('上传失败：' + evt.msg)
-      }
+      if (evt.type === 'start') { uploadPhase.value = 'transferring'; uploadTotal.value = evt.total ?? 0 }
+      else if (evt.type === 'progress') { uploadProgress.value = evt.bytes ?? 0; uploadTotal.value = evt.total ?? uploadTotal.value }
+      else if (evt.type === 'done') { uploadPhase.value = 'done'; uploadProgress.value = uploadTotal.value; message.success(`文件已传输至远程服务器：${evt.path}`) }
+      else if (evt.type === 'error') { message.error('上传失败：' + evt.msg) }
     })
   } catch (e: any) {
-    if (e.name !== 'AbortError') MessagePlugin.error('上传失败：' + String(e))
+    if (e.name !== 'AbortError') message.error('上传失败：' + String(e))
   } finally {
     uploading.value = false
   }
 }
-
-// ── Env vars ───────────────────────────────────────────────────────────────
 
 const envVars = ref<LocalEnvVar[]>([])
 const envLoading = ref(false)
@@ -880,17 +821,9 @@ async function loadEnv() {
   finally { envLoading.value = false }
 }
 
-function addEnvRow() {
-  envVars.value.push({ key: '', value: '', secret: false, _revealed: false })
-}
-
-function removeEnvRow(i: number) {
-  envVars.value.splice(i, 1)
-}
-
-function onSecretToggle(v: LocalEnvVar) {
-  if (v.secret) v._revealed = false
-}
+function addEnvRow() { envVars.value.push({ key: '', value: '', secret: false, _revealed: false }) }
+function removeEnvRow(i: number) { envVars.value.splice(i, 1) }
+function onSecretToggle(v: LocalEnvVar) { if (v.secret) v._revealed = false }
 
 async function saveEnv() {
   if (!deploy.value) return
@@ -900,16 +833,14 @@ async function saveEnv() {
       .filter(v => v.key.trim())
       .map(({ key, value, secret }) => ({ key: key.trim(), value, secret }))
     await putDeployEnv(deploy.value.id, payload)
-    MessagePlugin.success('环境变量已保存')
+    message.success('环境变量已保存')
     await loadEnv()
   } catch (e: any) {
-    MessagePlugin.error(e?.message || '保存失败')
+    message.error(e?.message || '保存失败')
   } finally {
     envSaving.value = false
   }
 }
-
-// ── Webhook ────────────────────────────────────────────────────────────────
 
 const webhookInfo = ref<{ url: string; secret: string } | null>(null)
 const showSecret = ref(false)
@@ -920,21 +851,23 @@ async function loadWebhook() {
 }
 
 function copyText(text: string, msg: string) {
-  navigator.clipboard.writeText(text).then(() => MessagePlugin.success(msg))
+  navigator.clipboard.writeText(text).then(() => message.success(msg))
 }
-
-// ── Deploy logs ────────────────────────────────────────────────────────────
 
 const logs = ref<DeployLog[]>([])
 const logsLoading = ref(false)
 
-const logColumns = [
-  { colKey: 'expand', type: 'expand', width: 52 },
-  { colKey: 'created_at', title: '时间', width: 180 },
-  { colKey: 'status', title: '状态', width: 90 },
-  { colKey: 'duration', title: '耗时', width: 90 },
-  { colKey: 'output', title: '输出摘要', minWidth: 200, ellipsis: true },
-]
+const logColumns = computed<DataTableColumns<DeployLog>>(() => [
+  { type: 'expand', renderExpand: (row) => h('pre', { class: 'log-detail' }, row.output) },
+  { title: '时间', key: 'created_at', width: 180 },
+  {
+    title: '状态', key: 'status', width: 90,
+    render: (row) => h(UiBadge, { tone: row.status === 'success' ? 'success' : 'danger' },
+      () => row.status === 'success' ? '成功' : '失败'),
+  },
+  { title: '耗时', key: 'duration', width: 90, render: (row) => `${row.duration}s` },
+  { title: '输出摘要', key: 'output', minWidth: 200, ellipsis: { tooltip: true } },
+])
 
 async function loadLogs() {
   if (!deploy.value) return
@@ -942,8 +875,6 @@ async function loadLogs() {
   try { logs.value = await getDeployLogs(deploy.value.id, 20) }
   finally { logsLoading.value = false }
 }
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 const TYPE_LABELS: Record<string, string> = {
   'docker-compose': 'Docker Compose',
@@ -953,13 +884,28 @@ const TYPE_LABELS: Record<string, string> = {
 
 function typeLabel(t: string) { return TYPE_LABELS[t] ?? t }
 
-function syncTheme(s: string) {
-  return ({ synced: 'success', drifted: 'warning', error: 'danger' } as Record<string, string>)[s] ?? 'default'
+function syncTone(s: string): 'success' | 'warning' | 'danger' | 'neutral' {
+  return ({ synced: 'success', drifted: 'warning', error: 'danger' } as const)[s as 'synced' | 'drifted' | 'error'] ?? 'neutral'
 }
 
 function syncLabel(s: string) {
   return ({ synced: '已同步', drifted: '有差异', syncing: '同步中', error: '错误', '': '空闲' } as Record<string, string>)[s] ?? s
 }
+
+const syncStatusLabel = computed(() => syncLabel(deploy.value?.sync_status ?? ''))
+const dotClass = computed(() => {
+  switch (deploy.value?.sync_status) {
+    case 'synced':  return 'dot--ok'
+    case 'drifted': return 'dot--warn'
+    case 'syncing': return 'dot--info'
+    case 'error':   return 'dot--err'
+    default:        return 'dot--idle'
+  }
+})
+const deployBarClass = computed(() => ({
+  'deploy-bar--running': running.value,
+  'deploy-bar--drift':   deploy.value?.sync_status === 'drifted' || deploy.value?.sync_status === 'error',
+}))
 
 function fmtTime(s: string) {
   return new Date(s).toLocaleString('zh-CN', { hour12: false })
@@ -972,8 +918,6 @@ function fmtBytes(n: number) {
   return `${(n / 1073741824).toFixed(2)} GB`
 }
 
-// ── Lifecycle ──────────────────────────────────────────────────────────────
-
 onMounted(async () => {
   if (!appStore.apps.length) await appStore.fetch()
   await loadDeploy()
@@ -983,207 +927,209 @@ onBeforeUnmount(() => { cfEditorView?.destroy() })
 </script>
 
 <style scoped>
-/* ── Wizard ── */
-.wizard-card {
-  background: var(--ui-bg-surface);
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-lg);
-  box-shadow: var(--ui-shadow-xs);
-  padding: var(--ui-space-8) var(--ui-space-8) var(--ui-space-8);
-  max-width: 800px;
-  margin: 0 auto;
-}
+.dp-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.dp-loading { display: flex; justify-content: center; padding: var(--space-12); }
 
-.wizard-header { margin-bottom: var(--ui-space-6); }
-.wizard-title { font-size: 16px; font-weight: 600; color: var(--ui-fg); margin-bottom: var(--ui-space-1); }
-.wizard-subtitle { font-size: 13px; color: var(--ui-fg-3); }
+.wizard-card { max-width: 820px; margin: 0 auto; }
+.wizard-header { margin-bottom: var(--space-5); }
+.wizard-title { font-size: var(--fs-md); font-weight: var(--fw-semibold); color: var(--ui-fg); margin-bottom: var(--space-1); }
+.wizard-subtitle { font-size: var(--fs-sm); color: var(--ui-fg-3); }
 
 .type-cards {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--ui-space-4);
-  margin-bottom: var(--ui-space-6);
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3); margin-bottom: var(--space-5);
 }
-
 .type-card {
-  border: 2px solid var(--ui-border);
-  border-radius: 8px;
-  padding: var(--ui-space-6) var(--ui-space-4);
-  cursor: pointer;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  text-align: center;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-5) var(--space-3);
+  cursor: pointer; text-align: center;
+  background: var(--ui-bg-1);
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
-.type-card:hover { border-color: var(--ui-brand); box-shadow: 0 0 0 2px rgba(0,82,217,0.08); }
-.type-card.active { border-color: var(--ui-brand); background: var(--ui-brand-soft); }
-.type-card-icon { font-size: 28px; margin-bottom: var(--ui-space-2); }
-.type-card-title { font-size: 14px; font-weight: 600; color: var(--ui-fg); margin-bottom: var(--ui-space-2); }
-.type-card-desc { font-size: 12px; color: var(--ui-fg-3); line-height: 1.5; }
+.type-card:hover { border-color: var(--ui-brand); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.type-card.is-active { border-color: var(--ui-brand); background: var(--ui-brand-soft); box-shadow: var(--shadow-ring); }
+.type-card__icon { font-size: 28px; margin-bottom: var(--space-2); }
+.type-card__title { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--ui-fg); margin-bottom: var(--space-1); }
+.type-card__desc { font-size: var(--fs-xs); color: var(--ui-fg-3); line-height: var(--lh-relaxed); }
 
 .wizard-divider {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ui-fg-3);
-  letter-spacing: 0.5px;
-  margin-bottom: var(--ui-space-4);
-  padding-bottom: var(--ui-space-2);
+  font-size: var(--fs-xs); font-weight: var(--fw-semibold);
+  color: var(--ui-fg-3); letter-spacing: 0.5px;
+  margin-bottom: var(--space-3); padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--ui-border);
 }
+.divider-hint { font-weight: var(--fw-regular); color: var(--ui-fg-4); margin-left: var(--space-2); }
+.wizard-footer { margin-top: var(--space-5); display: flex; justify-content: flex-end; }
 
-.wizard-form-grid { max-width: 600px; }
-
-.wizard-footer { margin-top: var(--ui-space-6); }
-
-/* ── Form grid ── */
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--ui-space-4);
-}
-.form-field { display: flex; flex-direction: column; gap: var(--ui-space-2); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.form-field { display: flex; flex-direction: column; gap: var(--space-2); }
 .form-field--full { grid-column: span 2; }
-.form-label { font-size: 13px; color: var(--ui-fg); font-weight: 500; }
-.form-required { color: var(--ui-danger); margin-left: var(--ui-space-1); }
-.form-hint { font-size: 12px; color: var(--ui-fg-3); line-height: 1.4; }
+.form-label { font-size: var(--fs-sm); color: var(--ui-fg); font-weight: var(--fw-medium); }
+.form-required { color: var(--ui-danger); margin-left: var(--space-1); }
+.form-hint { font-size: var(--fs-xs); color: var(--ui-fg-3); line-height: 1.4; }
 
-/* ── Config body ── */
-.config-body { padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6); }
-
-:deep(.t-descriptions__label) { color: var(--ui-fg-3); font-size: 13px; min-width: 80px; }
-:deep(.t-descriptions__content) { font-size: 13px; }
-
-/* ── Upload area ── */
-.upload-area { padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-1); }
-
-.upload-zone {
-  border: 2px dashed var(--ui-border);
-  border-radius: 8px;
-  padding: var(--ui-space-6);
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  position: relative;
-  margin-bottom: var(--ui-space-4);
-}
-.upload-zone:hover,
-.upload-zone--drag { border-color: var(--ui-brand); background: var(--ui-brand-soft); }
-.upload-zone--active { border-color: var(--ui-success); background: var(--ui-success-soft); border-style: solid; }
-.file-input-hidden { position: absolute; opacity: 0; width: 0; height: 0; }
-.upload-zone-icon { font-size: 28px; margin-bottom: var(--ui-space-2); }
-.upload-zone-text { font-size: 14px; font-weight: 500; color: var(--ui-fg); }
-.upload-zone-hint { font-size: 12px; color: var(--ui-fg-3); margin-top: var(--ui-space-1); }
-
-.upload-progress-area { margin-bottom: var(--ui-space-4); }
-.upload-progress-header { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--ui-fg-3); margin-bottom: var(--ui-space-2); }
-.upload-size-text { font-size: 12px; color: var(--ui-fg-3); }
-
-.upload-actions { display: flex; gap: var(--ui-space-2); margin-bottom: var(--ui-space-4); }
-
-/* ── Terminal ── */
-.terminal-wrap { padding: 0 var(--ui-space-6) var(--ui-space-6); }
-.terminal-status-bar { display: flex; align-items: center; gap: var(--ui-space-2); margin-bottom: var(--ui-space-2); }
-.deploy-terminal {
-  background: #1a2332;
-  color: #e0e0e0;
-  font-family: 'JetBrains Mono', Menlo, monospace;
-  font-size: 12.5px;
-  line-height: 1.65;
-  padding: var(--ui-space-4);
-  border-radius: 6px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 480px;
-  min-height: 120px;
-  margin: 0;
-}
-.terminal-placeholder { padding: var(--ui-space-6); text-align: center; font-size: 13px; color: var(--ui-fg-3); }
-
-/* ── Env vars ── */
-.env-body { padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6); display: flex; flex-direction: column; gap: var(--ui-space-2); }
-.env-empty { font-size: 13px; color: var(--ui-fg-3); padding: var(--ui-space-2) 0; }
-.env-row { display: flex; align-items: center; gap: var(--ui-space-2); }
-.env-key { width: 180px; flex-shrink: 0; }
-.env-value-wrap { flex: 1; }
-.env-value { width: 100%; }
-
-/* ── Webhook ── */
-.webhook-body { padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6); display: flex; flex-direction: column; gap: var(--ui-space-4); }
-.webhook-row { display: flex; align-items: center; gap: var(--ui-space-4); }
-.webhook-label { font-size: 13px; color: var(--ui-fg-3); width: 100px; flex-shrink: 0; }
-.webhook-value-wrap { display: flex; align-items: center; gap: var(--ui-space-2); flex: 1; min-width: 0; }
-.webhook-url { font-family: 'JetBrains Mono', Menlo, monospace; font-size: 12px; background: var(--ui-muted-soft); padding: var(--ui-space-1) var(--ui-space-2); border-radius: 4px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.webhook-alert { margin-top: var(--ui-space-1); }
-
-/* ── Log table ── */
-.table-wrap { padding: 0 var(--ui-space-6) var(--ui-space-4); }
-:deep(.t-table td) { font-size: 13px; }
-.log-detail { background: #1a2332; color: #e0e0e0; font-size: 12px; line-height: 1.6; padding: var(--ui-space-4); border-radius: 4px; white-space: pre-wrap; word-break: break-all; max-height: 300px; overflow-y: auto; margin: var(--ui-space-2) var(--ui-space-4); }
-
-/* ── Empty state ── */
-.empty-block { padding: var(--ui-space-8) var(--ui-space-6); display: flex; justify-content: center; }
-
-/* ── Runtime chips ── */
-.runtime-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ui-space-2);
-  padding: 0 0 var(--ui-space-6);
-}
-.runtime-chips--sm { padding: var(--ui-space-1) 0 0; }
+.runtime-chips { display: flex; flex-wrap: wrap; gap: var(--space-2); padding-bottom: var(--space-3); }
+.runtime-chips--sm { padding: 0; }
 .runtime-chip {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  padding: var(--ui-space-2) var(--ui-space-4);
-  border: 1.5px solid var(--ui-border);
-  border-radius: 20px;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-pill);
   cursor: pointer;
-  font-size: 13px;
-  color: var(--ui-fg-3);
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  font-size: var(--fs-sm); color: var(--ui-fg-3);
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.runtime-chip:hover { border-color: var(--ui-brand); color: var(--ui-brand); }
-.runtime-chip.active { border-color: var(--ui-brand); background: var(--ui-brand-soft); color: var(--ui-brand); font-weight: 500; }
+.runtime-chip:hover { border-color: var(--ui-brand); color: var(--ui-brand-fg); }
+.runtime-chip.is-active { border-color: var(--ui-brand); background: var(--ui-brand-soft); color: var(--ui-brand-fg); font-weight: var(--fw-medium); }
 .rt-icon { font-size: 16px; }
-.rt-label { font-size: 13px; }
-.divider-hint { font-size: 12px; font-weight: 400; color: var(--ui-fg-placeholder); margin-left: var(--ui-space-2); }
+.rt-label { font-size: var(--fs-sm); }
 
-/* ── Config files section ── */
-.cf-body { padding: var(--ui-space-2) var(--ui-space-6) var(--ui-space-4); }
-.cf-empty {
-  font-size: 13px;
-  color: var(--ui-fg-3);
-  padding: var(--ui-space-4) 0 var(--ui-space-2);
-  line-height: 1.6;
+.cfg-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-6);
 }
-.cf-empty code { font-family: var(--ui-font-mono, monospace); font-size: 12px; background: var(--ui-muted-soft); padding: 1px 5px; border-radius: 3px; color: var(--ui-brand); }
+@media (max-width: 720px) { .cfg-grid { grid-template-columns: 1fr; } }
+.cfg-cell { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) 0; min-width: 0; }
+.cfg-cell .lbl { flex-shrink: 0; width: 84px; font-size: var(--fs-xs); color: var(--ui-fg-3); }
+.cfg-cell .val { font-size: var(--fs-sm); color: var(--ui-fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+
+.cf-empty { font-size: var(--fs-sm); color: var(--ui-fg-3); line-height: 1.6; padding: var(--space-2) 0; }
+.cf-empty code { font-family: var(--font-mono); font-size: var(--fs-xs); background: var(--ui-bg-2); padding: 1px 6px; border-radius: var(--radius-sm); color: var(--ui-brand-fg); }
 .cf-row {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  padding: var(--ui-space-2) 0;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) 0;
   border-bottom: 1px solid var(--ui-border);
 }
 .cf-row:last-child { border-bottom: none; }
-.cf-name { font-family: var(--ui-font-mono, monospace); font-size: 13px; font-weight: 500; color: var(--ui-fg); flex: 1; }
+.cf-name { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--ui-fg); flex: 1; }
 .cf-ext-badge {
-  font-size: 11px;
-  color: var(--ui-fg-3);
-  background: var(--ui-muted-soft);
-  padding: 1px 6px;
-  border-radius: 3px;
-  text-transform: uppercase;
+  font-size: var(--fs-xs); color: var(--ui-fg-3);
+  background: var(--ui-bg-2); padding: 1px 6px;
+  border-radius: var(--radius-sm); text-transform: uppercase;
 }
-.cf-actions-inline { margin-left: auto; }
+.cf-actions { margin-left: auto; display: flex; gap: var(--space-1); }
 
-/* ── Config file editor dialog ── */
-.cf-editor-toolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  padding: var(--ui-space-2) 0 var(--ui-space-2);
+.upload-card { margin-bottom: var(--space-3); }
+.upload-zone {
+  border: 1px dashed var(--ui-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  text-align: center; cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  position: relative;
+  margin-bottom: var(--space-3);
 }
-.cf-editor-filename { font-family: var(--ui-font-mono, monospace); font-size: 13px; font-weight: 500; flex: 1; }
-.code-editor { height: 420px; overflow: hidden; border-radius: 4px; }
+.upload-zone:hover, .upload-zone.is-drag { border-color: var(--ui-brand); background: var(--ui-brand-soft); }
+.upload-zone.is-active { border-color: var(--ui-success); background: var(--ui-success-soft); border-style: solid; }
+.file-input-hidden { position: absolute; opacity: 0; width: 0; height: 0; }
+.upload-zone__icon { font-size: 28px; margin-bottom: var(--space-2); }
+.upload-zone__text { font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--ui-fg); }
+.upload-zone__hint { font-size: var(--fs-xs); color: var(--ui-fg-3); margin-top: var(--space-1); }
+
+.upload-progress { margin-bottom: var(--space-3); }
+.upload-progress__head { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-sm); color: var(--ui-fg-3); margin-bottom: var(--space-2); }
+.upload-size { font-size: var(--fs-xs); color: var(--ui-fg-3); }
+.upload-actions { display: flex; gap: var(--space-2); }
+
+.terminal-card { padding: 0 !important; }
+.term-status { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--ui-border); }
+.deploy-terminal {
+  background: #0A0A0A; color: #E4E4E7;
+  font-family: var(--font-mono); font-size: 12.5px; line-height: 1.65;
+  padding: var(--space-4);
+  overflow-y: auto;
+  white-space: pre-wrap; word-break: break-all;
+  max-height: 480px; min-height: 120px;
+  margin: 0;
+}
+.terminal-placeholder { padding: var(--space-6); text-align: center; font-size: var(--fs-sm); color: var(--ui-fg-3); }
+
+.env-empty { font-size: var(--fs-sm); color: var(--ui-fg-3); padding: var(--space-2) 0; }
+.env-row { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; }
+.env-key { width: 180px; flex-shrink: 0; }
+.env-value { flex: 1; }
+
+.webhook-row { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+.webhook-label { font-size: var(--fs-sm); color: var(--ui-fg-3); width: 100px; flex-shrink: 0; }
+.webhook-url {
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  background: var(--ui-bg-2); padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm); flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 1px solid var(--ui-border);
+}
+.webhook-alert { margin-top: var(--space-2); }
+
+.cf-editor-toolbar {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+.cf-editor-filename { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: var(--fw-medium); flex: 1; }
+.code-editor { height: 420px; overflow: hidden; border-radius: var(--radius-sm); border: 1px solid var(--ui-border); }
 :deep(.cm-editor) { height: 100%; }
+
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+:deep(.mono) {
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  background: var(--ui-bg-2); border: 1px solid var(--ui-border);
+  padding: 1px 6px; border-radius: var(--radius-sm);
+  color: var(--ui-fg-2);
+}
+:deep(.text-danger) { color: var(--ui-danger-fg); }
+:deep(.log-detail) {
+  background: #0A0A0A; color: #E4E4E7;
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.6;
+  padding: var(--space-3); border-radius: var(--radius-sm);
+  white-space: pre-wrap; word-break: break-all;
+  max-height: 300px; overflow-y: auto;
+  margin: var(--space-2);
+}
+</style>
+
+<style>
+/* Teleport 到 #app-bar-actions，需用全局样式 */
+.deploy-bar {
+  display: flex; align-items: center; gap: var(--space-3);
+}
+.deploy-bar__status {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 4px 10px;
+  background: var(--ui-bg-2);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-pill);
+  font-size: var(--fs-sm); color: var(--ui-fg-2);
+}
+.deploy-bar__dot {
+  width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+}
+.deploy-bar__dot.dot--ok   { background: var(--ui-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-success) 22%, transparent); }
+.deploy-bar__dot.dot--warn { background: var(--ui-warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-warning) 22%, transparent); }
+.deploy-bar__dot.dot--err  { background: var(--ui-danger);  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-danger) 22%, transparent); }
+.deploy-bar__dot.dot--info { background: var(--ui-brand);   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-brand) 22%, transparent); animation: deploy-bar-blink 1.2s ease-in-out infinite; }
+.deploy-bar__dot.dot--idle { background: var(--ui-fg-4); opacity: .55; }
+@keyframes deploy-bar-blink { 50% { opacity: .45; } }
+
+.deploy-bar__label { font-weight: var(--fw-medium); color: var(--ui-fg); }
+.deploy-bar__ver {
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  background: var(--ui-bg-1);
+  border: 1px solid var(--ui-border);
+  padding: 1px 6px; border-radius: var(--radius-sm);
+  color: var(--ui-fg);
+}
+.deploy-bar__ver--target { color: var(--ui-brand-fg); border-color: var(--ui-brand); }
+.deploy-bar__arrow { color: var(--ui-fg-3); }
+
+.deploy-bar--drift .deploy-bar__status { border-color: var(--ui-warning); background: var(--ui-warning-soft); }
+.deploy-bar--running .deploy-bar__status { border-color: var(--ui-brand); background: var(--ui-brand-soft); }
+
+.deploy-bar__actions { display: inline-flex; align-items: center; gap: var(--space-2); }
+.deploy-bar__running {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--fs-xs); color: var(--ui-brand-fg);
+}
+.deploy-bar__running .spin { animation: deploy-bar-spin 1s linear infinite; }
+@keyframes deploy-bar-spin { to { transform: rotate(360deg); } }
 </style>

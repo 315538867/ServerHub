@@ -1,51 +1,46 @@
 <template>
-  <div class="page-container">
+  <div class="svc-page">
     <template v-if="app?.container_name && app?.server_id">
-      <div class="section-block">
-        <div class="section-title">
-          <span class="title-text">容器管理</span>
-          <t-button variant="outline" size="small" :loading="loading" @click="loadContainers">
-            <template #icon><refresh-icon /></template>
+      <UiCard padding="none">
+        <div class="svc-head">
+          <span class="svc-title">容器管理</span>
+          <UiButton variant="secondary" size="sm" :loading="loading" @click="loadContainers">
+            <template #icon><RefreshCw :size="14" /></template>
             刷新
-          </t-button>
+          </UiButton>
         </div>
-        <div class="table-wrap">
-          <t-table :data="containers" :columns="containerColumns" :loading="loading" row-key="id" stripe size="small">
-            <template #status="{ row }">
-              <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ row.status }}</t-tag>
-            </template>
-            <template #operations="{ row }">
-              <t-space size="small">
-                <t-button v-if="row.state !== 'running'" theme="success" size="small" variant="text" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</t-button>
-                <t-button v-if="row.state === 'running'" theme="warning" size="small" variant="text" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</t-button>
-                <t-button size="small" variant="text" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</t-button>
-                <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
-                <t-button size="small" variant="text" @click="openInspect(row)">详情</t-button>
-              </t-space>
-            </template>
-          </t-table>
-        </div>
-      </div>
+        <NDataTable
+          :columns="columns"
+          :data="containers"
+          :loading="loading"
+          :row-key="(row: ContainerItem) => row.id"
+          size="small"
+          :bordered="false"
+        />
+      </UiCard>
     </template>
-    <div v-else class="section-block empty-block">
-      <t-empty description="该应用未关联 Docker 容器，请先在应用设置中配置 container_name" />
-    </div>
+    <UiCard v-else padding="lg">
+      <EmptyBlock description="该应用未关联 Docker 容器，请先在应用设置中配置 container_name" />
+    </UiCard>
 
-    <t-drawer v-model:visible="logsVisible" :header="`容器日志 — ${logsContainer}`" size="60%" @closed="onLogsClosed">
-      <div ref="logsEl" class="logs-terminal" />
-    </t-drawer>
+    <NDrawer v-model:show="logsVisible" :width="720" @after-leave="onLogsClosed">
+      <NDrawerContent :title="`容器日志 — ${logsContainer}`" :native-scrollbar="false">
+        <div ref="logsEl" class="logs-terminal" />
+      </NDrawerContent>
+    </NDrawer>
 
-    <t-dialog v-model:visible="inspectVisible" header="容器详情" width="720px" :footer="false">
+    <NModal v-model:show="inspectVisible" preset="card" title="容器详情" style="width: 720px" :bordered="false">
       <pre class="inspect-json">{{ inspectJson }}</pre>
-    </t-dialog>
+    </NModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import { useRoute } from 'vue-router'
-import { RefreshIcon } from 'tdesign-icons-vue-next'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { NDataTable, NDrawer, NDrawerContent, NModal, useMessage } from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { RefreshCw } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -53,10 +48,15 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { getContainers, containerAction, getContainerInspect, containerLogsWsUrl } from '@/api/docker'
 import type { ContainerItem } from '@/api/docker'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
 const appStore = useAppStore()
+const message = useMessage()
 const appId = computed(() => Number(route.params.appId))
 const app = computed(() => appStore.getById(appId.value))
 const serverId = computed(() => app.value?.server_id ?? 0)
@@ -65,13 +65,41 @@ const containers = ref<ContainerItem[]>([])
 const loading = ref(false)
 const actionLoading = ref('')
 
-const containerColumns = [
-  { colKey: 'names', title: '名称', minWidth: 140, ellipsis: true },
-  { colKey: 'image', title: '镜像', minWidth: 160, ellipsis: true },
-  { colKey: 'status', title: '状态', width: 110 },
-  { colKey: 'ports', title: '端口', minWidth: 160, ellipsis: true },
-  { colKey: 'operations', title: '操作', width: 260, fixed: 'right' as const },
-]
+function stateTone(state: string): any {
+  return ({ running: 'success', paused: 'warning', exited: 'neutral' } as Record<string, string>)[state] ?? 'danger'
+}
+
+const columns = computed<DataTableColumns<ContainerItem>>(() => [
+  { title: '名称', key: 'names', minWidth: 160, ellipsis: { tooltip: true } },
+  { title: '镜像', key: 'image', minWidth: 180, ellipsis: { tooltip: true } },
+  {
+    title: '状态', key: 'status', width: 140,
+    render: (row) => h(UiBadge, { tone: stateTone(row.state) }, () => row.status),
+  },
+  { title: '端口', key: 'ports', minWidth: 160, ellipsis: { tooltip: true } },
+  {
+    title: '操作', key: 'operations', width: 280, fixed: 'right' as const,
+    render: (row) => h('div', { class: 'cell-ops' }, [
+      row.state !== 'running' ? h(UiButton, {
+        variant: 'ghost', size: 'sm',
+        loading: actionLoading.value === `${row.id}_start`,
+        onClick: () => doAction(row, 'start'),
+      }, () => '启动') : null,
+      row.state === 'running' ? h(UiButton, {
+        variant: 'ghost', size: 'sm',
+        loading: actionLoading.value === `${row.id}_stop`,
+        onClick: () => doAction(row, 'stop'),
+      }, () => '停止') : null,
+      h(UiButton, {
+        variant: 'ghost', size: 'sm',
+        loading: actionLoading.value === `${row.id}_restart`,
+        onClick: () => doAction(row, 'restart'),
+      }, () => '重启'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openLogs(row) }, () => '日志'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openInspect(row) }, () => '详情'),
+    ]),
+  },
+])
 
 const logsVisible = ref(false)
 const logsContainer = ref('')
@@ -81,10 +109,6 @@ let logsWs: WebSocket | null = null
 
 const inspectVisible = ref(false)
 const inspectJson = ref('')
-
-function stateTheme(state: string) {
-  return ({ running: 'success', paused: 'warning', exited: 'default' } as Record<string, string>)[state] ?? 'danger'
-}
 
 async function loadContainers() {
   if (!serverId.value) return
@@ -98,9 +122,9 @@ async function doAction(row: ContainerItem, action: 'start' | 'stop' | 'restart'
   actionLoading.value = key
   try {
     await containerAction(serverId.value, row.id, action)
-    MessagePlugin.success('操作成功')
+    message.success('操作成功')
     await loadContainers()
-  } catch { MessagePlugin.error('操作失败') }
+  } catch { message.error('操作失败') }
   finally { actionLoading.value = '' }
 }
 
@@ -110,7 +134,10 @@ function openLogs(row: ContainerItem) {
   nextTick(() => {
     if (!logsEl.value) return
     logsTerm?.dispose()
-    logsTerm = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
+    logsTerm = new Terminal({
+      theme: { background: '#0A0A0A', foreground: '#E4E4E7' },
+      convertEol: true, fontSize: 12,
+    })
     const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
     logsWs?.close()
     logsWs = new WebSocket(containerLogsWsUrl(serverId.value, row.id, auth.token))
@@ -132,7 +159,7 @@ async function openInspect(row: ContainerItem) {
     }
     inspectJson.value = JSON.stringify(arr[0] ?? data, null, 2)
     inspectVisible.value = true
-  } catch { MessagePlugin.error('获取详情失败') }
+  } catch { message.error('获取详情失败') }
 }
 
 onMounted(async () => {
@@ -143,17 +170,34 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose() })
 </script>
 
 <style scoped>
-.table-wrap {
-  padding: 0 var(--ui-space-6) var(--ui-space-4);
+.svc-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.svc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--ui-border);
 }
-.empty-block {
-  padding: var(--ui-space-8) var(--ui-space-6);
-  display: flex;
-  justify-content: center;
+.svc-title { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--ui-fg); }
+:deep(.cell-ops) { display: inline-flex; gap: var(--space-1); align-items: center; }
+.logs-terminal {
+  width: 100%; height: calc(100vh - 140px);
+  background: #0A0A0A;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  padding: var(--space-3);
 }
-:deep(.t-table td) {
-  font-size: 13px;
+.inspect-json {
+  background: var(--ui-bg-2);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: auto;
+  max-height: 70vh;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--ui-fg-2);
 }
-.logs-terminal { width: 100%; height: calc(100vh - 120px); background: #1a2332; border-radius: 4px; overflow: hidden; }
-.inspect-json { background: var(--td-bg-color-secondarycontainer); border-radius: 4px; padding: var(--ui-space-4); font-size: 12px; line-height: 1.6; overflow: auto; max-height: 70vh; margin: 0; white-space: pre-wrap; word-break: break-all; }
 </style>

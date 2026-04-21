@@ -27,9 +27,9 @@
     "codemirror": "^6.0.2",
     "dayjs": "^1.11.10",
     "echarts": "^5.5.0",
+    "lucide-vue-next": "^0.453.0",
+    "naive-ui": "^2.40.4",
     "pinia": "^2.1.7",
-    "tdesign-icons-vue-next": "^0.4.4",
-    "tdesign-vue-next": "^1.19.1",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0"
   },

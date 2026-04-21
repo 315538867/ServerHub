@@ -1,23 +1,26 @@
 <template>
-  <div class="metrics-card">
+  <UiCard padding="md" class="metrics-card">
     <div class="mc-header">
       <span class="mc-title">实时指标</span>
       <div class="mc-actions">
         <span v-if="lastUpdate" class="mc-time">{{ lastUpdate }}</span>
-        <t-button size="small" variant="text" :loading="loading" @click="tick">刷新</t-button>
-        <t-switch v-model="autoRefresh" size="small">
-          <template #label>自动</template>
-        </t-switch>
+        <UiButton variant="ghost" size="sm" :loading="loading" @click="tick">
+          <template #icon><RefreshCw :size="13" /></template>
+          刷新
+        </UiButton>
+        <span class="mc-auto">
+          <NSwitch v-model:value="autoRefresh" size="small" />
+          <span class="mc-auto-lbl">自动</span>
+        </span>
       </div>
     </div>
 
     <div v-if="!metrics || !metrics.available" class="mc-empty">
-      <t-icon-info-circle class="mc-empty-icon" />
+      <Info :size="20" class="mc-empty-icon" />
       <div class="mc-empty-text">{{ metrics?.reason || '加载中…' }}</div>
     </div>
 
     <div v-else class="mc-grid">
-      <!-- CPU -->
       <div class="mc-item">
         <div class="mc-item-head">
           <span class="mc-cap">CPU</span>
@@ -26,21 +29,20 @@
         <svg class="mc-spark" viewBox="0 0 120 32" preserveAspectRatio="none">
           <polyline
             v-if="cpuHistory.length > 1"
+            :points="sparkArea(cpuHistory, 100)"
+            fill="color-mix(in srgb, var(--ui-brand) 14%, transparent)"
+            stroke="none"
+          />
+          <polyline
+            v-if="cpuHistory.length > 1"
             :points="sparkPoints(cpuHistory, 100)"
             fill="none"
             stroke="var(--ui-brand)"
             stroke-width="1.5"
           />
-          <polyline
-            v-if="cpuHistory.length > 1"
-            :points="sparkArea(cpuHistory, 100)"
-            fill="color-mix(in srgb, var(--ui-brand) 14%, transparent)"
-            stroke="none"
-          />
         </svg>
       </div>
 
-      <!-- Memory -->
       <div class="mc-item">
         <div class="mc-item-head">
           <span class="mc-cap">内存</span>
@@ -50,21 +52,20 @@
         <svg class="mc-spark" viewBox="0 0 120 32" preserveAspectRatio="none">
           <polyline
             v-if="memHistory.length > 1"
-            :points="sparkPoints(memHistory, 100)"
-            fill="none"
-            stroke="#67c23a"
-            stroke-width="1.5"
+            :points="sparkArea(memHistory, 100)"
+            fill="color-mix(in srgb, var(--ui-success) 14%, transparent)"
+            stroke="none"
           />
           <polyline
             v-if="memHistory.length > 1"
-            :points="sparkArea(memHistory, 100)"
-            fill="color-mix(in srgb, #67c23a 14%, transparent)"
-            stroke="none"
+            :points="sparkPoints(memHistory, 100)"
+            fill="none"
+            stroke="var(--ui-success)"
+            stroke-width="1.5"
           />
         </svg>
       </div>
 
-      <!-- Network -->
       <div class="mc-item">
         <div class="mc-item-head">
           <span class="mc-cap">网络 I/O</span>
@@ -72,7 +73,6 @@
         </div>
       </div>
 
-      <!-- Block -->
       <div class="mc-item">
         <div class="mc-item-head">
           <span class="mc-cap">磁盘 I/O</span>
@@ -80,24 +80,26 @@
         </div>
       </div>
 
-      <!-- PIDs -->
       <div class="mc-item mc-item--compact">
         <span class="mc-cap">进程数</span>
         <span class="mc-val">{{ metrics.pids }}</span>
       </div>
 
-      <!-- Container ID -->
       <div class="mc-item mc-item--compact">
         <span class="mc-cap">容器 ID</span>
         <code class="mc-code">{{ metrics.container_id.slice(0, 12) }}</code>
       </div>
     </div>
-  </div>
+  </UiCard>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { NSwitch } from 'naive-ui'
+import { RefreshCw, Info } from 'lucide-vue-next'
 import { getAppMetrics, type AppMetrics } from '@/api/application'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
 
 const props = defineProps<{ appId: number }>()
 
@@ -106,7 +108,6 @@ const loading = ref(false)
 const autoRefresh = ref(true)
 const lastUpdate = ref('')
 
-// 60 点环形缓冲
 const cpuHistory = ref<number[]>([])
 const memHistory = ref<number[]>([])
 const MAX_POINTS = 60
@@ -127,7 +128,6 @@ async function tick() {
       lastUpdate.value = new Date().toLocaleTimeString('zh-CN')
     }
   } catch {
-    // 静默：容器暂时不可达是正常状态
   } finally {
     loading.value = false
   }
@@ -147,7 +147,6 @@ watch(() => props.appId, () => { cpuHistory.value = []; memHistory.value = []; t
 onMounted(() => { tick(); startTimer() })
 onBeforeUnmount(stopTimer)
 
-// 绘制 sparkline：将数组归一化到 0-32 Y 范围、X 平均铺满 0-120
 function sparkPoints(data: number[], maxVal: number): string {
   const n = data.length
   if (n < 2) return ''
@@ -179,42 +178,59 @@ function sparkArea(data: number[], maxVal: number): string {
 </script>
 
 <style scoped>
-.metrics-card {
-  background: var(--ui-bg-surface);
-  border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6);
-}
+.metrics-card { display: block; }
 .mc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--ui-space-4);
+  margin-bottom: var(--space-3);
 }
-.mc-title { font-size: 14px; font-weight: 600; color: var(--ui-fg); }
-.mc-actions { display: flex; align-items: center; gap: var(--ui-space-2); }
-.mc-time { font-size: 11px; color: var(--ui-fg-3); font-variant-numeric: tabular-nums; }
+.mc-title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--ui-fg);
+}
+.mc-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.mc-time {
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+  font-variant-numeric: tabular-nums;
+}
+.mc-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.mc-auto-lbl { font-size: var(--fs-xs); color: var(--ui-fg-3); }
 
 .mc-empty {
-  padding: var(--ui-space-6) 0;
+  padding: var(--space-5) 0;
   text-align: center;
   color: var(--ui-fg-3);
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
-.mc-empty-icon { font-size: 20px; opacity: 0.5; margin-bottom: var(--ui-space-2); display: inline-block; }
+.mc-empty-icon {
+  opacity: 0.5;
+  margin-bottom: var(--space-2);
+  display: inline-block;
+}
 
 .mc-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--ui-space-4);
+  gap: var(--space-3);
 }
 .mc-item {
   display: flex;
   flex-direction: column;
-  gap: var(--ui-space-2);
-  padding: var(--ui-space-2) var(--ui-space-4);
-  background: color-mix(in srgb, var(--ui-fg) 3%, transparent);
-  border-radius: 8px;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--ui-bg-1);
+  border-radius: var(--radius-sm);
 }
 .mc-item--compact {
   flex-direction: row;
@@ -225,30 +241,30 @@ function sparkArea(data: number[], maxVal: number): string {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--ui-space-2);
+  gap: var(--space-2);
 }
 .mc-cap {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
 .mc-val {
-  font-size: 20px;
-  font-weight: 600;
+  font-size: var(--fs-2xl);
+  font-weight: var(--fw-semibold);
   color: var(--ui-fg);
   font-variant-numeric: tabular-nums;
 }
-.mc-val small { font-size: 12px; opacity: 0.6; margin-left: var(--ui-space-1); }
+.mc-val small { font-size: var(--fs-xs); opacity: 0.6; margin-left: 2px; }
 .mc-val-text {
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--ui-fg);
-  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-family: var(--font-mono);
 }
 .mc-sub {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
-  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-family: var(--font-mono);
 }
 .mc-spark {
   width: 100%;
@@ -256,11 +272,11 @@ function sparkArea(data: number[], maxVal: number): string {
   display: block;
 }
 .mc-code {
-  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
-  font-size: 12px;
-  background: var(--ui-bg-subtle, rgba(0,0,0,.04));
-  padding: 1px 6px;
-  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  background: var(--ui-bg-2);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
   color: var(--ui-fg);
 }
 </style>

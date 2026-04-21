@@ -1,162 +1,151 @@
 <template>
-  <div class="page-container">
+  <div class="dom-page">
     <template v-if="app?.site_name && app?.server_id">
-      <!-- Nginx 站点 -->
-      <div class="section-block">
-        <div class="section-title">
-          <span class="title-text">Nginx 站点</span>
-          <t-space size="small">
-            <t-button theme="primary" size="small" @click="openCreate">添加站点</t-button>
-            <t-button size="small" :loading="reloading" @click="doReload">重载</t-button>
-            <t-button size="small" theme="warning" @click="doRestart">重启</t-button>
-            <t-button size="small" variant="outline" :loading="loading" @click="loadSites">
-              <template #icon><refresh-icon /></template>
-              刷新
-            </t-button>
-          </t-space>
-        </div>
-        <div class="table-wrap">
-          <t-table :data="sites" :columns="siteColumns" :loading="loading" row-key="name" stripe size="small">
-            <template #status="{ row }">
-              <t-tag :theme="row.enabled ? 'success' : 'default'" variant="light" size="small">
-                {{ row.enabled ? '启用' : '禁用' }}
-              </t-tag>
-            </template>
-            <template #operations="{ row }">
-              <t-space size="small">
-                <t-button v-if="!row.enabled" theme="success" size="small" variant="text" @click="toggleSite(row, true)">启用</t-button>
-                <t-button v-if="row.enabled" theme="warning" size="small" variant="text" @click="toggleSite(row, false)">禁用</t-button>
-                <t-button size="small" variant="text" @click="openEdit(row)">编辑配置</t-button>
-                <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
-                <t-popconfirm :content="`确认删除站点 ${row.name}？`" @confirm="delSite(row)">
-                  <t-button theme="danger" size="small" variant="text">删除</t-button>
-                </t-popconfirm>
-              </t-space>
-            </template>
-          </t-table>
-        </div>
-      </div>
+      <UiSection title="Nginx 站点">
+        <template #extra>
+          <UiButton variant="primary" size="sm" @click="openCreate">添加站点</UiButton>
+          <UiButton variant="secondary" size="sm" :loading="reloading" @click="doReload">重载</UiButton>
+          <UiButton variant="warning" size="sm" @click="doRestart">重启</UiButton>
+          <UiButton variant="secondary" size="sm" :loading="loading" @click="loadSites">
+            <template #icon><RefreshCw :size="14" /></template>
+            刷新
+          </UiButton>
+        </template>
+        <UiCard padding="none">
+          <NDataTable
+            :columns="siteColumns"
+            :data="sites"
+            :loading="loading"
+            :row-key="(row: SiteItem) => row.name"
+            size="small"
+            :bordered="false"
+          />
+        </UiCard>
+      </UiSection>
 
-      <!-- SSL 证书 -->
-      <div class="section-block">
-        <div class="section-title">
-          <span class="title-text">SSL 证书</span>
-          <t-space size="small">
-            <t-button size="small" theme="primary" @click="openRequestCert">申请证书 (Let's Encrypt)</t-button>
-            <t-button size="small" variant="outline" @click="loadCerts">刷新</t-button>
-          </t-space>
-        </div>
-        <div class="table-wrap">
-          <t-table :data="certs" :columns="certColumns" :loading="certLoading" row-key="id" stripe size="small">
-            <template #days_left="{ row }">
-              <t-tag :theme="row.days_left < 14 ? 'danger' : row.days_left < 30 ? 'warning' : 'success'" variant="light" size="small">
-                {{ row.days_left }}天
-              </t-tag>
-            </template>
-            <template #operations="{ row }">
-              <t-space size="small">
-                <t-button size="small" variant="text" @click="openRenew(row)">续签</t-button>
-                <t-popconfirm content="确认删除该证书？" @confirm="delCert(row)">
-                  <t-button theme="danger" size="small" variant="text">删除</t-button>
-                </t-popconfirm>
-              </t-space>
-            </template>
-          </t-table>
-        </div>
-      </div>
+      <UiSection title="SSL 证书">
+        <template #extra>
+          <UiButton variant="primary" size="sm" @click="openRequestCert">申请证书 (Let's Encrypt)</UiButton>
+          <UiButton variant="secondary" size="sm" @click="loadCerts">
+            <template #icon><RefreshCw :size="14" /></template>
+            刷新
+          </UiButton>
+        </template>
+        <UiCard padding="none">
+          <NDataTable
+            :columns="certColumns"
+            :data="certs"
+            :loading="certLoading"
+            :row-key="(row: SSLCert) => row.id"
+            size="small"
+            :bordered="false"
+          />
+        </UiCard>
+      </UiSection>
     </template>
-    <div v-else class="section-block empty-block">
-      <t-empty description="该应用未关联 Nginx 站点，请先在应用设置中配置 site_name" />
-    </div>
+    <UiCard v-else padding="lg">
+      <EmptyBlock description="该应用未关联 Nginx 站点，请先在应用设置中配置 site_name" />
+    </UiCard>
 
-    <!-- 添加站点 Dialog -->
-    <t-dialog
-      v-model:visible="createVisible"
-      header="添加站点"
-      width="520px"
-      :confirm-btn="{ content: '创建', loading: creating }"
-      @confirm="confirmCreate"
+    <NModal
+      v-model:show="createVisible"
+      preset="card"
+      title="添加站点"
+      style="width: 540px"
+      :bordered="false"
     >
-      <t-form :data="createForm" label-width="90px" colon>
-        <t-form-item label="站点名称">
-          <t-input v-model="createForm.name" placeholder="my-site" />
-        </t-form-item>
-        <t-form-item label="类型">
-          <t-select v-model="createForm.type" class="full-width">
-            <t-option label="静态文件" value="static" />
-            <t-option label="反向代理" value="proxy" />
-            <t-option label="PHP" value="php" />
-          </t-select>
-        </t-form-item>
-        <t-form-item label="域名">
-          <t-input v-model="createForm.domain" placeholder="example.com" />
-        </t-form-item>
-        <t-form-item label="监听端口">
-          <t-input-number v-model="createForm.port" :min="1" :max="65535" class="full-width" />
-        </t-form-item>
-        <t-form-item v-if="createForm.type !== 'proxy'" label="根目录">
-          <t-input v-model="createForm.root" placeholder="/var/www/html" />
-        </t-form-item>
-        <t-form-item v-if="createForm.type === 'proxy'" label="代理地址">
-          <t-input v-model="createForm.proxy" placeholder="http://127.0.0.1:3000" />
-        </t-form-item>
-      </t-form>
-    </t-dialog>
+      <NForm :model="createForm" label-placement="left" label-width="90">
+        <NFormItem label="站点名称">
+          <NInput v-model:value="createForm.name" placeholder="my-site" />
+        </NFormItem>
+        <NFormItem label="类型">
+          <NSelect v-model:value="createForm.type" :options="typeOptions" />
+        </NFormItem>
+        <NFormItem label="域名">
+          <NInput v-model:value="createForm.domain" placeholder="example.com" />
+        </NFormItem>
+        <NFormItem label="监听端口">
+          <NInputNumber v-model:value="createForm.port" :min="1" :max="65535" style="width: 100%" />
+        </NFormItem>
+        <NFormItem v-if="createForm.type !== 'proxy'" label="根目录">
+          <NInput v-model:value="createForm.root" placeholder="/var/www/html" />
+        </NFormItem>
+        <NFormItem v-if="createForm.type === 'proxy'" label="代理地址">
+          <NInput v-model:value="createForm.proxy" placeholder="http://127.0.0.1:3000" />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="createVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="creating" @click="confirmCreate">创建</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- 编辑配置 Dialog -->
-    <t-dialog
-      v-model:visible="editVisible"
-      :header="`编辑配置 — ${editName}`"
-      width="800px"
-      placement="center"
-      :close-on-overlay-click="false"
-      :confirm-btn="{ content: '保存并验证', loading: saving }"
-      class="code-editor-dialog"
-      @confirm="saveConfig"
-      @closed="destroyEditor"
+    <NModal
+      v-model:show="editVisible"
+      preset="card"
+      :title="`编辑配置 — ${editName}`"
+      style="width: 800px"
+      :bordered="false"
+      :mask-closable="false"
+      @after-leave="destroyEditor"
     >
       <div ref="editorEl" class="code-editor" />
-    </t-dialog>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="editVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="saving" @click="saveConfig">保存并验证</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- 日志 Drawer -->
-    <t-drawer v-model:visible="logsVisible" :header="`日志 — ${logsSite}`" size="60%" @closed="closeLogs">
-      <t-tabs :value="logsTab" @change="onLogsTabChange">
-        <t-tab-panel value="access" label="访问日志" />
-        <t-tab-panel value="error" label="错误日志" />
-      </t-tabs>
-      <div ref="logsEl" class="logs-terminal" />
-    </t-drawer>
+    <NDrawer v-model:show="logsVisible" :width="720" @after-leave="closeLogs">
+      <NDrawerContent :title="`日志 — ${logsSite}`" :native-scrollbar="false">
+        <UiTabs :items="logsTabs" :model-value="logsTab" @change="onLogsTabChange" />
+        <div ref="logsEl" class="logs-terminal" />
+      </NDrawerContent>
+    </NDrawer>
 
-    <!-- 申请证书 Dialog -->
-    <t-dialog
-      v-model:visible="certReqVisible"
-      header="申请 Let's Encrypt 证书"
-      width="480px"
-      :close-on-overlay-click="!certRequesting"
-      :confirm-btn="{ content: '申请', loading: certRequesting }"
-      @confirm="startRequestCert"
+    <NModal
+      v-model:show="certReqVisible"
+      preset="card"
+      title="申请 Let's Encrypt 证书"
+      style="width: 520px"
+      :bordered="false"
+      :mask-closable="!certRequesting"
     >
-      <t-form :data="certReqForm" label-width="80px" colon>
-        <t-form-item label="域名">
-          <t-input v-model="certReqForm.domain" :placeholder="app?.domain || 'example.com'" />
-        </t-form-item>
-        <t-form-item label="邮箱">
-          <t-input v-model="certReqForm.email" placeholder="admin@example.com" />
-        </t-form-item>
-        <t-form-item label="Webroot">
-          <t-input v-model="certReqForm.webroot" placeholder="/var/www/html（留空使用 standalone）" />
-        </t-form-item>
-      </t-form>
+      <NForm :model="certReqForm" label-placement="left" label-width="80">
+        <NFormItem label="域名">
+          <NInput v-model:value="certReqForm.domain" :placeholder="app?.domain || 'example.com'" />
+        </NFormItem>
+        <NFormItem label="邮箱">
+          <NInput v-model:value="certReqForm.email" placeholder="admin@example.com" />
+        </NFormItem>
+        <NFormItem label="Webroot">
+          <NInput v-model:value="certReqForm.webroot" placeholder="/var/www/html（留空使用 standalone）" />
+        </NFormItem>
+      </NForm>
       <pre v-if="certOutput" ref="certOutputEl" class="cert-output">{{ certOutput }}</pre>
-    </t-dialog>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" :disabled="certRequesting" @click="certReqVisible = false">关闭</UiButton>
+          <UiButton variant="primary" size="sm" :loading="certRequesting" @click="startRequestCert">申请</UiButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import { useRoute } from 'vue-router'
-import { RefreshIcon } from 'tdesign-icons-vue-next'
-import { MessagePlugin } from 'tdesign-vue-next'
+import {
+  NDataTable, NModal, NDrawer, NDrawerContent, NForm, NFormItem,
+  NInput, NInputNumber, NSelect, NPopconfirm, useMessage,
+} from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { RefreshCw } from 'lucide-vue-next'
 import { showApiError } from '@/utils/errors'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
@@ -173,10 +162,17 @@ import {
 import type { SiteItem } from '@/api/nginx'
 import { listCerts, deleteCert as apiDeleteCert, requestCertWsUrl, renewCertWsUrl } from '@/api/ssl'
 import type { SSLCert } from '@/api/ssl'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import UiTabs from '@/components/ui/UiTabs.vue'
+import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
 const appStore = useAppStore()
+const message = useMessage()
 const appId = computed(() => Number(route.params.appId))
 const app = computed(() => appStore.getById(appId.value))
 const serverId = computed(() => app.value?.server_id ?? 0)
@@ -187,20 +183,70 @@ const reloading = ref(false)
 const certs = ref<SSLCert[]>([])
 const certLoading = ref(false)
 
-const siteColumns = [
-  { colKey: 'name', title: '站点名', minWidth: 180, ellipsis: true },
-  { colKey: 'path', title: '配置文件', minWidth: 280, ellipsis: true },
-  { colKey: 'status', title: '状态', width: 90 },
-  { colKey: 'operations', title: '操作', width: 320, fixed: 'right' as const },
+const typeOptions = [
+  { label: '静态文件', value: 'static' },
+  { label: '反向代理', value: 'proxy' },
+  { label: 'PHP', value: 'php' },
 ]
 
-const certColumns = [
-  { colKey: 'domain', title: '域名', minWidth: 180 },
-  { colKey: 'issuer', title: '签发机构', minWidth: 140 },
-  { colKey: 'expires_at', title: '到期时间', minWidth: 140 },
-  { colKey: 'days_left', title: '剩余天数', width: 100 },
-  { colKey: 'operations', title: '操作', width: 160, fixed: 'right' as const },
+const logsTabs = [
+  { value: 'access', label: '访问日志' },
+  { value: 'error', label: '错误日志' },
 ]
+
+const siteColumns = computed<DataTableColumns<SiteItem>>(() => [
+  { title: '站点名', key: 'name', minWidth: 180, ellipsis: { tooltip: true } },
+  { title: '配置文件', key: 'path', minWidth: 280, ellipsis: { tooltip: true } },
+  {
+    title: '状态', key: 'status', width: 90,
+    render: (row) => h(UiBadge,
+      { tone: row.enabled ? 'success' : 'neutral' },
+      () => row.enabled ? '启用' : '禁用'),
+  },
+  {
+    title: '操作', key: 'ops', width: 320, fixed: 'right' as const,
+    render: (row) => h('div', { class: 'cell-ops' }, [
+      !row.enabled ? h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => toggleSite(row, true) }, () => '启用') : null,
+      row.enabled ? h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => toggleSite(row, false) }, () => '禁用') : null,
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openEdit(row) }, () => '编辑配置'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openLogs(row) }, () => '日志'),
+      h(NPopconfirm, {
+        onPositiveClick: () => delSite(row),
+        positiveText: '删除', negativeText: '取消',
+      }, {
+        trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+          () => h('span', { class: 'text-danger' }, '删除')),
+        default: () => `确认删除站点 ${row.name}？`,
+      }),
+    ]),
+  },
+])
+
+const certColumns = computed<DataTableColumns<SSLCert>>(() => [
+  { title: '域名', key: 'domain', minWidth: 180 },
+  { title: '签发机构', key: 'issuer', minWidth: 140 },
+  { title: '到期时间', key: 'expires_at', minWidth: 160 },
+  {
+    title: '剩余天数', key: 'days_left', width: 110,
+    render: (row) => h(UiBadge, {
+      tone: row.days_left < 14 ? 'danger' : row.days_left < 30 ? 'warning' : 'success',
+    }, () => `${row.days_left}天`),
+  },
+  {
+    title: '操作', key: 'ops', width: 160, fixed: 'right' as const,
+    render: (row) => h('div', { class: 'cell-ops' }, [
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openRenew(row) }, () => '续签'),
+      h(NPopconfirm, {
+        onPositiveClick: () => delCert(row),
+        positiveText: '删除', negativeText: '取消',
+      }, {
+        trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+          () => h('span', { class: 'text-danger' }, '删除')),
+        default: () => '确认删除该证书？',
+      }),
+    ]),
+  },
+])
 
 const createVisible = ref(false)
 const creating = ref(false)
@@ -216,7 +262,7 @@ async function confirmCreate() {
   creating.value = true
   try {
     await createSite(serverId.value, createForm.value)
-    MessagePlugin.success('站点已创建')
+    message.success('站点已创建')
     createVisible.value = false
     await loadSites()
   } catch (e: any) {
@@ -241,7 +287,7 @@ async function openEdit(row: SiteItem) {
       state: EditorState.create({ doc: res.content, extensions: [basicSetup, oneDark] }),
       parent: editorEl.value!,
     })
-  } catch { MessagePlugin.error('读取配置失败'); editVisible.value = false }
+  } catch { message.error('读取配置失败'); editVisible.value = false }
 }
 
 async function saveConfig() {
@@ -249,7 +295,7 @@ async function saveConfig() {
   saving.value = true
   try {
     await putSiteConfig(serverId.value, editName.value, editorView.state.doc.toString())
-    MessagePlugin.success('配置已保存')
+    message.success('配置已保存')
     editVisible.value = false
   } catch (e: any) {
     showApiError(e, '保存失败')
@@ -262,31 +308,31 @@ async function toggleSite(row: SiteItem, enable: boolean) {
   try {
     if (enable) await enableSite(serverId.value, row.name)
     else await disableSite(serverId.value, row.name)
-    MessagePlugin.success(enable ? '已启用' : '已禁用')
+    message.success(enable ? '已启用' : '已禁用')
     await loadSites()
   } catch (e: any) { showApiError(e, '操作失败') }
 }
 
 async function delSite(row: SiteItem) {
-  try { await deleteSite(serverId.value, row.name); MessagePlugin.success('已删除'); await loadSites() }
+  try { await deleteSite(serverId.value, row.name); message.success('已删除'); await loadSites() }
   catch (e: any) { showApiError(e, '删除失败') }
 }
 
 async function doReload() {
   reloading.value = true
-  try { await nginxReload(serverId.value); MessagePlugin.success('nginx reload 成功') }
+  try { await nginxReload(serverId.value); message.success('nginx reload 成功') }
   catch (e: any) { showApiError(e, 'reload 失败') }
   finally { reloading.value = false }
 }
 
 async function doRestart() {
-  try { await nginxRestart(serverId.value); MessagePlugin.success('nginx restart 成功') }
+  try { await nginxRestart(serverId.value); message.success('nginx restart 成功') }
   catch (e: any) { showApiError(e, 'restart 失败') }
 }
 
 const logsVisible = ref(false)
 const logsSite = ref('')
-const logsTab = ref('access')
+const logsTab = ref<string | number>('access')
 const logsEl = ref<HTMLDivElement>()
 let logsTerm: Terminal | null = null
 let logsWs: WebSocket | null = null
@@ -299,16 +345,18 @@ function openLogs(row: SiteItem) {
 }
 
 function onLogsTabChange(val: string | number) {
-  const tab = val as string
-  logsTab.value = tab
+  logsTab.value = val
   closeLogs()
-  nextTick(() => startLogsStream(tab))
+  nextTick(() => startLogsStream(String(val)))
 }
 
 function startLogsStream(type: string) {
   if (!logsEl.value) return
   logsTerm?.dispose()
-  logsTerm = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
+  logsTerm = new Terminal({
+    theme: { background: '#0A0A0A', foreground: '#E4E4E7' },
+    convertEol: true, fontSize: 12,
+  })
   const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
   logsWs?.close()
   const url = type === 'access' ? accessLogsWsUrl(serverId.value, auth.token) : errorLogsWsUrl(serverId.value, auth.token)
@@ -327,8 +375,8 @@ async function loadCerts() {
 }
 
 async function delCert(row: SSLCert) {
-  try { await apiDeleteCert(serverId.value, row.id); MessagePlugin.success('证书已删除'); await loadCerts() }
-  catch { MessagePlugin.error('删除失败') }
+  try { await apiDeleteCert(serverId.value, row.id); message.success('证书已删除'); await loadCerts() }
+  catch { message.error('删除失败') }
 }
 
 const certReqVisible = ref(false)
@@ -354,7 +402,7 @@ function startRequestCert() {
     try {
       const msg = JSON.parse(e.data)
       if (msg.type === 'output') { certOutput.value += msg.data + '\n'; nextTick(() => { if (certOutputEl.value) certOutputEl.value.scrollTop = certOutputEl.value.scrollHeight }) }
-      else if (msg.type === 'done') { certRequesting.value = false; MessagePlugin.success('证书申请成功'); loadCerts() }
+      else if (msg.type === 'done') { certRequesting.value = false; message.success('证书申请成功'); loadCerts() }
       else if (msg.type === 'error') { certRequesting.value = false; certOutput.value += '[错误] ' + msg.data + '\n' }
     } catch { /* ignore */ }
   }
@@ -369,7 +417,7 @@ function openRenew(row: SSLCert) {
     try {
       const msg = JSON.parse(e.data)
       if (msg.type === 'output') { certOutput.value += msg.data + '\n'; nextTick(() => { if (certOutputEl.value) certOutputEl.value.scrollTop = certOutputEl.value.scrollHeight }) }
-      else if (msg.type === 'done') { certRequesting.value = false; MessagePlugin.success('续签成功'); loadCerts() }
+      else if (msg.type === 'done') { certRequesting.value = false; message.success('续签成功'); loadCerts() }
       else if (msg.type === 'error') { certRequesting.value = false; certOutput.value += '[错误] ' + msg.data + '\n' }
     } catch { /* ignore */ }
   }
@@ -390,21 +438,34 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy(); certWs?.close() })
 </script>
 
 <style scoped>
-.table-wrap {
-  padding: 0 var(--ui-space-6) var(--ui-space-4);
-}
-.empty-block {
-  padding: var(--ui-space-8) var(--ui-space-6);
-  display: flex;
-  justify-content: center;
-}
-:deep(.t-table td) {
-  font-size: 13px;
-}
-.code-editor { height: 60vh; overflow: auto; font-size: 13px; }
+.dom-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.code-editor { height: 60vh; overflow: auto; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--ui-border); }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
-.logs-terminal { width: 100%; height: calc(100vh - 240px); background: #1a2332; border-radius: 4px; overflow: hidden; margin-top: var(--ui-space-4); }
-.cert-output { background: #1a2332; color: #e0e0e0; border-radius: 4px; padding: var(--ui-space-4); font-size: 12px; line-height: 1.6; overflow: auto; max-height: 280px; margin: var(--ui-space-4) 0 0; white-space: pre-wrap; word-break: break-all; }
-.full-width { width: 100%; }
+.logs-terminal {
+  width: 100%;
+  height: calc(100vh - 240px);
+  background: #0A0A0A;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+}
+.cert-output {
+  background: #0A0A0A;
+  color: #E4E4E7;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow: auto;
+  max-height: 280px;
+  margin: var(--space-3) 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+:deep(.cell-ops) { display: inline-flex; gap: var(--space-1); }
+:deep(.text-danger) { color: var(--ui-danger-fg); }
 </style>

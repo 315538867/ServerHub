@@ -1,37 +1,56 @@
 <template>
-  <UiCard v-bind="$attrs" :title="title" :bordered="bordered" :shadow="shadow" :padded="false">
-    <template v-if="$slots.extra" #extra>
-      <slot name="extra" />
-    </template>
-    <div class="ui-section__body" :class="[`ui-section__body--${padding}`]">
+  <section class="ui-section" :class="{ 'ui-section--flat': flat }">
+    <header v-if="title || $slots.extra || $slots.title" class="ui-section__header">
+      <div class="ui-section__title-wrap">
+        <h2 v-if="title" class="ui-section__title">{{ title }}</h2>
+        <slot name="title" />
+        <p v-if="description" class="ui-section__desc">{{ description }}</p>
+      </div>
+      <div v-if="$slots.extra" class="ui-section__extra">
+        <slot name="extra" />
+      </div>
+    </header>
+    <div class="ui-section__body">
       <slot />
     </div>
-    <template v-if="$slots.footer" #footer>
-      <slot name="footer" />
-    </template>
-  </UiCard>
+  </section>
 </template>
 
 <script setup lang="ts">
-import UiCard from './UiCard.vue'
-
-withDefaults(defineProps<{
+interface Props {
   title?: string
+  description?: string
+  flat?: boolean
+  /** @deprecated kept for back-compat */
   bordered?: boolean
+  /** @deprecated kept for back-compat */
   shadow?: boolean
-  /** default: 16/24 四周；compact: 12/16；flush: 无内边距 */
-  padding?: 'default' | 'compact' | 'flush'
-}>(), {
-  bordered: true,
-  shadow: true,
-  padding: 'default',
-})
-
-defineOptions({ inheritAttrs: false })
+}
+withDefaults(defineProps<Props>(), { flat: false })
 </script>
 
 <style scoped>
-.ui-section__body--default { padding: var(--ui-space-4) var(--ui-space-5) var(--ui-space-5); }
-.ui-section__body--compact { padding: var(--ui-space-3) var(--ui-space-4); }
-.ui-section__body--flush   { padding: 0; }
+.ui-section { display: flex; flex-direction: column; gap: var(--space-3); }
+
+.ui-section__header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.ui-section__title-wrap { min-width: 0; }
+.ui-section__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--ui-fg);
+  letter-spacing: -0.01em;
+}
+.ui-section__desc {
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+  margin-top: var(--space-1);
+}
+.ui-section__extra { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
+
+.ui-section__body { min-width: 0; }
 </style>

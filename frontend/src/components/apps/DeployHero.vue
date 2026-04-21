@@ -1,6 +1,5 @@
 <template>
   <div class="deploy-hero" :class="heroClass">
-    <!-- 左：状态 + 版本 + 最近运行 -->
     <div class="hero-info">
       <div class="hero-status-row">
         <span class="hero-dot" :class="syncDotClass" />
@@ -15,7 +14,7 @@
           <span class="ver-cap">期望版本</span>
           <code class="ver-val ver-desired">{{ deploy.desired_version || '—' }}</code>
         </div>
-        <span class="ver-arrow" :class="{ 'ver-arrow--drift': isDrift }">→</span>
+        <span class="ver-arrow" :class="{ 'is-drift': isDrift }">→</span>
         <div class="hero-ver-item">
           <span class="ver-cap">当前版本</span>
           <code class="ver-val ver-actual">{{ deploy.actual_version || '—' }}</code>
@@ -31,38 +30,33 @@
           <span class="meta-cap">最近运行</span>
           <span class="meta-val">{{ formatTimeAgo(deploy.last_run_at) }}</span>
         </span>
-        <span v-if="deploy.last_status" class="meta-item">
-          <t-tag size="small" variant="light" :theme="lastStatusTheme">{{ lastStatusLabel }}</t-tag>
-        </span>
-        <span v-if="deploy.auto_sync" class="meta-item">
-          <t-tag size="small" variant="outline" theme="primary">自动同步 · {{ deploy.sync_interval || 30 }}s</t-tag>
-        </span>
+        <UiBadge v-if="deploy.last_status" :tone="lastStatusTone">{{ lastStatusLabel }}</UiBadge>
+        <UiBadge v-if="deploy.auto_sync" tone="brand">自动同步 · {{ deploy.sync_interval || 30 }}s</UiBadge>
       </div>
     </div>
 
-    <!-- 右：主操作 -->
     <div class="hero-actions">
       <template v-if="!running">
-        <t-button theme="primary" size="medium" @click="$emit('run')">
-          <template #icon><span class="btn-icon">▶</span></template>
+        <UiButton variant="primary" size="md" @click="$emit('run')">
+          <template #icon><Play :size="14" /></template>
           立即部署
-        </t-button>
-        <t-button
-          size="medium"
-          variant="outline"
+        </UiButton>
+        <UiButton
+          variant="secondary"
+          size="md"
           :disabled="!deploy.previous_version"
           @click="$emit('rollback')"
         >
-          <template #icon><span class="btn-icon">↺</span></template>
+          <template #icon><RotateCcw :size="14" /></template>
           回滚
-        </t-button>
+        </UiButton>
       </template>
       <template v-else>
         <div class="hero-running">
-          <t-loading size="small" />
+          <Loader2 :size="14" class="spin" />
           <span>部署进行中…</span>
         </div>
-        <t-button theme="danger" variant="outline" size="medium" @click="$emit('stop')">中止</t-button>
+        <UiButton variant="danger" size="md" @click="$emit('stop')">中止</UiButton>
       </template>
     </div>
   </div>
@@ -70,7 +64,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Play, RotateCcw, Loader2 } from 'lucide-vue-next'
 import type { Deploy } from '@/types/api'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+
+type Tone = 'brand' | 'success' | 'warning' | 'danger' | 'neutral'
 
 const props = defineProps<{
   deploy: Deploy
@@ -132,12 +131,12 @@ const lastStatusLabel = computed(() => {
     default: return props.deploy.last_status || '—'
   }
 })
-const lastStatusTheme = computed(() => {
+const lastStatusTone = computed<Tone>(() => {
   switch (props.deploy.last_status) {
-    case 'success': return 'success' as const
-    case 'failed': return 'danger' as const
-    case 'running': return 'warning' as const
-    default: return 'default' as const
+    case 'success': return 'success'
+    case 'failed': return 'danger'
+    case 'running': return 'warning'
+    default: return 'neutral'
   }
 })
 
@@ -164,35 +163,29 @@ function formatTimeAgo(iso: string): string {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--ui-space-6);
-  padding: var(--ui-space-4) var(--ui-space-6);
-  margin-bottom: var(--ui-space-4);
-  background: linear-gradient(135deg, var(--ui-bg-surface) 0%, color-mix(in srgb, var(--ui-bg-surface) 92%, var(--ui-brand) 8%) 100%);
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-4);
+  background: var(--ui-bg-2);
   border: 1px solid var(--ui-border);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px -8px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(8px);
+  border-left: 3px solid var(--ui-border);
+  border-radius: var(--radius-md);
 }
-.deploy-hero--ok {
-  border-left: 4px solid var(--ui-success, #67c23a);
-}
-.deploy-hero--drift {
-  border-left: 4px solid var(--ui-warning, #e6a23c);
-  background: linear-gradient(135deg, var(--ui-bg-surface) 0%, color-mix(in srgb, var(--ui-bg-surface) 88%, #e6a23c 12%) 100%);
-}
+.deploy-hero--ok { border-left-color: var(--ui-success); }
+.deploy-hero--drift { border-left-color: var(--ui-warning); }
 .deploy-hero--running {
-  border-left: 4px solid var(--ui-brand);
+  border-left-color: var(--ui-brand);
   animation: heroPulse 2s ease-in-out infinite;
 }
 @keyframes heroPulse {
-  0%, 100% { box-shadow: 0 4px 16px -8px rgba(0, 102, 204, 0.2); }
-  50%      { box-shadow: 0 4px 24px -4px rgba(0, 102, 204, 0.4); }
+  0%, 100% { box-shadow: 0 4px 16px -8px rgba(62,207,142, 0.2); }
+  50%      { box-shadow: 0 4px 24px -4px rgba(62,207,142, 0.4); }
 }
 
 .hero-info {
   display: flex;
   flex-direction: column;
-  gap: var(--ui-space-2);
+  gap: var(--space-2);
   flex: 1;
   min-width: 0;
 }
@@ -200,96 +193,109 @@ function formatTimeAgo(iso: string): string {
 .hero-status-row {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-2);
+  gap: var(--space-2);
 }
 .hero-dot {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
 }
-.dot--ok   { background: var(--ui-success, #67c23a); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-success, #67c23a) 22%, transparent); }
-.dot--warn { background: var(--ui-warning, #e6a23c); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-warning, #e6a23c) 22%, transparent); }
-.dot--err  { background: var(--ui-danger, #f56c6c); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-danger, #f56c6c) 22%, transparent); }
+.dot--ok   { background: var(--ui-success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-success) 22%, transparent); }
+.dot--warn { background: var(--ui-warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-warning) 22%, transparent); }
+.dot--err  { background: var(--ui-danger); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-danger) 22%, transparent); }
 .dot--info { background: var(--ui-brand); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ui-brand) 22%, transparent); animation: dotBlink 1.2s ease-in-out infinite; }
-.dot--idle { background: var(--ui-fg-3); opacity: 0.5; }
+.dot--idle { background: var(--ui-fg-4); opacity: 0.5; }
 @keyframes dotBlink { 50% { opacity: 0.4; } }
 
-.hero-status-text { display: flex; flex-direction: column; gap: var(--ui-space-1); }
-.hero-status-label { font-size: 15px; font-weight: 600; color: var(--ui-fg); }
-.hero-status-sub { font-size: 12px; color: var(--ui-fg-3); }
+.hero-status-text {
+  display: flex;
+  flex-direction: column;
+}
+.hero-status-label {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--ui-fg);
+}
+.hero-status-sub {
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+}
 
 .hero-versions {
   display: flex;
   align-items: flex-end;
-  gap: var(--ui-space-4);
-  margin-top: var(--ui-space-1);
+  gap: var(--space-4);
+  margin-top: var(--space-1);
   flex-wrap: wrap;
 }
-.hero-ver-item { display: flex; flex-direction: column; gap: var(--ui-space-1); }
-.ver-cap { font-size: 11px; color: var(--ui-fg-3); text-transform: uppercase; letter-spacing: 0.4px; }
+.hero-ver-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ver-cap {
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
 .ver-val {
-  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
-  font-size: 13px;
-  padding: var(--ui-space-1) var(--ui-space-2);
-  background: color-mix(in srgb, var(--ui-fg) 6%, transparent);
-  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  padding: 2px 6px;
+  background: var(--ui-bg-1);
+  border-radius: var(--radius-sm);
   color: var(--ui-fg);
 }
-.ver-desired { color: var(--ui-brand); font-weight: 600; }
-.ver-actual  { font-weight: 600; }
-.ver-prev .ver-val { opacity: 0.7; font-size: 12px; }
+.ver-desired { color: var(--ui-brand-fg); font-weight: var(--fw-semibold); }
+.ver-actual  { font-weight: var(--fw-semibold); }
+.ver-prev .ver-val { opacity: 0.7; font-size: var(--fs-xs); }
 .ver-arrow {
-  font-size: 14px;
+  font-size: var(--fs-sm);
   color: var(--ui-fg-3);
-  margin-bottom: var(--ui-space-1);
+  margin-bottom: var(--space-1);
 }
-.ver-arrow--drift { color: var(--ui-warning, #e6a23c); font-weight: 700; }
+.ver-arrow.is-drift { color: var(--ui-warning-fg); font-weight: var(--fw-semibold); }
 
 .hero-meta {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-4);
-  margin-top: var(--ui-space-2);
+  gap: var(--space-3);
+  margin-top: var(--space-2);
   flex-wrap: wrap;
 }
 .meta-item {
   display: inline-flex;
   align-items: center;
-  gap: var(--ui-space-1);
-  font-size: 12px;
+  gap: var(--space-1);
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
 }
-.meta-cap { color: var(--ui-fg-3); }
-.meta-val { color: var(--ui-fg); font-weight: 500; }
+.meta-val { color: var(--ui-fg); font-weight: var(--fw-medium); }
 
 .hero-actions {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-2);
+  gap: var(--space-2);
   flex-shrink: 0;
-}
-.btn-icon {
-  display: inline-block;
-  font-size: 12px;
-  margin-right: var(--ui-space-1);
 }
 .hero-running {
   display: inline-flex;
   align-items: center;
-  gap: var(--ui-space-2);
-  padding: 0 var(--ui-space-4);
-  font-size: 13px;
-  color: var(--ui-brand);
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  font-size: var(--fs-sm);
+  color: var(--ui-brand-fg);
 }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 720px) {
   .deploy-hero {
     flex-direction: column;
     align-items: stretch;
-    gap: var(--ui-space-4);
+    gap: var(--space-3);
   }
-  .hero-actions { justify-content: stretch; }
-  .hero-actions :deep(.t-button) { flex: 1; }
 }
 </style>

@@ -1,49 +1,64 @@
 <template>
-  <div class="ui-empty">
+  <div class="ui-empty" :class="[`ui-empty--${size}`]">
     <div class="ui-empty__icon" aria-hidden="true">
-      <svg width="42" height="42" viewBox="0 0 48 48" fill="none">
-        <circle cx="24" cy="24" r="20" stroke="currentColor" stroke-width="1.25" stroke-dasharray="3 3" opacity=".5"/>
-        <path d="M16 30c2-2 5-3 8-3s6 1 8 3M19 21.5h.01M29 21.5h.01" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
-      </svg>
+      <component :is="icon" :size="iconSize" />
     </div>
-    <div class="ui-empty__title">{{ title || description }}</div>
-    <div v-if="description && title" class="ui-empty__desc">{{ description }}</div>
-    <div v-if="$slots.action" class="ui-empty__action">
-      <slot name="action" />
+    <h3 v-if="title" class="ui-empty__title">{{ title }}</h3>
+    <p v-if="description" class="ui-empty__desc">{{ description }}</p>
+    <div v-if="$slots.default || $slots.actions" class="ui-empty__actions">
+      <slot name="actions" /><slot />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-withDefaults(defineProps<{ title?: string; description?: string }>(), {
-  description: '暂无数据',
-})
+import { computed, type Component } from 'vue'
+import { Inbox } from 'lucide-vue-next'
+
+interface Props {
+  title?: string
+  description?: string
+  icon?: Component
+  size?: 'sm' | 'md' | 'lg'
+}
+const props = withDefaults(defineProps<Props>(), { size: 'md', icon: () => Inbox })
+
+const iconSize = computed(() => (props.size === 'sm' ? 24 : props.size === 'lg' ? 48 : 36))
 </script>
 
 <style scoped>
 .ui-empty {
-  padding: var(--ui-space-8) var(--ui-space-5);
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
+  justify-content: center;
   text-align: center;
-  gap: var(--ui-space-2);
-  min-height: 160px;
+  padding: var(--space-10) var(--space-6);
   color: var(--ui-fg-3);
+  gap: var(--space-2);
 }
+.ui-empty--sm { padding: var(--space-6); }
 .ui-empty__icon {
+  width: 56px; height: 56px;
+  display: flex; align-items: center; justify-content: center;
   color: var(--ui-fg-4);
-  margin-bottom: 4px;
+  background: var(--ui-bg-2);
+  border-radius: var(--radius-pill);
+  margin-bottom: var(--space-2);
 }
+.ui-empty--sm .ui-empty__icon { width: 40px; height: 40px; }
 .ui-empty__title {
-  color: var(--ui-fg-2);
-  font-size: var(--ui-fs-sm);
-  font-weight: var(--ui-fw-medium);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--ui-fg);
 }
 .ui-empty__desc {
+  font-size: var(--fs-sm);
   color: var(--ui-fg-3);
-  font-size: var(--ui-fs-xs);
+  max-width: 320px;
 }
-.ui-empty__action { margin-top: var(--ui-space-2); }
+.ui-empty__actions {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin-top: var(--space-2);
+}
 </style>

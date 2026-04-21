@@ -1,160 +1,155 @@
 <template>
-  <div class="page-container">
-    <div class="section-block">
-      <div class="section-title">
-        <span>系统管理</span>
-        <t-button size="small" variant="outline" :loading="loading" @click="refreshAll">
-          <template #icon><refresh-icon /></template>
-          刷新全部
-        </t-button>
+  <div class="sys-page">
+    <UiCard padding="none">
+      <div class="sys-head">
+        <UiTabs :items="tabItems" :model-value="activeTab" @change="val => { activeTab = String(val); onTabChange(String(val)) }" />
+        <UiButton variant="secondary" size="sm" :loading="loading" @click="refreshAll">
+          <template #icon><RefreshCw :size="14" /></template>
+          刷新
+        </UiButton>
       </div>
-
-      <t-tabs :value="activeTab" @change="val => { activeTab = val as string; onTabChange(val as string) }">
-        <!-- 防火墙 -->
-        <t-tab-panel value="firewall" label="防火墙">
-          <div class="tab-toolbar">
-            <div class="toolbar-left">
-              <t-tag v-if="firewallType" theme="default" variant="light" size="small">{{ firewallType }}</t-tag>
+      <div class="sys-body">
+        <div v-if="activeTab === 'firewall'">
+          <div class="sys-toolbar">
+            <div>
+              <UiBadge v-if="firewallType" tone="neutral">{{ firewallType }}</UiBadge>
             </div>
-            <t-button theme="primary" size="small" @click="openAddRule">添加规则</t-button>
+            <UiButton variant="primary" size="sm" @click="openAddRule">添加规则</UiButton>
           </div>
-          <t-table :data="firewallRules" :columns="fwColumns" :loading="loading" row-key="index" bordered size="small">
-            <template #operations="{ row }">
-              <t-popconfirm content="确认删除该规则？" @confirm="delRule(row)">
-                <t-button theme="danger" size="small" variant="text">删除</t-button>
-              </t-popconfirm>
-            </template>
-          </t-table>
-        </t-tab-panel>
+          <NDataTable
+            :columns="fwColumns"
+            :data="firewallRules"
+            :loading="loading"
+            :row-key="(row: FirewallRule) => row.index"
+            size="small"
+            :bordered="false"
+          />
+        </div>
 
-        <!-- Cron 任务 -->
-        <t-tab-panel value="cron" label="Cron 任务">
-          <div class="tab-toolbar">
-            <div class="toolbar-left" />
-            <t-button theme="primary" size="small" @click="openCronAdd">添加任务</t-button>
+        <div v-else-if="activeTab === 'cron'">
+          <div class="sys-toolbar">
+            <div />
+            <UiButton variant="primary" size="sm" @click="openCronAdd">添加任务</UiButton>
           </div>
-          <t-table :data="cronJobs" :columns="cronColumns" :loading="loading" row-key="index" bordered size="small">
-            <template #operations="{ row }">
-              <t-space size="small">
-                <t-button size="small" variant="text" @click="openCronEdit(row)">编辑</t-button>
-                <t-popconfirm content="确认删除该任务？" @confirm="delCron(row)">
-                  <t-button theme="danger" size="small" variant="text">删除</t-button>
-                </t-popconfirm>
-              </t-space>
-            </template>
-          </t-table>
-        </t-tab-panel>
+          <NDataTable
+            :columns="cronColumns"
+            :data="cronJobs"
+            :loading="loading"
+            :row-key="(row: CronJob) => row.index"
+            size="small"
+            :bordered="false"
+          />
+        </div>
 
-        <!-- 进程 -->
-        <t-tab-panel value="processes" label="进程">
-          <div class="tab-toolbar">
-            <div class="toolbar-left" />
-            <t-button size="small" variant="outline" @click="loadProcesses">
-              <template #icon><refresh-icon /></template>
+        <div v-else-if="activeTab === 'processes'">
+          <div class="sys-toolbar">
+            <div />
+            <UiButton variant="secondary" size="sm" :loading="procLoading" @click="loadProcesses">
+              <template #icon><RefreshCw :size="14" /></template>
               刷新
-            </t-button>
+            </UiButton>
           </div>
-          <t-table :data="processes" :columns="procColumns" :loading="procLoading" row-key="pid" bordered size="small">
-            <template #cpu="{ row }">{{ row.cpu.toFixed(1) }}%</template>
-            <template #mem="{ row }">{{ row.mem.toFixed(1) }}%</template>
-            <template #operations="{ row }">
-              <t-popconfirm :content="`确认强制终止进程 ${row.pid}？`" @confirm="killProc(row)">
-                <t-button theme="danger" size="small" variant="text">终止</t-button>
-              </t-popconfirm>
-            </template>
-          </t-table>
-        </t-tab-panel>
+          <NDataTable
+            :columns="procColumns"
+            :data="processes"
+            :loading="procLoading"
+            :row-key="(row: ProcessItem) => row.pid"
+            size="small"
+            :bordered="false"
+          />
+        </div>
 
-        <!-- 系统服务 -->
-        <t-tab-panel value="services" label="系统服务">
-          <div class="tab-toolbar">
-            <div class="toolbar-left">
-              <t-input v-model="svcFilter" placeholder="过滤服务名" size="small" class="filter-input" clearable />
-              <t-button size="small" variant="outline" @click="loadServices">
-                <template #icon><refresh-icon /></template>
-              </t-button>
-            </div>
+        <div v-else-if="activeTab === 'services'">
+          <div class="sys-toolbar">
+            <NInput v-model:value="svcFilter" placeholder="过滤服务名" size="small" clearable class="filter-inp">
+              <template #prefix><Search :size="14" /></template>
+            </NInput>
+            <UiButton variant="secondary" size="sm" :loading="svcLoading" @click="loadServices">
+              <template #icon><RefreshCw :size="14" /></template>
+              刷新
+            </UiButton>
           </div>
-          <t-table :data="filteredServices" :columns="svcColumns" :loading="svcLoading" row-key="unit" bordered size="small">
-            <template #active="{ row }">
-              <t-tag :theme="activeTheme(row.active)" variant="light" size="small">{{ activeText(row.active) }}</t-tag>
-            </template>
-            <template #load="{ row }">
-              <t-tag :theme="row.load === 'loaded' ? 'success' : 'default'" variant="light" size="small">{{ loadText(row.load) }}</t-tag>
-            </template>
-            <template #operations="{ row }">
-              <t-space size="small">
-                <t-button theme="success" size="small" variant="text" @click="svcAction(row, 'start')">启动</t-button>
-                <t-button theme="warning" size="small" variant="text" @click="svcAction(row, 'stop')">停止</t-button>
-                <t-button size="small" variant="text" @click="svcAction(row, 'restart')">重启</t-button>
-                <t-button size="small" variant="text" @click="openSvcLogs(row)">日志</t-button>
-              </t-space>
-            </template>
-          </t-table>
-        </t-tab-panel>
-      </t-tabs>
-    </div>
+          <NDataTable
+            :columns="svcColumns"
+            :data="filteredServices"
+            :loading="svcLoading"
+            :row-key="(row: ServiceItem) => row.unit"
+            size="small"
+            :bordered="false"
+          />
+        </div>
+      </div>
+    </UiCard>
 
-    <!-- 添加防火墙规则对话框 -->
-    <t-dialog
-      v-model:visible="ruleVisible"
-      header="添加防火墙规则"
-      width="440px"
-      confirm-btn="添加"
-      @confirm="confirmAddRule"
+    <NModal
+      v-model:show="ruleVisible"
+      preset="card"
+      title="添加防火墙规则"
+      style="width: 440px"
+      :bordered="false"
     >
-      <t-form :data="ruleForm" label-width="80px" colon>
-        <t-form-item label="端口">
-          <t-input v-model="ruleForm.port" placeholder="如 80 或 8000:8100" />
-        </t-form-item>
-        <t-form-item label="协议">
-          <t-select v-model="ruleForm.proto" class="full-width">
-            <t-option label="tcp" value="tcp" />
-            <t-option label="udp" value="udp" />
-          </t-select>
-        </t-form-item>
-        <t-form-item label="动作">
-          <t-select v-model="ruleForm.action" class="full-width">
-            <t-option label="允许 (allow)" value="allow" />
-            <t-option label="拒绝 (deny)" value="deny" />
-          </t-select>
-        </t-form-item>
-        <t-form-item label="来源 IP">
-          <t-input v-model="ruleForm.from" placeholder="留空表示 Anywhere" />
-        </t-form-item>
-      </t-form>
-    </t-dialog>
+      <NForm :model="ruleForm" label-placement="left" label-width="80">
+        <NFormItem label="端口">
+          <NInput v-model:value="ruleForm.port" placeholder="如 80 或 8000:8100" />
+        </NFormItem>
+        <NFormItem label="协议">
+          <NSelect v-model:value="ruleForm.proto" :options="[{label: 'tcp', value: 'tcp'}, {label: 'udp', value: 'udp'}]" />
+        </NFormItem>
+        <NFormItem label="动作">
+          <NSelect v-model:value="ruleForm.action" :options="[{label: '允许 (allow)', value: 'allow'}, {label: '拒绝 (deny)', value: 'deny'}]" />
+        </NFormItem>
+        <NFormItem label="来源 IP">
+          <NInput v-model:value="ruleForm.from" placeholder="留空表示 Anywhere" />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="ruleVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" @click="confirmAddRule">添加</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- Cron 对话框 -->
-    <t-dialog
-      v-model:visible="cronVisible"
-      :header="cronEditIndex === -1 ? '添加 Cron 任务' : '编辑 Cron 任务'"
-      width="480px"
-      confirm-btn="保存"
-      @confirm="confirmCron"
+    <NModal
+      v-model:show="cronVisible"
+      preset="card"
+      :title="cronEditIndex === -1 ? '添加 Cron 任务' : '编辑 Cron 任务'"
+      style="width: 480px"
+      :bordered="false"
     >
-      <t-form :data="cronForm" label-width="100px" colon>
-        <t-form-item label="Cron 表达式">
-          <t-input v-model="cronForm.expr" placeholder="*/5 * * * *" />
-        </t-form-item>
-        <t-form-item label="执行命令">
-          <t-input v-model="cronForm.cmd" placeholder="/path/to/script.sh" />
-        </t-form-item>
-      </t-form>
-    </t-dialog>
+      <NForm :model="cronForm" label-placement="left" label-width="100">
+        <NFormItem label="Cron 表达式">
+          <NInput v-model:value="cronForm.expr" placeholder="*/5 * * * *" />
+        </NFormItem>
+        <NFormItem label="执行命令">
+          <NInput v-model:value="cronForm.cmd" placeholder="/path/to/script.sh" />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="cronVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" @click="confirmCron">保存</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- 服务日志抽屉 -->
-    <t-drawer v-model:visible="svcLogsVisible" :header="`服务日志 — ${svcLogsName}`" size="60%" @close="onSvcLogsClosed">
-      <div ref="svcLogsEl" class="logs-terminal" />
-    </t-drawer>
+    <NDrawer v-model:show="svcLogsVisible" :width="720" @after-leave="onSvcLogsClosed">
+      <NDrawerContent :title="`服务日志 — ${svcLogsName}`" :native-scrollbar="false">
+        <div ref="svcLogsEl" class="logs-terminal" />
+      </NDrawerContent>
+    </NDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import { useRoute } from 'vue-router'
-import { RefreshIcon } from 'tdesign-icons-vue-next'
-import { MessagePlugin } from 'tdesign-vue-next'
+import {
+  NDataTable, NModal, NDrawer, NDrawerContent, NForm, NFormItem,
+  NInput, NSelect, NPopconfirm, useMessage,
+} from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { RefreshCw, Search } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -166,12 +161,24 @@ import {
   getServices, serviceAction, serviceLogsWsUrl,
 } from '@/api/system'
 import type { FirewallRule, CronJob, ProcessItem, ServiceItem } from '@/api/system'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import UiTabs from '@/components/ui/UiTabs.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
+const message = useMessage()
 const serverId = computed(() => Number(route.params.serverId))
 const activeTab = ref('firewall')
 const loading = ref(false)
+
+const tabItems = [
+  { value: 'firewall', label: '防火墙' },
+  { value: 'cron', label: 'Cron 任务' },
+  { value: 'processes', label: '进程' },
+  { value: 'services', label: '系统服务' },
+]
 
 const firewallRules = ref<FirewallRule[]>([])
 const firewallType = ref('')
@@ -187,34 +194,65 @@ const filteredServices = computed(() =>
     : services.value
 )
 
-const fwColumns = [
-  { colKey: 'index', title: '#', width: 60 },
-  { colKey: 'rule', title: '规则', minWidth: 280, ellipsis: true },
-  { colKey: 'operations', title: '操作', width: 80, fixed: 'right' as const },
-]
-const cronColumns = [
-  { colKey: 'expr', title: 'Cron 表达式', width: 160 },
-  { colKey: 'cmd', title: '命令', minWidth: 260, ellipsis: true },
-  { colKey: 'operations', title: '操作', width: 140, fixed: 'right' as const },
-]
-const procColumns = [
-  { colKey: 'pid', title: 'PID', width: 80 },
-  { colKey: 'user', title: '用户', width: 100 },
-  { colKey: 'cpu', title: 'CPU%', width: 80 },
-  { colKey: 'mem', title: '内存%', width: 80 },
-  { colKey: 'command', title: '命令', minWidth: 240, ellipsis: true },
-  { colKey: 'operations', title: '操作', width: 80, fixed: 'right' as const },
-]
-const svcColumns = [
-  { colKey: 'unit', title: '服务名', minWidth: 220, ellipsis: true },
-  { colKey: 'active', title: '状态', width: 90 },
-  { colKey: 'load', title: '自启', width: 70 },
-  { colKey: 'description', title: '说明', minWidth: 180, ellipsis: true },
-  { colKey: 'operations', title: '操作', width: 260, fixed: 'right' as const },
-]
+const fwColumns = computed<DataTableColumns<FirewallRule>>(() => [
+  { title: '#', key: 'index', width: 60 },
+  { title: '规则', key: 'rule', minWidth: 280, ellipsis: { tooltip: true } },
+  {
+    title: '操作', key: 'ops', width: 90, fixed: 'right' as const,
+    render: (row) => h(NPopconfirm, {
+      onPositiveClick: () => delRule(row),
+      positiveText: '删除', negativeText: '取消',
+    }, {
+      trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+        () => h('span', { class: 'text-danger' }, '删除')),
+      default: () => '确认删除该规则？',
+    }),
+  },
+])
 
-function activeTheme(active: string) {
-  return ({ active: 'success', failed: 'danger', inactive: 'default' } as Record<string, string>)[active] ?? 'warning'
+const cronColumns = computed<DataTableColumns<CronJob>>(() => [
+  { title: 'Cron 表达式', key: 'expr', width: 160 },
+  { title: '命令', key: 'cmd', minWidth: 260, ellipsis: { tooltip: true } },
+  {
+    title: '操作', key: 'ops', width: 150, fixed: 'right' as const,
+    render: (row) => h('div', { class: 'cell-ops' }, [
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openCronEdit(row) }, () => '编辑'),
+      h(NPopconfirm, {
+        onPositiveClick: () => delCron(row),
+        positiveText: '删除', negativeText: '取消',
+      }, {
+        trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+          () => h('span', { class: 'text-danger' }, '删除')),
+        default: () => '确认删除该任务？',
+      }),
+    ]),
+  },
+])
+
+const procColumns = computed<DataTableColumns<ProcessItem>>(() => [
+  { title: 'PID', key: 'pid', width: 80 },
+  { title: '用户', key: 'user', width: 100 },
+  { title: 'CPU%', key: 'cpu', width: 80, render: (row) => row.cpu.toFixed(1) + '%' },
+  { title: '内存%', key: 'mem', width: 80, render: (row) => row.mem.toFixed(1) + '%' },
+  { title: '命令', key: 'command', minWidth: 240, ellipsis: { tooltip: true } },
+  {
+    title: '操作', key: 'ops', width: 90, fixed: 'right' as const,
+    render: (row) => h(NPopconfirm, {
+      onPositiveClick: () => killProc(row),
+      positiveText: '终止', negativeText: '取消',
+    }, {
+      trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+        () => h('span', { class: 'text-danger' }, '终止')),
+      default: () => `确认强制终止进程 ${row.pid}？`,
+    }),
+  },
+])
+
+function activeTone(active: string): 'success' | 'warning' | 'danger' | 'neutral' {
+  if (active === 'active') return 'success'
+  if (active === 'failed') return 'danger'
+  if (active === 'inactive') return 'neutral'
+  return 'warning'
 }
 function activeText(active: string) {
   return ({ active: '运行中', inactive: '未运行', failed: '失败', activating: '启动中', deactivating: '停止中' } as Record<string, string>)[active] ?? active
@@ -222,6 +260,28 @@ function activeText(active: string) {
 function loadText(load: string) {
   return ({ loaded: '已加载', 'not-found': '未找到', masked: '已屏蔽', error: '错误' } as Record<string, string>)[load] ?? load
 }
+
+const svcColumns = computed<DataTableColumns<ServiceItem>>(() => [
+  { title: '服务名', key: 'unit', minWidth: 220, ellipsis: { tooltip: true } },
+  {
+    title: '状态', key: 'active', width: 100,
+    render: (row) => h(UiBadge, { tone: activeTone(row.active) }, () => activeText(row.active)),
+  },
+  {
+    title: '自启', key: 'load', width: 90,
+    render: (row) => h(UiBadge, { tone: row.load === 'loaded' ? 'success' : 'neutral' }, () => loadText(row.load)),
+  },
+  { title: '说明', key: 'description', minWidth: 180, ellipsis: { tooltip: true } },
+  {
+    title: '操作', key: 'ops', width: 260, fixed: 'right' as const,
+    render: (row) => h('div', { class: 'cell-ops' }, [
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => svcAction(row, 'start') }, () => '启动'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => svcAction(row, 'stop') }, () => '停止'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => svcAction(row, 'restart') }, () => '重启'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openSvcLogs(row) }, () => '日志'),
+    ]),
+  },
+])
 
 async function onTabChange(tab: string) {
   if (tab === 'firewall' && firewallRules.value.length === 0) await loadFirewall()
@@ -270,13 +330,13 @@ async function confirmAddRule() {
   if (!ruleForm.value.port) return
   try {
     await addFirewallRule(serverId.value, ruleForm.value)
-    MessagePlugin.success('规则已添加'); ruleVisible.value = false; await loadFirewall()
-  } catch { MessagePlugin.error('添加失败') }
+    message.success('规则已添加'); ruleVisible.value = false; await loadFirewall()
+  } catch { message.error('添加失败') }
 }
 
 async function delRule(row: FirewallRule) {
-  try { await deleteFirewallRule(serverId.value, String(row.index)); MessagePlugin.success('规则已删除'); await loadFirewall() }
-  catch { MessagePlugin.error('删除失败') }
+  try { await deleteFirewallRule(serverId.value, String(row.index)); message.success('规则已删除'); await loadFirewall() }
+  catch { message.error('删除失败') }
 }
 
 const cronVisible = ref(false)
@@ -293,23 +353,23 @@ async function confirmCron() {
   try {
     if (cronEditIndex.value === -1) await addCronJob(serverId.value, cronForm.value.expr, cronForm.value.cmd)
     else await updateCronJob(serverId.value, cronEditIndex.value, cronForm.value.expr, cronForm.value.cmd)
-    MessagePlugin.success('保存成功'); cronVisible.value = false; await loadCron()
-  } catch { MessagePlugin.error('保存失败') }
+    message.success('保存成功'); cronVisible.value = false; await loadCron()
+  } catch { message.error('保存失败') }
 }
 
 async function delCron(row: CronJob) {
-  try { await deleteCronJob(serverId.value, row.index); MessagePlugin.success('已删除'); await loadCron() }
-  catch { MessagePlugin.error('删除失败') }
+  try { await deleteCronJob(serverId.value, row.index); message.success('已删除'); await loadCron() }
+  catch { message.error('删除失败') }
 }
 
 async function killProc(row: ProcessItem) {
-  try { await killProcess(serverId.value, row.pid); MessagePlugin.success(`PID ${row.pid} 已终止`); await loadProcesses() }
-  catch { MessagePlugin.error('终止失败') }
+  try { await killProcess(serverId.value, row.pid); message.success(`PID ${row.pid} 已终止`); await loadProcesses() }
+  catch { message.error('终止失败') }
 }
 
 async function svcAction(row: ServiceItem, action: string) {
-  try { await serviceAction(serverId.value, row.unit, action); MessagePlugin.success('操作成功'); await loadServices() }
-  catch { MessagePlugin.error('操作失败') }
+  try { await serviceAction(serverId.value, row.unit, action); message.success('操作成功'); await loadServices() }
+  catch { message.error('操作失败') }
 }
 
 const svcLogsVisible = ref(false)
@@ -326,7 +386,7 @@ function openSvcLogs(row: ServiceItem) {
 function initSvcLogs(unit: string) {
   if (!svcLogsEl.value) return
   svcLogsTerm?.dispose()
-  svcLogsTerm = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
+  svcLogsTerm = new Terminal({ theme: { background: '#0A0A0A', foreground: '#E4E4E7' }, convertEol: true, fontSize: 12 })
   const fit = new FitAddon()
   svcLogsTerm.loadAddon(fit); svcLogsTerm.open(svcLogsEl.value); fit.fit()
   svcLogsWs?.close()
@@ -343,17 +403,34 @@ onBeforeUnmount(() => { svcLogsWs?.close(); svcLogsTerm?.dispose() })
 </script>
 
 <style scoped>
-.filter-input { width: 200px; }
-.full-width { width: 100%; }
+.sys-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+
+.sys-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.sys-body { padding: var(--space-4); }
+
+.sys-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.filter-inp { width: 220px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
 
 .logs-terminal {
   width: 100%;
-  height: calc(100vh - 120px);
-  background: #1a2332;
-  border-radius: 4px;
+  height: calc(100vh - 160px);
+  background: #0A0A0A;
+  border-radius: var(--radius-sm);
   overflow: hidden;
+  padding: var(--space-2);
 }
 
-:deep(.t-table) { font-size: 13px; }
-:deep(.t-tab-panel) { padding: 0; }
+:deep(.cell-ops) { display: inline-flex; gap: var(--space-1); }
+:deep(.text-danger) { color: var(--ui-danger-fg); }
 </style>

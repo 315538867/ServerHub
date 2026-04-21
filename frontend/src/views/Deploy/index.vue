@@ -1,65 +1,68 @@
 <template>
-  <div class="page-container deploy-page">
-    <!-- 页面标题区 -->
-    <div class="section-block page-header-block">
-      <div class="section-title">
-        <span>部署管理</span>
-        <div class="header-actions">
-          <t-select v-model="filterServerId" placeholder="全部服务器" clearable style="width:180px;margin-right: var(--ui-space-2)">
-            <t-option v-for="s in servers" :key="s.id" :label="s.name" :value="s.id" />
-          </t-select>
-          <t-button theme="primary" @click="openCreate">
-            <template #icon><add-icon /></template>
-            新建部署
-          </t-button>
-        </div>
+  <div class="deploy-page">
+    <div class="deploy-head">
+      <div class="deploy-head__title">部署管理</div>
+      <div class="deploy-head__actions">
+        <NSelect
+          v-model:value="filterServerId"
+          placeholder="全部服务器"
+          clearable
+          size="small"
+          style="width:200px"
+          :options="serverFilterOptions"
+        />
+        <UiButton variant="primary" size="sm" @click="openCreate">
+          <template #icon><Plus :size="14" /></template>
+          新建部署
+        </UiButton>
       </div>
     </div>
 
-    <!-- 空状态 -->
-    <t-empty v-if="!loading && filteredApps.length === 0" description="暂无部署应用，点击右上角新建" class="empty-state" />
+    <UiCard v-if="!loading && filteredApps.length === 0" padding="lg">
+      <EmptyBlock description="暂无部署应用，点击右上角新建" />
+    </UiCard>
 
-    <!-- 应用卡片网格 -->
-    <div v-else class="app-grid" v-loading="loading">
+    <div v-else class="app-grid">
       <div
         v-for="app in filteredApps"
         :key="app.id"
         class="app-card"
         :class="`app-card--${app.sync_status || 'idle'}`"
       >
-        <!-- 卡片头部 -->
         <div class="app-card__header">
           <div class="app-card__name-row">
             <span class="app-card__name">{{ app.name }}</span>
-            <t-tag size="small" :theme="typeTagTheme(app.type)" variant="light" class="name-tag">{{ app.type }}</t-tag>
+            <UiBadge :tone="typeTone(app.type)">{{ app.type }}</UiBadge>
           </div>
           <div class="app-card__header-right">
-            <t-tag size="small" :theme="syncStatusTagTheme(app.sync_status)" variant="light">
-              <t-loading v-if="app.sync_status === 'syncing'" size="small" style="display:inline-flex;margin-right: var(--ui-space-1)" />
+            <UiBadge :tone="syncStatusTone(app.sync_status)">
               {{ syncStatusText(app.sync_status) }}
-            </t-tag>
-            <t-dropdown :options="dropdownOptions(app)" trigger="click" @click="(item: any) => handleCommand(item.value, app)">
-              <t-button size="small" variant="text" shape="circle" style="margin-left: var(--ui-space-1)">
-                <template #icon><ellipsis-icon /></template>
-              </t-button>
-            </t-dropdown>
+            </UiBadge>
+            <NDropdown
+              trigger="click"
+              :options="dropdownOptions(app)"
+              @select="(key: string) => handleCommand(key, app)"
+            >
+              <UiIconButton variant="ghost" size="sm">
+                <MoreHorizontal :size="14" />
+              </UiIconButton>
+            </NDropdown>
           </div>
         </div>
 
-        <!-- 卡片主体：服务器 + 版本 -->
         <div class="app-card__body">
           <div class="app-card__server">
-            <server-icon style="font-size:13px;color:#8a94a6;flex-shrink:0" />
+            <Server :size="13" />
             <span>{{ serverName(app.server_id) }}</span>
           </div>
           <div class="app-card__version">
             <div class="version-block">
               <span class="version-label">期望</span>
-              <span class="version-value" :class="{ 'version-value--drifted': isDrifted(app) }">
+              <span class="version-value" :class="{ 'is-drift': isDrifted(app) }">
                 {{ app.desired_version || '—' }}
               </span>
             </div>
-            <span class="version-arrow" :class="{ 'version-arrow--drifted': isDrifted(app) }">→</span>
+            <span class="version-arrow" :class="{ 'is-drift': isDrifted(app) }">→</span>
             <div class="version-block">
               <span class="version-label">实际</span>
               <span class="version-value">{{ app.actual_version || '—' }}</span>
@@ -70,248 +73,237 @@
           </div>
         </div>
 
-        <!-- 卡片底部操作 -->
         <div class="app-card__footer">
-          <t-button size="small" variant="outline" @click="openSetVersion(app)">设置版本</t-button>
-          <t-button
-            size="small"
-            :theme="isDrifted(app) ? 'warning' : 'primary'"
-            variant="outline"
+          <UiButton variant="secondary" size="sm" @click="openSetVersion(app)">设置版本</UiButton>
+          <UiButton
+            :variant="isDrifted(app) ? 'warning' : 'primary'"
+            size="sm"
             :loading="syncing === app.id"
             @click="handleSync(app)"
-          >立即同步</t-button>
+          >立即同步</UiButton>
         </div>
       </div>
     </div>
 
     <!-- 设置版本弹窗 -->
-    <t-dialog
-      v-model:visible="versionDialogVisible"
-      header="设置期望版本"
-      width="420px"
-      :confirm-btn="{ content: '确定', loading: versionSaving }"
-      @confirm="saveVersion"
-      @closed="versionForm.desired_version = ''"
-    >
-      <div class="version-dialog__current">
+    <NModal v-model:show="versionDialogVisible" preset="card" title="设置期望版本" style="width: 420px" :bordered="false">
+      <div class="ver-current">
         当前实际版本：<span class="version-value">{{ versionTarget?.actual_version || '未部署' }}</span>
       </div>
-      <t-form :data="versionForm" style="margin-top: var(--ui-space-4)">
-        <t-form-item label="期望版本">
-          <t-input v-model="versionForm.desired_version" placeholder="v1.0 / latest / 20240101" autofocus />
-        </t-form-item>
-      </t-form>
-    </t-dialog>
+      <NForm :model="versionForm" label-placement="left" label-width="80" style="margin-top: var(--space-3)">
+        <NFormItem label="期望版本">
+          <NInput v-model:value="versionForm.desired_version" placeholder="v1.0 / latest / 20240101" autofocus />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="versionDialogVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="versionSaving" @click="saveVersion">确定</UiButton>
+        </div>
+      </template>
+    </NModal>
 
     <!-- 新建应用弹窗 -->
-    <t-dialog
-      v-model:visible="createVisible"
-      header="新建部署"
-      width="600px"
-      :confirm-btn="{ content: '创建', loading: createSaving }"
-      @confirm="handleCreate"
-      @closed="resetCreateForm"
-    >
-      <t-form ref="createFormRef" :data="createForm" :rules="createRules" label-width="90px" colon>
-        <t-form-item label="名称" name="name">
-          <t-input v-model="createForm.name" placeholder="my-app" />
-        </t-form-item>
-        <t-form-item label="服务器" name="server_id">
-          <t-select v-model="createForm.server_id" placeholder="选择服务器" style="width:100%">
-            <t-option v-for="s in servers" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
-          </t-select>
-        </t-form-item>
-        <t-form-item label="应用类型">
-          <t-radio-group v-model="createForm.type">
-            <t-radio value="docker-compose">Docker Compose</t-radio>
-            <t-radio value="docker">Docker</t-radio>
-            <t-radio value="native">Native</t-radio>
-          </t-radio-group>
-        </t-form-item>
-        <t-form-item label="工作目录">
-          <t-input v-model="createForm.work_dir" placeholder="/opt/myapp" />
-        </t-form-item>
-        <t-form-item v-if="createForm.type === 'docker-compose'" label="Compose 文件">
-          <t-input v-model="createForm.compose_file" placeholder="docker-compose.yml" />
-        </t-form-item>
-        <t-form-item v-if="createForm.type === 'docker'" label="镜像名">
-          <t-input v-model="createForm.image_name" placeholder="nginx（不含 tag）" />
-        </t-form-item>
-        <t-form-item v-if="createForm.type !== 'docker-compose'" label="部署脚本">
-          <t-textarea v-model="createForm.start_cmd" :autosize="{ minRows: 3 }" placeholder="./app --port 8080" />
-        </t-form-item>
+    <NModal v-model:show="createVisible" preset="card" title="新建部署" style="width: 600px" :bordered="false" @after-leave="resetCreateForm">
+      <NForm ref="createFormRef" :model="createForm" :rules="createRules" label-placement="left" label-width="90">
+        <NFormItem label="名称" path="name">
+          <NInput v-model:value="createForm.name" placeholder="my-app" />
+        </NFormItem>
+        <NFormItem label="服务器" path="server_id">
+          <NSelect v-model:value="createForm.server_id" placeholder="选择服务器" :options="serverFullOptions" />
+        </NFormItem>
+        <NFormItem label="应用类型">
+          <NRadioGroup v-model:value="createForm.type">
+            <NRadio value="docker-compose">Docker Compose</NRadio>
+            <NRadio value="docker">Docker</NRadio>
+            <NRadio value="native">Native</NRadio>
+          </NRadioGroup>
+        </NFormItem>
+        <NFormItem label="工作目录">
+          <NInput v-model:value="createForm.work_dir" placeholder="/opt/myapp" />
+        </NFormItem>
+        <NFormItem v-if="createForm.type === 'docker-compose'" label="Compose 文件">
+          <NInput v-model:value="createForm.compose_file" placeholder="docker-compose.yml" />
+        </NFormItem>
+        <NFormItem v-if="createForm.type === 'docker'" label="镜像名">
+          <NInput v-model:value="createForm.image_name" placeholder="nginx（不含 tag）" />
+        </NFormItem>
+        <NFormItem v-if="createForm.type !== 'docker-compose'" label="部署脚本">
+          <NInput v-model:value="createForm.start_cmd" type="textarea" :autosize="{ minRows: 3 }" placeholder="./app --port 8080" />
+        </NFormItem>
         <div class="form-section-label">版本控制</div>
-        <t-form-item label="期望版本">
-          <t-input v-model="createForm.desired_version" placeholder="v1.0 / latest（留空仅保存配置）" />
-        </t-form-item>
-        <t-form-item label="自动同步">
-          <t-switch v-model="createForm.auto_sync" />
+        <NFormItem label="期望版本">
+          <NInput v-model:value="createForm.desired_version" placeholder="v1.0 / latest（留空仅保存配置）" />
+        </NFormItem>
+        <NFormItem label="自动同步">
+          <NSwitch v-model:value="createForm.auto_sync" />
           <span class="form-hint">版本变化时自动触发同步</span>
-        </t-form-item>
-        <t-form-item v-if="createForm.auto_sync" label="检查间隔">
-          <t-input-number v-model="createForm.sync_interval" :min="30" :max="3600" :step="30" />
+        </NFormItem>
+        <NFormItem v-if="createForm.auto_sync" label="检查间隔">
+          <NInputNumber v-model:value="createForm.sync_interval" :min="30" :max="3600" :step="30" />
           <span class="form-hint">秒</span>
-        </t-form-item>
-      </t-form>
-    </t-dialog>
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="createVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="createSaving" @click="handleCreate">创建</UiButton>
+        </div>
+      </template>
+    </NModal>
 
     <!-- 应用详情抽屉 -->
-    <t-drawer v-model:visible="detailVisible" :header="detailApp?.name" size="55%">
-      <t-tabs v-if="detailApp" :value="detailTab" @change="val => (detailTab = val as string)">
-
-        <t-tab-panel value="version" label="版本管理">
-          <div class="tab-content">
-            <t-form :data="detailVersionForm" label-width="90px" colon class="drawer-form">
-              <t-form-item label="期望版本">
-                <t-input v-model="detailVersionForm.desired_version" placeholder="v1.0 / latest" />
-              </t-form-item>
-              <t-form-item label="实际版本">
-                <t-input :value="detailApp.actual_version || '—'" readonly />
-              </t-form-item>
-              <t-form-item label="历史版本">
-                <t-input :value="detailApp.previous_version || '—'" readonly />
-              </t-form-item>
-              <t-form-item label="自动同步">
-                <t-switch v-model="detailVersionForm.auto_sync" />
-              </t-form-item>
-              <t-form-item v-if="detailVersionForm.auto_sync" label="检查间隔">
-                <t-input-number v-model="detailVersionForm.sync_interval" :min="30" :max="3600" :step="30" />
+    <NDrawer v-model:show="detailVisible" :width="640" placement="right">
+      <NDrawerContent v-if="detailApp" :title="detailApp.name" closable>
+        <NTabs v-model:value="detailTab" type="line" size="small" animated>
+          <NTabPane name="version" tab="版本管理">
+            <NForm :model="detailVersionForm" label-placement="left" label-width="90" class="drawer-form">
+              <NFormItem label="期望版本">
+                <NInput v-model:value="detailVersionForm.desired_version" placeholder="v1.0 / latest" />
+              </NFormItem>
+              <NFormItem label="实际版本">
+                <NInput :value="detailApp.actual_version || '—'" readonly />
+              </NFormItem>
+              <NFormItem label="历史版本">
+                <NInput :value="detailApp.previous_version || '—'" readonly />
+              </NFormItem>
+              <NFormItem label="自动同步">
+                <NSwitch v-model:value="detailVersionForm.auto_sync" />
+              </NFormItem>
+              <NFormItem v-if="detailVersionForm.auto_sync" label="检查间隔">
+                <NInputNumber v-model:value="detailVersionForm.sync_interval" :min="30" :max="3600" :step="30" />
                 <span class="form-hint">秒</span>
-              </t-form-item>
-              <t-form-item>
-                <t-space>
-                  <t-button theme="primary" :loading="detailSaving" @click="saveDetailVersion">保存</t-button>
-                  <t-button v-if="detailApp.previous_version" theme="warning" @click="handleRollbackFromDetail">
+              </NFormItem>
+              <NFormItem :show-label="false">
+                <div class="row-actions">
+                  <UiButton variant="primary" size="sm" :loading="detailSaving" @click="saveDetailVersion">保存</UiButton>
+                  <UiButton v-if="detailApp.previous_version" variant="warning" size="sm" @click="handleRollbackFromDetail">
                     回滚到 {{ detailApp.previous_version }}
-                  </t-button>
-                </t-space>
-              </t-form-item>
-            </t-form>
-          </div>
-        </t-tab-panel>
-
-        <t-tab-panel value="config" label="应用配置">
-          <div class="tab-content">
-            <t-form :data="detailConfigForm" label-width="90px" colon class="drawer-form">
-              <t-form-item label="服务器">
-                <t-select v-model="detailConfigForm.server_id" style="width:100%">
-                  <t-option v-for="s in servers" :key="s.id" :label="`${s.name} (${s.host})`" :value="s.id" />
-                </t-select>
-              </t-form-item>
-              <t-form-item label="应用类型">
-                <t-radio-group v-model="detailConfigForm.type">
-                  <t-radio value="docker-compose">Docker Compose</t-radio>
-                  <t-radio value="docker">Docker</t-radio>
-                  <t-radio value="native">Native</t-radio>
-                </t-radio-group>
-              </t-form-item>
-              <t-form-item label="工作目录">
-                <t-input v-model="detailConfigForm.work_dir" />
-              </t-form-item>
-              <t-form-item v-if="detailConfigForm.type === 'docker-compose'" label="Compose 文件">
-                <t-input v-model="detailConfigForm.compose_file" />
-              </t-form-item>
-              <t-form-item v-if="detailConfigForm.type === 'docker'" label="镜像名">
-                <t-input v-model="detailConfigForm.image_name" />
-              </t-form-item>
-              <t-form-item v-if="detailConfigForm.type !== 'docker-compose'" label="部署脚本">
-                <t-textarea v-model="detailConfigForm.start_cmd" :autosize="{ minRows: 4 }" />
-              </t-form-item>
-              <t-form-item>
-                <t-button theme="primary" :loading="detailSaving" @click="saveDetailConfig">保存配置</t-button>
-              </t-form-item>
-            </t-form>
-          </div>
-        </t-tab-panel>
-
-        <t-tab-panel value="env" label="环境变量">
-          <div class="tab-content">
-            <div class="env-toolbar">
-              <t-button size="small" theme="primary" @click="addEnvRow">
-                <template #icon><add-icon /></template>
-                添加变量
-              </t-button>
-            </div>
-            <t-table :data="envVars" :columns="envColumns" size="small" row-key="key">
-              <template #key="{ row }">
-                <t-input v-model="row.key" size="small" placeholder="VAR_NAME" />
-              </template>
-              <template #value="{ row }">
-                <t-input v-model="row.value" size="small" :type="row.secret ? 'password' : 'text'" placeholder="value" />
-              </template>
-              <template #secret="{ row }">
-                <t-checkbox v-model="row.secret" />
-              </template>
-              <template #operations="{ rowIndex }">
-                <t-button theme="danger" size="small" variant="text" @click="envVars.splice(rowIndex, 1)">
-                  <template #icon><delete-icon /></template>
-                </t-button>
-              </template>
-            </t-table>
-            <div style="margin-top: var(--ui-space-4)">
-              <t-button theme="primary" :loading="envSaving" @click="saveEnv">保存环境变量</t-button>
-            </div>
-          </div>
-        </t-tab-panel>
-
-        <t-tab-panel value="history" label="同步历史">
-          <div class="tab-content">
-            <t-table :data="historyLogs" :columns="historyColumns" size="small" stripe row-key="id">
-              <template #created_at="{ row }">{{ dayjs(row.created_at).format('MM-DD HH:mm:ss') }}</template>
-              <template #status="{ row }">
-                <t-tag size="small" :theme="row.status === 'success' ? 'success' : 'danger'" variant="light">
-                  {{ row.status === 'success' ? '成功' : '失败' }}
-                </t-tag>
-              </template>
-              <template #duration="{ row }">{{ row.duration }}s</template>
-              <template #operations="{ row }">
-                <t-button size="small" variant="text" @click="viewLogDetail(row)">日志</t-button>
-              </template>
-            </t-table>
-          </div>
-        </t-tab-panel>
-
-        <t-tab-panel value="webhook" label="Webhook">
-          <div class="tab-content">
-            <t-form label-width="110px" colon class="drawer-form">
-              <t-form-item label="Webhook URL">
-                <div class="input-with-btn">
-                  <t-input v-model="webhookUrl" readonly />
-                  <t-button @click="copyWebhook">复制</t-button>
+                  </UiButton>
                 </div>
-              </t-form-item>
-              <t-form-item label="Secret Token">
-                <t-input v-model="webhookSecret" readonly type="password" />
-              </t-form-item>
-            </t-form>
-            <t-alert theme="info" message="Webhook 收到 POST 请求后将自动触发同步。支持 GitHub / GitLab 签名验证。" class="mt-sm" />
-          </div>
-        </t-tab-panel>
-      </t-tabs>
-    </t-drawer>
+              </NFormItem>
+            </NForm>
+          </NTabPane>
 
-    <!-- 同步日志抽屉 (SSE) -->
-    <t-drawer v-model:visible="logDrawerVisible" :header="`同步日志 — ${logAppName}`" size="55%" @close="stopSync">
-      <div class="log-toolbar">
-        <t-tag :theme="runStatus === 'success' ? 'success' : runStatus === 'failed' ? 'danger' : 'default'" variant="light" size="small">
-          {{ runStatus === 'running' ? '同步中…' : runStatus === 'success' ? '成功' : runStatus === 'failed' ? '失败' : '就绪' }}
-        </t-tag>
-        <t-button size="small" variant="text" @click="logLines = []">清空</t-button>
-      </div>
-      <pre class="log-output" ref="logEl">{{ logLines.join('\n') }}</pre>
-    </t-drawer>
+          <NTabPane name="config" tab="应用配置">
+            <NForm :model="detailConfigForm" label-placement="left" label-width="90" class="drawer-form">
+              <NFormItem label="服务器">
+                <NSelect v-model:value="detailConfigForm.server_id" :options="serverFullOptions" />
+              </NFormItem>
+              <NFormItem label="应用类型">
+                <NRadioGroup v-model:value="detailConfigForm.type">
+                  <NRadio value="docker-compose">Docker Compose</NRadio>
+                  <NRadio value="docker">Docker</NRadio>
+                  <NRadio value="native">Native</NRadio>
+                </NRadioGroup>
+              </NFormItem>
+              <NFormItem label="工作目录">
+                <NInput v-model:value="detailConfigForm.work_dir" />
+              </NFormItem>
+              <NFormItem v-if="detailConfigForm.type === 'docker-compose'" label="Compose 文件">
+                <NInput v-model:value="detailConfigForm.compose_file" />
+              </NFormItem>
+              <NFormItem v-if="detailConfigForm.type === 'docker'" label="镜像名">
+                <NInput v-model:value="detailConfigForm.image_name" />
+              </NFormItem>
+              <NFormItem v-if="detailConfigForm.type !== 'docker-compose'" label="部署脚本">
+                <NInput v-model:value="detailConfigForm.start_cmd" type="textarea" :autosize="{ minRows: 4 }" />
+              </NFormItem>
+              <NFormItem :show-label="false">
+                <UiButton variant="primary" size="sm" :loading="detailSaving" @click="saveDetailConfig">保存配置</UiButton>
+              </NFormItem>
+            </NForm>
+          </NTabPane>
+
+          <NTabPane name="env" tab="环境变量">
+            <div class="env-toolbar">
+              <UiButton variant="primary" size="sm" @click="addEnvRow">
+                <template #icon><Plus :size="14" /></template>
+                添加变量
+              </UiButton>
+            </div>
+            <div class="env-list">
+              <div v-for="(row, idx) in envVars" :key="idx" class="env-row">
+                <NInput v-model:value="row.key" size="small" placeholder="VAR_NAME" style="width:30%" />
+                <NInput
+                  v-model:value="row.value"
+                  size="small"
+                  :type="row.secret ? 'password' : 'text'"
+                  show-password-on="click"
+                  placeholder="value"
+                  style="flex:1"
+                />
+                <NCheckbox v-model:checked="row.secret">Secret</NCheckbox>
+                <UiIconButton variant="ghost" size="sm" @click="envVars.splice(idx, 1)">
+                  <Trash2 :size="13" />
+                </UiIconButton>
+              </div>
+              <EmptyBlock v-if="envVars.length === 0" description="暂无环境变量" />
+            </div>
+            <div style="margin-top: var(--space-3)">
+              <UiButton variant="primary" size="sm" :loading="envSaving" @click="saveEnv">保存环境变量</UiButton>
+            </div>
+          </NTabPane>
+
+          <NTabPane name="history" tab="同步历史">
+            <NDataTable
+              :columns="historyColumns"
+              :data="historyLogs"
+              :row-key="(r: DeployLog) => r.id"
+              size="small"
+              :bordered="false"
+            />
+          </NTabPane>
+
+          <NTabPane name="webhook" tab="Webhook">
+            <NForm label-placement="left" label-width="110" class="drawer-form">
+              <NFormItem label="Webhook URL">
+                <div class="input-with-btn">
+                  <NInput v-model:value="webhookUrl" readonly />
+                  <UiButton variant="secondary" size="sm" @click="copyWebhook">复制</UiButton>
+                </div>
+              </NFormItem>
+              <NFormItem label="Secret Token">
+                <NInput v-model:value="webhookSecret" readonly type="password" show-password-on="click" />
+              </NFormItem>
+            </NForm>
+            <NAlert type="info" :show-icon="true" style="margin-top: var(--space-3)">
+              Webhook 收到 POST 请求后将自动触发同步。支持 GitHub / GitLab 签名验证。
+            </NAlert>
+          </NTabPane>
+        </NTabs>
+      </NDrawerContent>
+    </NDrawer>
+
+    <!-- 同步日志抽屉 -->
+    <NDrawer v-model:show="logDrawerVisible" :width="640" placement="right" @after-leave="stopSync">
+      <NDrawerContent :title="`同步日志 — ${logAppName}`" closable>
+        <div class="log-toolbar">
+          <UiBadge :tone="runStatus === 'success' ? 'success' : runStatus === 'failed' ? 'danger' : 'brand'">
+            {{ runStatus === 'running' ? '同步中…' : runStatus === 'success' ? '成功' : runStatus === 'failed' ? '失败' : '就绪' }}
+          </UiBadge>
+          <UiButton variant="ghost" size="sm" @click="logLines = []">清空</UiButton>
+        </div>
+        <pre class="log-output" ref="logEl">{{ logLines.join('\n') }}</pre>
+      </NDrawerContent>
+    </NDrawer>
 
     <!-- 日志详情弹窗 -->
-    <t-dialog v-model:visible="logDetailVisible" header="执行日志" width="720px" :footer="false">
+    <NModal v-model:show="logDetailVisible" preset="card" title="执行日志" style="width: 720px" :bordered="false">
       <pre class="log-output log-output--static">{{ selectedLog?.output }}</pre>
-    </t-dialog>
+    </NModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick, onMounted, watch } from 'vue'
-import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
-import { AddIcon, DeleteIcon, EllipsisIcon, ServerIcon } from 'tdesign-icons-vue-next'
+import { ref, reactive, computed, nextTick, onMounted, watch, h } from 'vue'
+import {
+  NSelect, NDataTable, NModal, NDrawer, NDrawerContent, NTabs, NTabPane,
+  NForm, NFormItem, NInput, NInputNumber, NRadioGroup, NRadio, NSwitch,
+  NCheckbox, NDropdown, NAlert, useMessage, useDialog,
+} from 'naive-ui'
+import type { DataTableColumns, FormInst, FormRules } from 'naive-ui'
+import { Plus, Trash2, MoreHorizontal, Server } from 'lucide-vue-next'
 import dayjs from 'dayjs'
 import { useAuthStore } from '@/stores/auth'
 import { getServers } from '@/api/servers'
@@ -320,17 +312,29 @@ import {
   getDeployLogs, getDeployEnv, putDeployEnv, getWebhookInfo,
 } from '@/api/deploy'
 import type { EnvVar } from '@/api/deploy'
-import type { Server, Deploy, DeployForm, DeployLog } from '@/types/api'
+import type { Server as ServerType, Deploy, DeployForm, DeployLog } from '@/types/api'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import UiIconButton from '@/components/ui/UiIconButton.vue'
+import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 
 const authStore = useAuthStore()
+const message = useMessage()
+const dialog = useDialog()
+
 const apps = ref<Deploy[]>([])
-const servers = ref<Server[]>([])
+const servers = ref<ServerType[]>([])
 const loading = ref(false)
 const filterServerId = ref<number | null>(null)
 
 const filteredApps = computed(() =>
   filterServerId.value ? apps.value.filter(a => a.server_id === filterServerId.value) : apps.value
 )
+const serverFilterOptions = computed(() =>
+  servers.value.map(s => ({ label: s.name, value: s.id })))
+const serverFullOptions = computed(() =>
+  servers.value.map(s => ({ label: `${s.name} (${s.host})`, value: s.id })))
 
 function serverName(id: number) {
   return servers.value.find(s => s.id === id)?.name ?? `#${id}`
@@ -338,11 +342,12 @@ function serverName(id: number) {
 function isDrifted(app: Deploy) {
   return !!(app.desired_version && app.desired_version !== app.actual_version)
 }
-function typeTagTheme(type: string) {
-  return ({ 'docker-compose': 'primary', docker: 'success', native: 'warning' } as Record<string, string>)[type] ?? 'default'
+type Tone = 'brand' | 'success' | 'warning' | 'danger' | 'neutral'
+function typeTone(type: string): Tone {
+  return ({ 'docker-compose': 'brand', docker: 'success', native: 'warning' } as Record<string, Tone>)[type] ?? 'neutral'
 }
-function syncStatusTagTheme(s: Deploy['sync_status']) {
-  return ({ synced: 'success', drifted: 'warning', syncing: 'primary', error: 'danger', '': 'default' } as Record<string, string>)[s ?? ''] ?? 'default'
+function syncStatusTone(s: Deploy['sync_status']): Tone {
+  return ({ synced: 'success', drifted: 'warning', syncing: 'brand', error: 'danger' } as Record<string, Tone>)[s ?? ''] ?? 'neutral'
 }
 function syncStatusText(s: Deploy['sync_status']) {
   return ({ synced: '已同步', drifted: '待更新', syncing: '同步中', error: '错误', '': '空闲' } as Record<string, string>)[s ?? '']
@@ -360,16 +365,18 @@ function toUpdateForm(app: Deploy, override: Partial<DeployForm> = {}): DeployFo
 }
 
 function dropdownOptions(app: Deploy) {
-  const items: Array<{ content: string; value: string; divider?: boolean; theme?: string }> = [
-    { content: '应用详情', value: 'detail' },
-    { content: '环境变量', value: 'env' },
-    { content: '同步历史', value: 'history' },
-    { content: 'Webhook', value: 'webhook' },
+  const items: any[] = [
+    { label: '应用详情', key: 'detail' },
+    { label: '环境变量', key: 'env' },
+    { label: '同步历史', key: 'history' },
+    { label: 'Webhook', key: 'webhook' },
   ]
   if (app.previous_version) {
-    items.push({ content: `回滚到 ${app.previous_version}`, value: 'rollback', divider: true })
+    items.push({ type: 'divider', key: 'd1' })
+    items.push({ label: `回滚到 ${app.previous_version}`, key: 'rollback' })
   }
-  items.push({ content: '删除', value: 'delete', divider: true, theme: 'error' })
+  items.push({ type: 'divider', key: 'd2' })
+  items.push({ label: '删除', key: 'delete', props: { style: 'color: var(--ui-danger-fg)' } })
   return items
 }
 
@@ -399,7 +406,7 @@ async function saveVersion() {
   versionSaving.value = true
   try {
     await updateDeploy(versionTarget.value.id, toUpdateForm(versionTarget.value, { desired_version: versionForm.desired_version }))
-    MessagePlugin.success('期望版本已更新')
+    message.success('期望版本已更新')
     versionDialogVisible.value = false
     await loadAll()
   } finally {
@@ -410,7 +417,7 @@ async function saveVersion() {
 // ── Create App ────────────────────────────────────────────────
 const createVisible = ref(false)
 const createSaving = ref(false)
-const createFormRef = ref()
+const createFormRef = ref<FormInst | null>(null)
 const defaultCreateForm = (): DeployForm => ({
   name: '', server_id: null, type: 'docker-compose',
   work_dir: '', compose_file: 'docker-compose.yml',
@@ -418,24 +425,23 @@ const defaultCreateForm = (): DeployForm => ({
   desired_version: '', auto_sync: false, sync_interval: 60,
 })
 const createForm = reactive<DeployForm>(defaultCreateForm())
-const createRules = {
+const createRules: FormRules = {
   name: [{ required: true, message: '请输入名称', trigger: 'blur' }],
-  server_id: [{ required: true, message: '请选择服务器', trigger: 'change' }],
+  server_id: [{ required: true, message: '请选择服务器', type: 'number', trigger: 'change' }],
 }
 
 function openCreate() {
   Object.assign(createForm, defaultCreateForm())
   createVisible.value = true
 }
-function resetCreateForm() { createFormRef.value?.clearValidate() }
+function resetCreateForm() { createFormRef.value?.restoreValidation() }
 
 async function handleCreate() {
-  const result = await createFormRef.value?.validate()
-  if (result !== true) return
+  try { await createFormRef.value?.validate() } catch { return }
   createSaving.value = true
   try {
     await createDeploy(createForm)
-    MessagePlugin.success('应用已创建')
+    message.success('应用已创建')
     createVisible.value = false
     await loadAll()
   } finally { createSaving.value = false }
@@ -547,7 +553,7 @@ async function saveDetailVersion() {
   detailSaving.value = true
   try {
     await updateDeploy(detailApp.value.id, toUpdateForm(detailApp.value, detailVersionForm))
-    MessagePlugin.success('版本配置已保存')
+    message.success('版本配置已保存')
     await loadAll()
     detailApp.value = apps.value.find(a => a.id === detailApp.value!.id) ?? detailApp.value
   } finally { detailSaving.value = false }
@@ -558,7 +564,7 @@ async function saveDetailConfig() {
   detailSaving.value = true
   try {
     await updateDeploy(detailApp.value.id, toUpdateForm(detailApp.value, detailConfigForm))
-    MessagePlugin.success('应用配置已保存')
+    message.success('应用配置已保存')
     await loadAll()
   } finally { detailSaving.value = false }
 }
@@ -566,12 +572,6 @@ async function saveDetailConfig() {
 // ── Env ───────────────────────────────────────────────────────
 const envVars = ref<EnvVar[]>([])
 const envSaving = ref(false)
-const envColumns = [
-  { colKey: 'key', title: 'Key', minWidth: 150 },
-  { colKey: 'value', title: 'Value', minWidth: 180 },
-  { colKey: 'secret', title: 'Secret', width: 70, align: 'center' as const },
-  { colKey: 'operations', title: '', width: 50, align: 'center' as const },
-]
 
 async function loadEnv(id: number) { envVars.value = await getDeployEnv(id) }
 function addEnvRow() { envVars.value.push({ key: '', value: '', secret: false }) }
@@ -580,17 +580,24 @@ async function saveEnv() {
   envSaving.value = true
   try {
     await putDeployEnv(detailApp.value.id, envVars.value)
-    MessagePlugin.success('环境变量已保存')
+    message.success('环境变量已保存')
   } finally { envSaving.value = false }
 }
 
 // ── History ───────────────────────────────────────────────────
 const historyLogs = ref<DeployLog[]>([])
-const historyColumns = [
-  { colKey: 'created_at', title: '时间', width: 155 },
-  { colKey: 'status', title: '状态', width: 80 },
-  { colKey: 'duration', title: '耗时', width: 70 },
-  { colKey: 'operations', title: '', width: 60 },
+const historyColumns: DataTableColumns<DeployLog> = [
+  { title: '时间', key: 'created_at', width: 160, render: (row) => dayjs(row.created_at).format('MM-DD HH:mm:ss') },
+  {
+    title: '状态', key: 'status', width: 80,
+    render: (row) => h(UiBadge, { tone: row.status === 'success' ? 'success' : 'danger' as Tone },
+      () => row.status === 'success' ? '成功' : '失败'),
+  },
+  { title: '耗时', key: 'duration', width: 80, render: (row) => `${row.duration}s` },
+  {
+    title: '', key: 'ops', width: 70,
+    render: (row) => h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => viewLogDetail(row) }, () => '日志'),
+  },
 ]
 const logDetailVisible = ref(false)
 const selectedLog = ref<DeployLog | null>(null)
@@ -609,7 +616,7 @@ async function loadWebhook(id: number) {
 }
 function copyWebhook() {
   navigator.clipboard.writeText(webhookUrl.value)
-  MessagePlugin.success('已复制')
+  message.success('已复制')
 }
 
 // ── Rollback ──────────────────────────────────────────────────
@@ -624,14 +631,14 @@ async function handleRollbackFromDetail() {
 
 // ── Delete ────────────────────────────────────────────────────
 function handleDelete(app: Deploy) {
-  const dialog = DialogPlugin.confirm({
-    header: '删除确认',
-    body: `确认删除应用「${app.name}」？此操作不可恢复。`,
-    confirmBtn: { content: '确认删除', theme: 'danger' },
-    onConfirm: async () => {
-      dialog.hide()
+  dialog.warning({
+    title: '删除确认',
+    content: `确认删除应用「${app.name}」？此操作不可恢复。`,
+    positiveText: '确认删除',
+    negativeText: '取消',
+    onPositiveClick: async () => {
       await deleteDeploy(app.id)
-      MessagePlugin.success('已删除')
+      message.success('已删除')
       await loadAll()
     },
   })
@@ -654,68 +661,69 @@ onMounted(loadAll)
 
 <style scoped>
 .deploy-page {
+  padding: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: var(--ui-space-4);
+  gap: var(--space-4);
 }
 
-/* 页面标题卡片 */
-.page-header-block {
-  margin-bottom: 0;
-}
-.page-header-block .section-title {
-  border-bottom: none;
-  padding: var(--ui-space-4) var(--ui-space-6);
-}
-.header-actions {
+.deploy-head {
   display: flex;
+  justify-content: space-between;
   align-items: center;
 }
+.deploy-head__title {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+  color: var(--ui-fg);
+}
+.deploy-head__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
 
-/* 卡片网格 */
 .app-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--ui-space-4);
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4);
 }
 
 .app-card {
-  background: var(--ui-bg-surface);
+  background: var(--ui-bg-2);
   border: 1px solid var(--ui-border);
-  border-left: 4px solid #e7e7e7;
-  border-radius: 8px;
+  border-left: 3px solid var(--ui-border);
+  border-radius: var(--radius-md);
   display: flex;
   flex-direction: column;
-  gap: 0;
-  transition: box-shadow 0.2s, border-left-color 0.3s;
   overflow: hidden;
+  transition: box-shadow var(--dur-fast) var(--ease), border-left-color var(--dur-fast) var(--ease);
 }
 .app-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 .app-card--synced  { border-left-color: var(--ui-success); }
 .app-card--drifted { border-left-color: var(--ui-warning); }
 .app-card--syncing { border-left-color: var(--ui-brand); }
 .app-card--error   { border-left-color: var(--ui-danger); }
-.app-card--idle    { border-left-color: #d4d4d4; }
 
-/* 卡片头部 */
 .app-card__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--ui-space-4) var(--ui-space-4) var(--ui-space-2);
-  border-bottom: 1px solid #f5f5f5;
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--ui-border);
 }
 .app-card__name-row {
   display: flex;
   align-items: center;
+  gap: var(--space-2);
   min-width: 0;
   flex: 1;
 }
 .app-card__name {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
   color: var(--ui-fg);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -724,117 +732,143 @@ onMounted(loadAll)
 .app-card__header-right {
   display: flex;
   align-items: center;
+  gap: var(--space-1);
   flex-shrink: 0;
-  margin-left: var(--ui-space-2);
 }
 
-/* 卡片主体 */
 .app-card__body {
-  padding: var(--ui-space-2) var(--ui-space-4);
+  padding: var(--space-3) var(--space-4);
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--ui-space-2);
+  gap: var(--space-2);
 }
 .app-card__server {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-1);
-  font-size: 12px;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
 }
 .app-card__version {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  background: var(--ui-muted-soft);
-  border-radius: 6px;
-  padding: var(--ui-space-2);
+  background: var(--ui-bg-1);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
 }
 .version-block {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--ui-space-1);
+  gap: 2px;
 }
 .version-label {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
 }
 .version-value {
-  font-family: 'JetBrains Mono', 'Cascadia Code', Menlo, monospace;
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
   color: var(--ui-fg);
 }
-.version-value--drifted { color: var(--ui-warning); }
+.version-value.is-drift { color: var(--ui-warning-fg); }
 .version-arrow {
-  color: #bbb;
-  font-size: 16px;
+  color: var(--ui-fg-4);
+  font-size: var(--fs-md);
 }
-.version-arrow--drifted { color: var(--ui-warning); }
+.version-arrow.is-drift { color: var(--ui-warning-fg); }
 .app-card__drift-hint {
-  font-size: 11px;
-  color: var(--ui-warning);
+  font-size: var(--fs-xs);
+  color: var(--ui-warning-fg);
 }
 
-/* 卡片底部 */
 .app-card__footer {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-2);
-  padding: var(--ui-space-2) var(--ui-space-4);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border-top: 1px solid var(--ui-border);
-  background: var(--ui-muted-soft);
+  background: var(--ui-bg-1);
 }
 
-/* 抽屉内容 */
-.env-toolbar { margin-bottom: var(--ui-space-2); }
-.drawer-form { max-width: 480px; }
-.name-tag { margin-left: var(--ui-space-2); }
-.mt-sm { margin-top: var(--ui-space-2); }
-.form-section-label {
-  font-size: 13px;
-  font-weight: 600;
+.ver-current {
+  font-size: var(--fs-sm);
   color: var(--ui-fg-3);
-  padding: var(--ui-space-2) 0 var(--ui-space-1);
-  border-bottom: 1px solid var(--ui-border);
-  margin-bottom: var(--ui-space-4);
+  background: var(--ui-bg-1);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
 }
-.form-hint { margin-left: var(--ui-space-2); font-size: 12px; color: var(--ui-fg-3); }
-.tab-content { padding: var(--ui-space-4) 0; }
-.log-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--ui-space-2); }
-.input-with-btn { display: flex; gap: var(--ui-space-2); align-items: center; width: 100%; }
-.input-with-btn .t-input { flex: 1; }
+.ver-current .version-value {
+  margin-left: var(--space-1);
+}
+
+.modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.form-section-label {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  color: var(--ui-fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: var(--space-2) 0 var(--space-1);
+  border-bottom: 1px solid var(--ui-border);
+  margin-bottom: var(--space-3);
+}
+.form-hint {
+  margin-left: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+}
+
+.drawer-form { max-width: 520px; }
+.row-actions { display: flex; gap: var(--space-2); }
+
+.env-toolbar { margin-bottom: var(--space-3); }
+.env-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.env-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.input-with-btn {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+  width: 100%;
+}
+
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
 
 .log-output {
-  background: #1a2332;
-  color: #e0e0e0;
-  font-family: 'Cascadia Code', 'JetBrains Mono', Menlo, monospace;
-  font-size: 13px;
+  background: #0A0A0A;
+  color: #E4E4E7;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
   line-height: 1.6;
-  padding: var(--ui-space-4);
-  border-radius: 6px;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
   overflow-y: auto;
-  height: calc(100vh - 200px);
+  height: calc(100vh - 240px);
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
 }
-.log-output--static { height: 400px; }
-
-.empty-state { margin-top: var(--ui-space-8); }
-
-.version-dialog__current {
-  font-size: 13px;
-  color: var(--ui-fg-3);
-  background: var(--ui-muted-soft);
-  padding: var(--ui-space-2) var(--ui-space-4);
-  border-radius: 4px;
-}
-.version-dialog__current .version-value {
-  font-family: 'JetBrains Mono', monospace;
-  color: var(--ui-fg);
-  margin-left: var(--ui-space-1);
-}
+.log-output--static { height: 420px; }
 </style>

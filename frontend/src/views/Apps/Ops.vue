@@ -1,19 +1,11 @@
 <template>
   <div class="ops-wrap" :class="{ 'ops-wrap--terminal': activeSub === 'terminal' }">
-    <!-- 始终可见的容器状态条（终端全屏除外） -->
     <div v-if="app?.container_name && activeSub !== 'terminal'" class="ops-statusbar-wrap">
-      <ops-status-bar :app-id="appId" />
+      <OpsStatusBar :app-id="appId" />
     </div>
 
     <div class="sub-tabs">
-      <t-tabs :value="activeSub" @change="onChange">
-        <t-tab-panel
-          v-for="t in subTabs"
-          :key="t.value"
-          :value="t.value"
-          :label="t.label"
-        />
-      </t-tabs>
+      <UiTabs :items="subTabs" :model-value="activeSub" @change="onChange" />
     </div>
     <div class="ops-body" :class="{ 'ops-body--terminal': activeSub === 'terminal' }">
       <router-view />
@@ -26,6 +18,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import OpsStatusBar from '@/components/apps/OpsStatusBar.vue'
+import UiTabs from '@/components/ui/UiTabs.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -54,26 +47,22 @@ function onChange(v: string | number) {
 </script>
 
 <style scoped>
-.ops-wrap {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
+.ops-wrap { display: flex; flex-direction: column; height: 100%; }
 .ops-wrap--terminal { overflow: hidden; }
 
 .ops-statusbar-wrap {
-  padding: var(--ui-space-4) var(--ui-space-6) 0;
+  padding: var(--space-4) var(--space-6) 0;
   flex-shrink: 0;
 }
 
 .sub-tabs {
-  padding: 0 var(--ui-space-6);
-  background: var(--ui-bg-canvas);
-  border-bottom: 1px solid var(--ui-border);
+  padding: 0 var(--space-6);
+  background: var(--ui-bg);
   flex-shrink: 0;
 }
-.sub-tabs :deep(.t-tabs__nav) { border-bottom: none; }
-.sub-tabs :deep(.t-tabs__nav-container) { padding: 0; }
 .ops-body { flex: 1; overflow-y: auto; min-height: 0; }
-.ops-body--terminal { overflow: hidden; padding: 0; }
+.ops-body--terminal {
+  overflow: hidden;
+  padding: var(--space-4) var(--space-6) var(--space-6);
+}
 </style>

@@ -1,40 +1,49 @@
 <template>
-  <div class="terminal-page">
-    <div class="tab-bar">
+  <div class="term-page">
+    <div class="term-tabs">
       <div
         v-for="tab in tabs"
         :key="tab.id"
-        class="tab-item"
-        :class="{ active: activeTabId === tab.id }"
+        class="term-tab"
+        :class="{ 'is-active': activeTabId === tab.id }"
         @click="switchTab(tab.id)"
       >
-        <span class="tab-dot" :class="tab.status" />
-        <span class="tab-label">终端 {{ tab.id }}</span>
-        <close-icon class="tab-close" @click.stop="closeTab(tab.id)" />
+        <span class="term-tab__dot" :class="`is-${tab.status}`" />
+        <span class="term-tab__label">终端 {{ tab.id }}</span>
+        <X :size="12" class="term-tab__close" @click.stop="closeTab(tab.id)" />
       </div>
-      <t-button class="tab-add" shape="circle" size="small" variant="text" theme="default" @click="addTab">
-        <template #icon><add-icon /></template>
-      </t-button>
+      <UiIconButton variant="ghost" size="sm" class="term-tab__add" @click="addTab">
+        <Plus :size="14" />
+      </UiIconButton>
     </div>
-    <div v-if="searchVisible" class="search-bar">
-      <t-input v-model="searchQuery" placeholder="搜索…" size="small" style="width:200px"
-        @keydown.enter="searchNext" @keydown.escape="closeSearch" ref="searchInputEl" />
-      <t-checkbox v-model="searchCaseSensitive">区分大小写</t-checkbox>
-      <t-checkbox v-model="searchRegex">正则</t-checkbox>
-      <t-button size="small" variant="outline" @click="searchPrev">↑</t-button>
-      <t-button size="small" variant="outline" @click="searchNext">↓</t-button>
-      <t-button size="small" variant="text" @click="closeSearch"><template #icon><close-icon /></template></t-button>
+
+    <div v-if="searchVisible" class="term-search">
+      <NInput
+        ref="searchInputEl"
+        v-model:value="searchQuery"
+        placeholder="搜索…"
+        size="small"
+        style="width: 220px"
+        @keydown.enter="searchNext"
+        @keydown.escape="closeSearch"
+      />
+      <NCheckbox v-model:checked="searchCaseSensitive">区分大小写</NCheckbox>
+      <NCheckbox v-model:checked="searchRegex">正则</NCheckbox>
+      <UiButton variant="secondary" size="sm" @click="searchPrev">↑</UiButton>
+      <UiButton variant="secondary" size="sm" @click="searchNext">↓</UiButton>
+      <UiIconButton variant="ghost" size="sm" @click="closeSearch"><X :size="14" /></UiIconButton>
     </div>
-    <div class="terminals-wrapper">
+
+    <div class="term-body">
       <div
         v-for="tab in tabs"
         :key="tab.id"
         :ref="el => { if (el) terminalEls[tab.id] = el as HTMLDivElement }"
-        class="terminal-container"
+        class="term-pane"
         :style="{ display: activeTabId === tab.id ? 'block' : 'none' }"
       />
-      <div v-if="tabs.length === 0" class="terminal-empty">
-        <t-empty description="连接中…" />
+      <div v-if="tabs.length === 0" class="term-empty">
+        <EmptyBlock description="连接中…" />
       </div>
     </div>
   </div>
@@ -43,13 +52,17 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
-import { AddIcon, CloseIcon } from 'tdesign-icons-vue-next'
+import { NInput, NCheckbox } from 'naive-ui'
+import { Plus, X } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import '@xterm/xterm/css/xterm.css'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiIconButton from '@/components/ui/UiIconButton.vue'
+import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -108,9 +121,9 @@ function initTerm(id: number) {
   const el = terminalEls[id]
   if (!el) return
   const term = new Terminal({
-    cursorBlink: true, fontSize: 14,
-    fontFamily: '"Cascadia Code", "JetBrains Mono", Menlo, Monaco, monospace',
-    theme: { background: '#1a2332', foreground: '#e0e0e0', cursor: '#0052d9' },
+    cursorBlink: true, fontSize: 13,
+    fontFamily: 'ui-monospace, "JetBrains Mono", Menlo, Monaco, monospace',
+    theme: { background: '#0A0A0A', foreground: '#E4E4E7', cursor: '#3ECF8E' },
     scrollback: 5000, convertEol: true,
   })
   const fit = new FitAddon()
@@ -188,94 +201,80 @@ function searchPrev() {
 </script>
 
 <style scoped>
-.terminal-page {
-  display: flex;
-  flex-direction: column;
+.term-page {
+  display: flex; flex-direction: column;
   height: 100%;
-  background: #1a2332;
+  background: #0A0A0A;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
 }
 
-.tab-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-1);
-  padding: var(--ui-space-1) var(--ui-space-2);
-  background: #152030;
-  border-bottom: 1px solid #243447;
+.term-tabs {
+  display: flex; align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: #111113;
+  border-bottom: 1px solid #27272A;
   flex-shrink: 0;
   overflow-x: auto;
 }
 
-.tab-item {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  padding: var(--ui-space-1) var(--ui-space-2);
-  border-radius: 4px;
+.term-tab {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  color: #8a94a6;
-  font-size: 13px;
+  color: #71717A;
+  font-size: var(--fs-xs);
   white-space: nowrap;
-  transition: background 0.15s;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  height: 28px;
 }
+.term-tab:hover { background: #18181B; color: #A1A1AA; }
+.term-tab.is-active { background: #18181B; color: #E4E4E7; }
 
-.tab-item:hover { background: #1e2d3d; }
-.tab-item.active { background: #1a2332; color: #e0e0e0; }
-
-.tab-dot {
-  width: 7px;
-  height: 7px;
+.term-tab__dot {
+  width: 6px; height: 6px;
   border-radius: 50%;
   flex-shrink: 0;
 }
+.term-tab__dot.is-connecting { background: var(--ui-warning); }
+.term-tab__dot.is-connected  { background: var(--ui-success); }
+.term-tab__dot.is-disconnected { background: var(--ui-danger); }
 
-.tab-dot.connecting { background: var(--ui-warning); }
-.tab-dot.connected { background: var(--ui-success); }
-.tab-dot.disconnected { background: var(--ui-danger); }
-
-.tab-close {
-  opacity: 0.4;
-  font-size: 12px;
-  transition: opacity 0.15s;
-  cursor: pointer;
+.term-tab__close {
+  opacity: 0.5;
+  transition: opacity var(--dur-fast) var(--ease);
 }
+.term-tab__close:hover { opacity: 1; }
 
-.tab-close:hover { opacity: 1; }
+.term-tab__add { margin-left: var(--space-1); flex-shrink: 0; }
 
-.tab-add {
-  margin-left: var(--ui-space-1);
+.term-search {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: #111113;
+  border-bottom: 1px solid #27272A;
   flex-shrink: 0;
 }
 
-.search-bar {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  padding: var(--ui-space-2) var(--ui-space-4);
-  background: #152030;
-  border-bottom: 1px solid #243447;
-  flex-shrink: 0;
-}
-
-.terminals-wrapper {
+.term-body {
   flex: 1;
   overflow: hidden;
   position: relative;
 }
-
-.terminal-container {
-  width: 100%;
-  height: 100%;
-  padding: var(--ui-space-1);
+.term-pane {
+  width: 100%; height: 100%;
+  padding: var(--space-2);
 }
-
-.terminal-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.term-empty {
+  display: flex; align-items: center; justify-content: center;
   height: 100%;
 }
 
 :deep(.xterm) { height: 100%; }
-:deep(.xterm-viewport) { background-color: #1a2332 !important; }
+:deep(.xterm-viewport) { background-color: #0A0A0A !important; }
 </style>

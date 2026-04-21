@@ -130,28 +130,27 @@ const checks = computed<Check[]>(() => {
 
 <style scoped>
 .net-topo {
-  background: var(--ui-bg-surface);
+  background: var(--ui-bg-2);
   border: 1px solid var(--ui-border);
-  border-radius: 10px;
-  padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-4);
-  margin: 0 0 var(--ui-space-4);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  margin: 0 0 var(--space-4);
 }
 .topo-header {
   display: flex;
   align-items: baseline;
-  gap: var(--ui-space-4);
-  margin-bottom: var(--ui-space-4);
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
 }
-.topo-title { font-size: 14px; font-weight: 600; color: var(--ui-fg); }
-.topo-mode  { font-size: 12px; color: var(--ui-fg-3); }
+.topo-title { font-size: var(--fs-md); font-weight: var(--fw-semibold); color: var(--ui-fg); }
+.topo-mode  { font-size: var(--fs-xs); color: var(--ui-fg-3); }
 
-/* 流程 */
 .topo-flow {
   display: flex;
   align-items: stretch;
   gap: 0;
   overflow-x: auto;
-  padding: var(--ui-space-2) var(--ui-space-1) var(--ui-space-4);
+  padding: var(--space-2) var(--space-1) var(--space-4);
 }
 .topo-flow::-webkit-scrollbar { height: 4px; }
 .topo-flow::-webkit-scrollbar-thumb { background: var(--ui-border); border-radius: 2px; }
@@ -161,35 +160,35 @@ const checks = computed<Check[]>(() => {
   min-width: 150px;
   max-width: 220px;
   border: 1px solid var(--ui-border);
-  border-radius: 8px;
-  padding: var(--ui-space-2) var(--ui-space-4);
-  background: color-mix(in srgb, var(--ui-fg) 2%, transparent);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-4);
+  background: var(--ui-bg-1);
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: var(--ui-space-1);
-  transition: border-color .15s, background .15s;
+  gap: var(--space-1);
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
   position: relative;
 }
 .node--client {
-  background: color-mix(in srgb, var(--ui-brand) 4%, transparent);
+  background: color-mix(in srgb, var(--ui-brand) 6%, transparent);
   border-color: color-mix(in srgb, var(--ui-brand) 30%, transparent);
 }
-.node--ok      { border-color: color-mix(in srgb, #67c23a 50%, transparent); background: color-mix(in srgb, #67c23a 4%, transparent); }
-.node--warn    { border-color: color-mix(in srgb, #e6a23c 50%, transparent); background: color-mix(in srgb, #e6a23c 4%, transparent); }
-.node--missing { border-color: color-mix(in srgb, #e34d59 40%, transparent); background: color-mix(in srgb, #e34d59 4%, transparent); border-style: dashed; }
+.node--ok      { border-color: color-mix(in srgb, var(--ui-success) 50%, transparent); background: color-mix(in srgb, var(--ui-success) 6%, transparent); }
+.node--warn    { border-color: color-mix(in srgb, var(--ui-warning) 50%, transparent); background: color-mix(in srgb, var(--ui-warning) 6%, transparent); }
+.node--missing { border-color: color-mix(in srgb, var(--ui-danger) 40%, transparent); background: color-mix(in srgb, var(--ui-danger) 6%, transparent); border-style: dashed; }
 
 .node-icon { font-size: 22px; line-height: 1; }
 .node-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
   color: var(--ui-fg);
-  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-family: var(--font-mono);
   word-break: break-all;
   line-height: 1.3;
 }
 .node-sub {
-  font-size: 11px;
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
   word-break: break-all;
   line-height: 1.3;
@@ -226,39 +225,38 @@ const checks = computed<Check[]>(() => {
 }
 .arrow-label {
   font-size: 10px;
-  background: var(--ui-bg-surface);
+  background: var(--ui-bg-2);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   position: relative;
   z-index: 1;
   border: 1px solid var(--ui-border);
 }
 
-/* 检查项 */
 .topo-checks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--ui-space-2) var(--ui-space-4);
-  padding-top: var(--ui-space-4);
+  gap: var(--space-2) var(--space-4);
+  padding-top: var(--space-4);
   border-top: 1px dashed var(--ui-border);
 }
 .check-item {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-2);
-  font-size: 12px;
-  padding: var(--ui-space-1) 0;
+  gap: var(--space-2);
+  font-size: var(--fs-xs);
+  padding: var(--space-1) 0;
   min-width: 0;
 }
 .check-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
-  background: #999;
+  background: var(--ui-fg-4);
   flex-shrink: 0;
 }
-.check-item--ok .check-dot      { background: #67c23a; }
-.check-item--warn .check-dot    { background: #e6a23c; }
-.check-item--missing .check-dot { background: #e34d59; }
+.check-item--ok .check-dot      { background: var(--ui-success); }
+.check-item--warn .check-dot    { background: var(--ui-warning); }
+.check-item--missing .check-dot { background: var(--ui-danger); }
 .check-label {
   color: var(--ui-fg-3);
   flex-shrink: 0;

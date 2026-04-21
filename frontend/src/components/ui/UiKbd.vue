@@ -10,14 +10,13 @@
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  font-family: var(--ui-font-sans);
-  font-size: 10.5px;
-  font-weight: var(--ui-fw-medium);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: var(--fw-medium);
   color: var(--ui-fg-3);
-  background: var(--ui-bg-surface);
+  background: var(--ui-bg-2);
   border: 1px solid var(--ui-border);
-  border-bottom-width: 2px;
-  border-radius: var(--ui-radius-xs);
+  border-radius: 4px;
   line-height: 1;
 }
 </style>

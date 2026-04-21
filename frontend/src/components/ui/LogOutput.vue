@@ -3,36 +3,25 @@
     ref="el"
     class="ui-log"
     :class="[`ui-log--${tone}`, { 'ui-log--bordered': bordered }]"
-    :style="style"
-  >{{ content }}</pre>
+  ><slot /></pre>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 
-const props = withDefaults(defineProps<{
-  content: string
-  /** dark: 深色终端风；light: 浅色等宽面板 */
-  tone?: 'dark' | 'light'
-  maxHeight?: string
-  minHeight?: string
-  autoScroll?: boolean
+interface Props {
+  tone?: 'dark' | 'neutral'
   bordered?: boolean
-}>(), {
+  autoScroll?: boolean
+  content?: string
+}
+const props = withDefaults(defineProps<Props>(), {
   tone: 'dark',
-  maxHeight: 'calc(100vh - 240px)',
-  minHeight: '200px',
+  bordered: true,
   autoScroll: true,
-  bordered: false,
 })
 
-const el = ref<HTMLPreElement>()
-
-const style = computed(() => ({
-  maxHeight: props.maxHeight,
-  minHeight: props.minHeight,
-}))
-
+const el = ref<HTMLElement | null>(null)
 watch(() => props.content, async () => {
   if (!props.autoScroll) return
   await nextTick()
@@ -43,16 +32,24 @@ watch(() => props.content, async () => {
 <style scoped>
 .ui-log {
   margin: 0;
-  padding: var(--ui-space-4);
-  border-radius: var(--ui-radius-md);
-  font-family: var(--ui-font-mono);
-  font-size: 12.5px;
-  line-height: var(--ui-lh-relaxed);
-  overflow-y: auto;
+  padding: var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: var(--lh-relaxed);
   white-space: pre-wrap;
   word-break: break-all;
+  border-radius: var(--radius-md);
+  overflow-y: auto;
+  min-height: 200px;
+  max-height: calc(100vh - 240px);
 }
-.ui-log--dark  { background: #0f1420; color: #e6e6e6; }
-.ui-log--light { background: var(--ui-bg-subtle); color: var(--ui-fg-2); }
-.ui-log--bordered.ui-log--light { border: 1px solid var(--ui-border); }
+.ui-log--dark {
+  background: var(--ui-code-bg);
+  color: var(--ui-code-fg);
+}
+.ui-log--neutral {
+  background: var(--ui-bg-2);
+  color: var(--ui-fg-2);
+}
+.ui-log--bordered { border: 1px solid var(--ui-border); }
 </style>

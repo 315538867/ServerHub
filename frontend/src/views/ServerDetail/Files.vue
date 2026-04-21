@@ -1,128 +1,100 @@
 <template>
-  <div class="page-container">
-    <div class="section-block">
-      <!-- 路径面包屑 + 操作按钮 -->
-      <div class="toolbar">
-        <t-breadcrumb class="path-breadcrumb">
-          <t-breadcrumb-item @click="navigateTo('/')">根目录</t-breadcrumb-item>
-          <t-breadcrumb-item
-            v-for="(seg, i) in pathSegments"
-            :key="i"
-            @click="navigateTo('/' + pathSegments.slice(0, i + 1).join('/'))"
-          >{{ seg }}</t-breadcrumb-item>
-        </t-breadcrumb>
-        <div class="toolbar-right">
-          <t-button size="small" variant="outline" @click="triggerUpload">
-            <template #icon><upload-icon /></template>
-            上传文件
-          </t-button>
-          <t-button size="small" variant="outline" @click="openMkdir">
-            <template #icon><folder-add-icon /></template>
+  <div class="fs-page">
+    <UiCard padding="none">
+      <div class="fs-head">
+        <div class="fs-crumbs">
+          <span class="crumb" :class="{ 'is-root': true }" @click="navigateTo('/')">根目录</span>
+          <template v-for="(seg, i) in pathSegments" :key="i">
+            <ChevronRight :size="12" class="crumb-sep" />
+            <span class="crumb" @click="navigateTo('/' + pathSegments.slice(0, i + 1).join('/'))">{{ seg }}</span>
+          </template>
+        </div>
+        <div class="fs-actions">
+          <UiButton variant="secondary" size="sm" @click="triggerUpload">
+            <template #icon><Upload :size="14" /></template>
+            上传
+          </UiButton>
+          <UiButton variant="secondary" size="sm" @click="openMkdir">
+            <template #icon><FolderPlus :size="14" /></template>
             新建目录
-          </t-button>
-          <t-button size="small" variant="outline" :loading="loading" @click="reload">
-            <template #icon><refresh-icon /></template>
+          </UiButton>
+          <UiButton variant="secondary" size="sm" :loading="loading" @click="reload">
+            <template #icon><RefreshCw :size="14" /></template>
             刷新
-          </t-button>
+          </UiButton>
         </div>
       </div>
-
-      <!-- 文件列表 -->
-      <t-table
-        :data="entries"
-        :columns="fileColumns"
-        :loading="loading"
-        row-key="name"
-        bordered
-        size="small"
-        empty="目录为空"
-        @row-dblclick="onRowDblClick"
-      >
-        <template #name="{ row }">
-          <div class="file-name-cell">
-            <folder-icon v-if="row.is_dir" class="file-icon dir" />
-            <file-icon v-else class="file-icon file" />
-            <span>{{ row.name }}</span>
-          </div>
-        </template>
-        <template #size="{ row }">
-          <span class="mono-text">{{ row.is_dir ? '—' : formatSize(row.size) }}</span>
-        </template>
-        <template #mode="{ row }">
-          <span class="mono-text perm">{{ row.mode }}</span>
-        </template>
-        <template #operations="{ row }">
-          <t-space size="small">
-            <t-button v-if="!row.is_dir" size="small" variant="text" @click="downloadEntry(row)">下载</t-button>
-            <t-button v-if="!row.is_dir && isEditable(row.name)" size="small" variant="text" @click="openEdit(row)">编辑</t-button>
-            <t-button size="small" variant="text" @click="openRename(row)">重命名</t-button>
-            <t-button size="small" variant="text" @click="openChmod(row)">权限</t-button>
-            <t-popconfirm :content="`确认删除 ${row.name}？`" @confirm="deleteEntry(row)">
-              <t-button theme="danger" size="small" variant="text">删除</t-button>
-            </t-popconfirm>
-          </t-space>
-        </template>
-      </t-table>
-    </div>
+      <div class="fs-body">
+        <NDataTable
+          :columns="fileColumns"
+          :data="entries"
+          :loading="loading"
+          :row-key="(row: FileEntry) => row.name"
+          size="small"
+          :bordered="false"
+          :row-props="rowProps"
+        />
+      </div>
+    </UiCard>
 
     <input ref="uploadInput" type="file" multiple style="display:none" @change="onUploadChange" />
 
-    <!-- 新建目录 -->
-    <t-dialog
-      v-model:visible="mkdirVisible"
-      header="新建目录"
-      width="400px"
-      confirm-btn="创建"
-      @confirm="confirmMkdir"
-      @closed="mkdirName = ''"
-    >
-      <t-input v-model="mkdirName" placeholder="目录名" @keydown.enter="confirmMkdir" />
-    </t-dialog>
+    <NModal v-model:show="mkdirVisible" preset="card" title="新建目录" style="width: 400px" :bordered="false" @after-leave="mkdirName = ''">
+      <NInput v-model:value="mkdirName" placeholder="目录名" @keydown.enter="confirmMkdir" />
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="mkdirVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" @click="confirmMkdir">创建</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- 重命名 -->
-    <t-dialog
-      v-model:visible="renameVisible"
-      header="重命名 / 移动"
-      width="400px"
-      confirm-btn="确认"
-      @confirm="confirmRename"
-    >
-      <t-input v-model="renameTo" placeholder="新路径" />
-    </t-dialog>
+    <NModal v-model:show="renameVisible" preset="card" title="重命名 / 移动" style="width: 440px" :bordered="false">
+      <NInput v-model:value="renameTo" placeholder="新路径" />
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="renameVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" @click="confirmRename">确认</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- 修改权限 -->
-    <t-dialog
-      v-model:visible="chmodVisible"
-      header="修改权限"
-      width="400px"
-      confirm-btn="确认"
-      @confirm="confirmChmod"
-    >
-      <t-input v-model="chmodMode" placeholder="如 0644 或 755" />
-    </t-dialog>
+    <NModal v-model:show="chmodVisible" preset="card" title="修改权限" style="width: 400px" :bordered="false">
+      <NInput v-model:value="chmodMode" placeholder="如 0644 或 755" />
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="chmodVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" @click="confirmChmod">确认</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- 编辑文件 (CodeMirror) -->
-    <t-dialog
-      v-model:visible="editVisible"
-      :header="`编辑 — ${editPath}`"
-      width="800px"
-      placement="center"
-      :close-on-overlay-click="false"
-      :confirm-btn="{ content: '保存', loading: saving }"
-      class="code-editor-dialog"
-      @confirm="saveEdit"
-      @closed="destroyEditor"
+    <NModal
+      v-model:show="editVisible"
+      preset="card"
+      :title="`编辑 — ${editPath}`"
+      style="width: 800px"
+      :bordered="false"
+      :mask-closable="false"
+      @after-leave="destroyEditor"
     >
       <div ref="editorEl" class="code-editor" />
-    </t-dialog>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="editVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="saving" @click="saveEdit">保存</UiButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import { useRoute } from 'vue-router'
-import { RefreshIcon, UploadIcon, FolderAddIcon, FolderIcon, FileIcon } from 'tdesign-icons-vue-next'
-import { MessagePlugin } from 'tdesign-vue-next'
+import { NDataTable, NModal, NInput, NPopconfirm, useMessage } from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { RefreshCw, Upload, FolderPlus, Folder, File as FileIcon, ChevronRight } from 'lucide-vue-next'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { json } from '@codemirror/lang-json'
@@ -135,22 +107,17 @@ import {
   uploadFile, mkdir, deleteFile, renameFile, chmod,
 } from '@/api/files'
 import type { FileEntry } from '@/api/files'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
+const message = useMessage()
 const serverId = computed(() => Number(route.params.serverId))
 const currentPath = ref('/')
 const entries = ref<FileEntry[]>([])
 const loading = ref(false)
 const pathSegments = computed(() => currentPath.value.split('/').filter(Boolean))
-
-const fileColumns = [
-  { colKey: 'name', title: '名称', minWidth: 240 },
-  { colKey: 'size', title: '大小', width: 100 },
-  { colKey: 'mode', title: '权限', width: 130 },
-  { colKey: 'mod_time', title: '修改时间', minWidth: 160 },
-  { colKey: 'operations', title: '操作', width: 280, fixed: 'right' as const },
-]
 
 const editableExts = new Set([
   'txt', 'md', 'json', 'yaml', 'yml', 'conf', 'cfg', 'ini',
@@ -177,19 +144,57 @@ function formatSize(bytes: number) {
   return `${(bytes / 1048576).toFixed(1)} MB`
 }
 
-async function navigateTo(path: string) { currentPath.value = path || '/'; await reload() }
+const fileColumns = computed<DataTableColumns<FileEntry>>(() => [
+  {
+    title: '名称', key: 'name', minWidth: 240, ellipsis: { tooltip: true },
+    render: (row) => h('div', { class: 'fs-name' }, [
+      h(row.is_dir ? Folder : FileIcon, { size: 14, class: row.is_dir ? 'ico dir' : 'ico file' }),
+      h('span', null, row.name),
+    ]),
+  },
+  {
+    title: '大小', key: 'size', width: 100,
+    render: (row) => h('span', { class: 'mono' }, row.is_dir ? '—' : formatSize(row.size)),
+  },
+  {
+    title: '权限', key: 'mode', width: 130,
+    render: (row) => h('span', { class: 'mono perm' }, row.mode),
+  },
+  { title: '修改时间', key: 'mod_time', minWidth: 160, ellipsis: { tooltip: true } },
+  {
+    title: '操作', key: 'ops', width: 300, fixed: 'right' as const,
+    render: (row) => h('div', { class: 'cell-ops' }, [
+      !row.is_dir ? h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => downloadEntry(row) }, () => '下载') : null,
+      !row.is_dir && isEditable(row.name) ? h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openEdit(row) }, () => '编辑') : null,
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openRename(row) }, () => '重命名'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openChmod(row) }, () => '权限'),
+      h(NPopconfirm, {
+        onPositiveClick: () => deleteEntry(row),
+        positiveText: '删除', negativeText: '取消',
+      }, {
+        trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+          () => h('span', { class: 'text-danger' }, '删除')),
+        default: () => `确认删除 ${row.name}？`,
+      }),
+    ]),
+  },
+])
 
-async function onRowDblClick({ row }: { row: FileEntry }) {
-  if (!row.is_dir) return
-  await navigateTo(fullPath(row.name))
+function rowProps(row: FileEntry) {
+  return {
+    style: row.is_dir ? 'cursor: pointer' : '',
+    ondblclick: () => { if (row.is_dir) navigateTo(fullPath(row.name)) },
+  }
 }
+
+async function navigateTo(path: string) { currentPath.value = path || '/'; await reload() }
 
 async function reload() {
   loading.value = true
   try {
     const res = await listFiles(serverId.value, currentPath.value)
     entries.value = res.entries ?? []
-  } catch { MessagePlugin.error('读取目录失败') }
+  } catch { message.error('读取目录失败') }
   finally { loading.value = false }
 }
 
@@ -199,8 +204,8 @@ async function onUploadChange(e: Event) {
   const files = (e.target as HTMLInputElement).files
   if (!files) return
   for (const file of Array.from(files)) {
-    try { await uploadFile(serverId.value, currentPath.value, file); MessagePlugin.success(`${file.name} 上传成功`) }
-    catch { MessagePlugin.error(`${file.name} 上传失败`) }
+    try { await uploadFile(serverId.value, currentPath.value, file); message.success(`${file.name} 上传成功`) }
+    catch { message.error(`${file.name} 上传失败`) }
   }
   ;(e.target as HTMLInputElement).value = ''
   await reload()
@@ -208,21 +213,21 @@ async function onUploadChange(e: Event) {
 
 async function downloadEntry(row: FileEntry) {
   try { await downloadFile(serverId.value, fullPath(row.name), auth.token) }
-  catch { MessagePlugin.error('下载失败') }
+  catch { message.error('下载失败') }
 }
 
 async function deleteEntry(row: FileEntry) {
-  try { await deleteFile(serverId.value, fullPath(row.name)); MessagePlugin.success('已删除'); await reload() }
-  catch { MessagePlugin.error('删除失败') }
+  try { await deleteFile(serverId.value, fullPath(row.name)); message.success('已删除'); await reload() }
+  catch { message.error('删除失败') }
 }
 
 const mkdirVisible = ref(false)
 const mkdirName = ref('')
-function openMkdir() { mkdirVisible.value = true }
+function openMkdir() { mkdirName.value = ''; mkdirVisible.value = true }
 async function confirmMkdir() {
   if (!mkdirName.value.trim()) return
-  try { await mkdir(serverId.value, fullPath(mkdirName.value.trim())); MessagePlugin.success('目录已创建'); mkdirVisible.value = false; await reload() }
-  catch { MessagePlugin.error('创建失败') }
+  try { await mkdir(serverId.value, fullPath(mkdirName.value.trim())); message.success('目录已创建'); mkdirVisible.value = false; await reload() }
+  catch { message.error('创建失败') }
 }
 
 const renameVisible = ref(false)
@@ -230,8 +235,8 @@ const renameFrom = ref('')
 const renameTo = ref('')
 function openRename(row: FileEntry) { renameFrom.value = fullPath(row.name); renameTo.value = renameFrom.value; renameVisible.value = true }
 async function confirmRename() {
-  try { await renameFile(serverId.value, renameFrom.value, renameTo.value); MessagePlugin.success('重命名成功'); renameVisible.value = false; await reload() }
-  catch { MessagePlugin.error('重命名失败') }
+  try { await renameFile(serverId.value, renameFrom.value, renameTo.value); message.success('重命名成功'); renameVisible.value = false; await reload() }
+  catch { message.error('重命名失败') }
 }
 
 const chmodVisible = ref(false)
@@ -240,8 +245,8 @@ const chmodMode = ref('')
 function openChmod(row: FileEntry) { chmodPath.value = fullPath(row.name); chmodMode.value = ''; chmodVisible.value = true }
 async function confirmChmod() {
   if (!chmodMode.value.trim()) return
-  try { await chmod(serverId.value, chmodPath.value, chmodMode.value.trim()); MessagePlugin.success('权限已修改'); chmodVisible.value = false; await reload() }
-  catch { MessagePlugin.error('修改权限失败') }
+  try { await chmod(serverId.value, chmodPath.value, chmodMode.value.trim()); message.success('权限已修改'); chmodVisible.value = false; await reload() }
+  catch { message.error('修改权限失败') }
 }
 
 const editVisible = ref(false)
@@ -260,7 +265,7 @@ async function openEdit(row: FileEntry) {
       state: EditorState.create({ doc: res.content, extensions: [basicSetup, oneDark, ...getLang(row.name)] }),
       parent: editorEl.value!,
     })
-  } catch (e: any) { MessagePlugin.error(e?.response?.data?.msg ?? '读取文件失败'); editVisible.value = false }
+  } catch (e: any) { message.error(e?.response?.data?.msg ?? '读取文件失败'); editVisible.value = false }
 }
 
 async function saveEdit() {
@@ -268,8 +273,8 @@ async function saveEdit() {
   saving.value = true
   try {
     await putFileContent(serverId.value, editPath.value, editorView.state.doc.toString())
-    MessagePlugin.success('保存成功'); editVisible.value = false
-  } catch { MessagePlugin.error('保存失败') }
+    message.success('保存成功'); editVisible.value = false
+  } catch { message.error('保存失败') }
   finally { saving.value = false }
 }
 
@@ -280,62 +285,58 @@ onBeforeUnmount(() => editorView?.destroy())
 </script>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--ui-space-4) var(--ui-space-6);
+.fs-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+
+.fs-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--ui-border);
-  margin-bottom: 0;
-  flex-wrap: wrap;
-  gap: var(--ui-space-2);
+  gap: var(--space-3); flex-wrap: wrap;
 }
 
-.path-breadcrumb {
-  flex: 1;
-  min-width: 200px;
+.fs-crumbs {
+  display: inline-flex; align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm); color: var(--ui-fg-2);
+  min-width: 0; flex: 1;
+}
+.crumb {
   cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
+.crumb:hover { background: var(--ui-bg-2); color: var(--ui-fg); }
+.crumb-sep { color: var(--ui-fg-4); flex-shrink: 0; }
 
-.toolbar-right {
-  display: flex;
-  gap: var(--ui-space-2);
-  flex-shrink: 0;
-}
+.fs-actions { display: flex; gap: var(--space-2); flex-shrink: 0; }
 
-.file-name-cell {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  cursor: pointer;
-  user-select: none;
-}
+.fs-body { padding: var(--space-4); }
 
-.file-icon {
-  flex-shrink: 0;
-  font-size: 16px;
-}
-
-.file-icon.dir { color: var(--ui-brand); }
-.file-icon.file { color: #8a94a6; }
-
-.mono-text {
-  font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;
-  font-size: 12px;
-}
-
-.perm {
-  color: var(--ui-fg-3);
-}
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
 
 .code-editor {
-  height: 60vh;
-  overflow: auto;
+  height: 60vh; overflow: auto;
   font-size: 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ui-border);
 }
-
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
 
-:deep(.t-table) { font-size: 13px; }
+:deep(.fs-name) {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  user-select: none;
+}
+:deep(.fs-name .ico.dir) { color: var(--ui-brand); }
+:deep(.fs-name .ico.file) { color: var(--ui-fg-4); }
+
+:deep(.mono) {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+}
+:deep(.perm) { color: var(--ui-fg-3); }
+
+:deep(.cell-ops) { display: inline-flex; gap: var(--space-1); }
+:deep(.text-danger) { color: var(--ui-danger-fg); }
 </style>

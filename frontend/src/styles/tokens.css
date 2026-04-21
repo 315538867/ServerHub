@@ -1,362 +1,254 @@
 /* ============================================================
-   ServerHub – Design Tokens v2 (Primitive + Semantic, Light + Dark)
-   Style basis: Linear / Vercel / Raycast — minimal, dense, animated
+   ServerHub · Design Tokens v3
+   Style basis: Supabase / Railway — calm, dense, modern
+   Spacing strict 4px scale. 3 radius tiers. 2 shadow tiers.
    ============================================================ */
 
 :root {
+  color-scheme: light;
+
   /* ============================================================
-     LAYER 1 — PRIMITIVE (atomic palette, do not consume directly)
+     LAYER 1 — PRIMITIVES (do not consume directly)
      ============================================================ */
 
-  /* Gray (cool neutral) */
-  --p-gray-0:    #ffffff;
-  --p-gray-25:   #fcfcfd;
-  --p-gray-50:   #f7f8fa;
-  --p-gray-100:  #f1f2f5;
-  --p-gray-150:  #ebecf0;
-  --p-gray-200:  #e4e6eb;
-  --p-gray-300:  #d2d4da;
-  --p-gray-400:  #a8acb6;
-  --p-gray-500:  #80848e;
-  --p-gray-600:  #5b5f68;
-  --p-gray-700:  #3f4249;
-  --p-gray-800:  #26282d;
-  --p-gray-900:  #16171a;
-  --p-gray-950:  #0d0e10;
-  --p-gray-1000: #06070a;
+  /* Zinc (warm gray) */
+  --p-zinc-50:  #FAFAFA;
+  --p-zinc-100: #F4F4F5;
+  --p-zinc-150: #ECECEE;
+  --p-zinc-200: #E4E4E7;
+  --p-zinc-300: #D4D4D8;
+  --p-zinc-400: #A1A1AA;
+  --p-zinc-500: #71717A;
+  --p-zinc-600: #52525B;
+  --p-zinc-700: #3F3F46;
+  --p-zinc-800: #27272A;
+  --p-zinc-900: #18181B;
+  --p-zinc-950: #09090B;
 
-  /* Brand · Linear Purple */
-  --p-purple-50:  #f1f2fb;
-  --p-purple-100: #e3e6f7;
-  --p-purple-200: #c8cdef;
-  --p-purple-300: #a4abe5;
-  --p-purple-400: #818bda;
-  --p-purple-500: #5e6ad2;   /* brand */
-  --p-purple-600: #4753b8;
-  --p-purple-700: #353f93;
-  --p-purple-800: #262d6c;
-  --p-purple-900: #181d47;
+  /* Brand (Emerald) */
+  --p-green-50:  #ECFDF5;
+  --p-green-100: #D1FAE5;
+  --p-green-200: #A7F3D0;
+  --p-green-300: #6EE7B7;
+  --p-green-400: #34D399;
+  --p-green-500: #10B981;   /* primary */
+  --p-green-600: #059669;
+  --p-green-700: #047857;
+  --p-green-800: #065F46;
+  --p-green-900: #064E3B;
 
-  /* Accent · Cool teal */
-  --p-teal-50:  #ecf6f9;
-  --p-teal-100: #d1ebf1;
-  --p-teal-300: #7dc6d6;
-  --p-teal-500: #46b1c9;
-  --p-teal-700: #2c7a8c;
+  /* Status: amber */
+  --p-amber-50:  #FFFBEB;
+  --p-amber-100: #FEF3C7;
+  --p-amber-400: #FBBF24;
+  --p-amber-500: #F59E0B;
+  --p-amber-600: #D97706;
 
-  /* Status · Green */
-  --p-green-50:  #ecfdf5;
-  --p-green-100: #d1fae5;
-  --p-green-500: #16a34a;
-  --p-green-600: #15803d;
+  /* Status: red */
+  --p-red-50:   #FEF2F2;
+  --p-red-100:  #FEE2E2;
+  --p-red-400:  #F87171;
+  --p-red-500:  #EF4444;
+  --p-red-600:  #DC2626;
 
-  /* Status · Yellow / Warning */
-  --p-yellow-50:  #fffbeb;
-  --p-yellow-100: #fef3c7;
-  --p-yellow-500: #d97706;
-  --p-yellow-600: #b45309;
-
-  /* Status · Red / Danger */
-  --p-red-50:  #fef2f2;
-  --p-red-100: #fee2e2;
-  --p-red-500: #dc2626;
-  --p-red-600: #b91c1c;
-
-  /* Status · Blue / Info */
-  --p-blue-50:  #eff6ff;
-  --p-blue-100: #dbeafe;
-  --p-blue-500: #2563eb;
-  --p-blue-600: #1d4ed8;
+  /* Status: blue */
+  --p-blue-50:   #EFF6FF;
+  --p-blue-100:  #DBEAFE;
+  --p-blue-400:  #60A5FA;
+  --p-blue-500:  #3B82F6;
+  --p-blue-600:  #2563EB;
 
   /* ============================================================
-     LAYER 2 — SEMANTIC (consume these in components)
-     Light theme defaults
+     LAYER 2 — SEMANTIC (light theme)
      ============================================================ */
 
   /* Surface */
-  --ui-bg-canvas:     var(--p-gray-50);
-  --ui-bg-surface:    var(--p-gray-0);
-  --ui-bg-subtle:     var(--p-gray-100);
-  --ui-bg-hover:      var(--p-gray-100);
-  --ui-bg-active:     var(--p-gray-150);
-  --ui-bg-elevated:   var(--p-gray-0);
-  --ui-bg-inverse:    var(--p-gray-900);
-  --ui-bg-overlay:    rgba(13, 14, 16, 0.48);
-  --ui-bg-glass:      rgba(255, 255, 255, 0.72);
+  --ui-bg:           var(--p-zinc-50);    /* page */
+  --ui-bg-1:         #FFFFFF;             /* card / panel */
+  --ui-bg-2:         var(--p-zinc-100);   /* subtle blocks */
+  --ui-bg-3:         var(--p-zinc-150);   /* hover */
+  --ui-bg-inverse:   var(--p-zinc-900);
+  --ui-overlay:      rgba(9, 9, 11, 0.55);
 
   /* Text */
-  --ui-fg:            var(--p-gray-900);
-  --ui-fg-2:          var(--p-gray-700);
-  --ui-fg-3:          var(--p-gray-500);
-  --ui-fg-4:          var(--p-gray-400);
-  --ui-fg-placeholder:var(--p-gray-400);
-  --ui-fg-inverse:    var(--p-gray-0);
-  --ui-fg-on-brand:   #ffffff;
+  --ui-fg:           var(--p-zinc-900);
+  --ui-fg-2:         var(--p-zinc-600);
+  --ui-fg-3:         var(--p-zinc-500);
+  --ui-fg-4:         var(--p-zinc-400);
+  --ui-fg-on-brand:  #052e1d;
 
   /* Border */
-  --ui-border:        var(--p-gray-200);
-  --ui-border-strong: var(--p-gray-300);
-  --ui-border-subtle: var(--p-gray-150);
-  --ui-border-focus:  var(--p-purple-500);
+  --ui-border:       var(--p-zinc-200);
+  --ui-border-strong:var(--p-zinc-300);
+  --ui-border-focus: var(--p-green-500);
 
   /* Brand */
-  --ui-brand:         var(--p-purple-500);
-  --ui-brand-hover:   var(--p-purple-400);
-  --ui-brand-active:  var(--p-purple-600);
-  --ui-brand-soft:    var(--p-purple-50);
-  --ui-brand-soft-2:  var(--p-purple-100);
-  --ui-brand-fg:      var(--p-purple-700);
-  --ui-brand-ring:    rgba(94, 106, 210, 0.22);
-  --ui-brand-grad:    linear-gradient(135deg, #5e6ad2 0%, #7c86e5 50%, #46b1c9 100%);
-
-  --ui-accent:        var(--p-teal-500);
-  --ui-accent-soft:   var(--p-teal-50);
+  --ui-brand:        var(--p-green-500);
+  --ui-brand-hover:  var(--p-green-600);
+  --ui-brand-active: var(--p-green-700);
+  --ui-brand-soft:   var(--p-green-50);
+  --ui-brand-fg:     var(--p-green-700);
+  --ui-brand-ring:   rgba(16, 185, 129, 0.30);
 
   /* Status */
-  --ui-success:       var(--p-green-500);
-  --ui-success-soft:  var(--p-green-50);
-  --ui-success-fg:    var(--p-green-600);
-  --ui-warning:       var(--p-yellow-500);
-  --ui-warning-soft:  var(--p-yellow-50);
-  --ui-warning-fg:    var(--p-yellow-600);
-  --ui-danger:        var(--p-red-500);
-  --ui-danger-soft:   var(--p-red-50);
-  --ui-danger-fg:     var(--p-red-600);
-  --ui-info:          var(--p-blue-500);
-  --ui-info-soft:     var(--p-blue-50);
-  --ui-info-fg:       var(--p-blue-600);
-  --ui-muted:         var(--p-gray-500);
-  --ui-muted-soft:    var(--p-gray-100);
+  --ui-success:      var(--p-green-500);
+  --ui-success-soft: var(--p-green-50);
+  --ui-success-fg:   var(--p-green-700);
 
-  /* Sidebar (light gray, Linear-style) */
-  --ui-sidebar-bg:           var(--p-gray-50);
-  --ui-sidebar-fg:           var(--p-gray-600);
-  --ui-sidebar-fg-active:    var(--p-purple-700);
-  --ui-sidebar-hover:        var(--p-gray-100);
-  --ui-sidebar-active-bg:    var(--p-purple-50);
-  --ui-sidebar-active-line:  var(--p-purple-500);
-  --ui-sidebar-group:        var(--p-gray-400);
-  --ui-sidebar-border:       var(--p-gray-150);
+  --ui-warning:      var(--p-amber-500);
+  --ui-warning-soft: var(--p-amber-50);
+  --ui-warning-fg:   var(--p-amber-600);
 
-  /* Header (glass) */
-  --ui-header-bg:            rgba(255, 255, 255, 0.72);
-  --ui-header-border:        var(--p-gray-150);
-  --ui-header-blur:          12px;
-  --ui-header-height:        48px;
+  --ui-danger:       var(--p-red-500);
+  --ui-danger-soft:  var(--p-red-50);
+  --ui-danger-fg:    var(--p-red-600);
 
-  /* Table */
-  --ui-table-row-h:          32px;
-  --ui-table-row-hover:      var(--p-gray-50);
-  --ui-table-header-bg:      var(--p-gray-50);
-  --ui-table-header-fg:      var(--p-gray-500);
+  --ui-info:         var(--p-blue-500);
+  --ui-info-soft:    var(--p-blue-50);
+  --ui-info-fg:      var(--p-blue-600);
+
+  --ui-muted:        var(--p-zinc-500);
+  --ui-muted-soft:   var(--p-zinc-100);
 
   /* Code surface */
-  --ui-code-bg:              var(--p-gray-900);
-  --ui-code-fg:              #e6e6e6;
+  --ui-code-bg:      var(--p-zinc-950);
+  --ui-code-fg:      #E4E4E7;
 
-  /* Chart palette (echarts) */
-  --ui-chart-1: #5e6ad2;
-  --ui-chart-2: #46b1c9;
-  --ui-chart-3: #16a34a;
-  --ui-chart-4: #d97706;
-  --ui-chart-5: #dc2626;
-  --ui-chart-6: #818bda;
-
-  /* Spacing scale (4-based, denser) */
-  --ui-space-1:  4px;
-  --ui-space-2:  8px;
-  --ui-space-3:  12px;
-  --ui-space-4:  16px;
-  --ui-space-5:  20px;
-  --ui-space-6:  24px;
-  --ui-space-8:  32px;
-  --ui-space-10: 40px;
-  --ui-space-12: 48px;
-
-  /* Radius */
-  --ui-radius-xs:   3px;
-  --ui-radius-sm:   4px;
-  --ui-radius-md:   6px;
-  --ui-radius-lg:   8px;
-  --ui-radius-xl:   12px;
-  --ui-radius-2xl:  16px;
-  --ui-radius-pill: 9999px;
-
-  /* Shadow */
-  --ui-shadow-none: none;
-  --ui-shadow-xs:   0 1px 0 rgba(17, 24, 39, 0.04);
-  --ui-shadow-sm:   0 1px 2px rgba(17, 24, 39, 0.05), 0 1px 1px rgba(17, 24, 39, 0.03);
-  --ui-shadow-md:   0 4px 12px rgba(17, 24, 39, 0.08), 0 2px 4px rgba(17, 24, 39, 0.04);
-  --ui-shadow-lg:   0 12px 28px rgba(17, 24, 39, 0.10), 0 6px 12px rgba(17, 24, 39, 0.05);
-  --ui-shadow-xl:   0 24px 48px rgba(17, 24, 39, 0.16), 0 12px 24px rgba(17, 24, 39, 0.08);
-  --ui-shadow-glow: 0 0 0 3px var(--ui-brand-ring);
-  --ui-shadow-inner: inset 0 1px 2px rgba(17, 24, 39, 0.06);
-
-  /* Typography */
-  --ui-font-sans:
-    -apple-system, BlinkMacSystemFont, 'Inter', 'PingFang SC',
-    'Helvetica Neue', 'Microsoft YaHei', sans-serif;
-  --ui-font-mono:
-    'JetBrains Mono', 'SF Mono', 'Cascadia Code', 'Fira Code',
-    Menlo, Consolas, monospace;
-  --ui-font-numeric: 'Inter', system-ui, sans-serif;
-
-  --ui-fs-2xs: 11px;
-  --ui-fs-xs:  12px;
-  --ui-fs-sm:  12.5px;
-  --ui-fs-md:  13px;
-  --ui-fs-lg:  14px;
-  --ui-fs-xl:  16px;
-  --ui-fs-2xl: 18px;
-  --ui-fs-3xl: 22px;
-  --ui-fs-4xl: 28px;
-  --ui-fs-5xl: 36px;
-
-  --ui-fw-regular:  400;
-  --ui-fw-medium:   500;
-  --ui-fw-semibold: 600;
-  --ui-fw-bold:     700;
-
-  --ui-lh-tight:   1.25;
-  --ui-lh-normal:  1.5;
-  --ui-lh-relaxed: 1.65;
-
-  --ui-tracking-tight: -0.01em;
-  --ui-tracking-wide:  0.04em;
-
-  /* Motion */
-  --ui-dur-instant:  80ms;
-  --ui-dur-fast:     120ms;
-  --ui-dur-base:     180ms;
-  --ui-dur-slow:     240ms;
-  --ui-dur-slower:   360ms;
-  --ui-ease-standard:   cubic-bezier(0.2, 0, 0, 1);
-  --ui-ease-emphasized: cubic-bezier(0.2, 0, 0, 1.2);
-  --ui-ease-spring:     cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ui-ease-out:        cubic-bezier(0, 0, 0.2, 1);
-  --ui-ease-in:         cubic-bezier(0.4, 0, 1, 1);
-
-  /* Z-index */
-  --ui-z-sticky:   100;
-  --ui-z-dropdown: 900;
-  --ui-z-drawer:   1000;
-  --ui-z-dialog:   1100;
-  --ui-z-toast:    1200;
-  --ui-z-tooltip:  1300;
-  --ui-z-cmdk:     1400;
-
-  /* Layout sizes */
-  --ui-sidebar-w:           240px;
-  --ui-sidebar-w-collapsed: 56px;
+  /* Chart palette */
+  --ui-chart-1: #3ECF8E;
+  --ui-chart-2: #3B82F6;
+  --ui-chart-3: #F59E0B;
+  --ui-chart-4: #EF4444;
+  --ui-chart-5: #8B5CF6;
+  --ui-chart-6: #14B8A6;
 
   /* ============================================================
-     BACK-COMPAT — legacy --sh-* aliases REMOVED. All consumers have
-     been migrated to --ui-* semantic tokens.
+     SPACING — strict 4px scale (11 stops)
      ============================================================ */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
 
-  /* TDesign brand remap → Linear purple */
-  --td-brand-color:        var(--ui-brand);
-  --td-brand-color-hover:  var(--ui-brand-hover);
-  --td-brand-color-active: var(--ui-brand-active);
-  --td-brand-color-light:  var(--ui-brand-soft);
-  --td-brand-color-focus:  var(--ui-brand-ring);
-  --td-bg-color-page:      var(--ui-bg-canvas);
-  --td-bg-color-container: var(--ui-bg-surface);
-  --td-text-color-primary:   var(--ui-fg);
-  --td-text-color-secondary: var(--ui-fg-2);
-  --td-text-color-placeholder: var(--ui-fg-placeholder);
-  --td-component-stroke:    var(--ui-border);
-  --td-component-border:    var(--ui-border);
-  --td-radius-default:      var(--ui-radius-md);
-  --td-radius-medium:       var(--ui-radius-lg);
-  --td-radius-large:        var(--ui-radius-xl);
+  /* ============================================================
+     RADIUS — only 3 tiers
+     ============================================================ */
+  --radius-sm:   6px;    /* controls (button/input/badge) */
+  --radius-md:   10px;   /* cards / panels / dialogs */
+  --radius-pill: 9999px;
+
+  /* ============================================================
+     SHADOW — only 2 tiers
+     ============================================================ */
+  --shadow-sm: 0 1px 2px rgba(9, 9, 11, 0.04), 0 0 0 1px rgba(9, 9, 11, 0.04);
+  --shadow-md: 0 4px 12px rgba(9, 9, 11, 0.08), 0 2px 4px rgba(9, 9, 11, 0.04);
+  --shadow-ring: 0 0 0 3px var(--ui-brand-ring);
+
+  /* ============================================================
+     TYPOGRAPHY
+     ============================================================ */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC',
+               'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace;
+
+  --fs-xs:  12px;
+  --fs-sm:  13px;
+  --fs-md:  14px;
+  --fs-lg:  16px;
+  --fs-xl:  20px;
+  --fs-2xl: 24px;
+  --fs-3xl: 32px;
+
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+
+  --lh-tight:   1.25;
+  --lh-normal:  1.5;
+  --lh-relaxed: 1.65;
+
+  /* ============================================================
+     MOTION — single curve, 3 durations
+     ============================================================ */
+  --dur-fast: 100ms;
+  --dur-base: 150ms;
+  --dur-slow: 240ms;
+  --ease:     cubic-bezier(0.2, 0, 0, 1);
+
+  /* ============================================================
+     Z-INDEX
+     ============================================================ */
+  --z-sticky:   100;
+  --z-dropdown: 900;
+  --z-drawer:   1000;
+  --z-dialog:   1100;
+  --z-toast:    1200;
+  --z-tooltip:  1300;
+
+  /* ============================================================
+     LAYOUT
+     ============================================================ */
+  --layout-sidebar-w:           240px;
+  --layout-sidebar-w-collapsed: 56px;
+  --layout-header-h:            52px;
+  --layout-content-max:         1440px;
+
+  /* Component sizing */
+  --control-h-sm: 28px;
+  --control-h-md: 32px;
+  --control-h-lg: 36px;
+  --table-row-h:  44px;
 }
 
 /* ============================================================
-   DARK THEME OVERRIDES
-   Activated by [data-theme="dark"] on <html>
+   DARK THEME (Railway-flavored deep neutral)
    ============================================================ */
 [data-theme="dark"] {
-  /* Surface */
-  --ui-bg-canvas:     #0b0c0e;
-  --ui-bg-surface:    #131418;
-  --ui-bg-subtle:     #1a1c20;
-  --ui-bg-hover:      #1f2126;
-  --ui-bg-active:     #25282e;
-  --ui-bg-elevated:   #181a1f;
-  --ui-bg-inverse:    var(--p-gray-50);
-  --ui-bg-overlay:    rgba(0, 0, 0, 0.62);
-  --ui-bg-glass:      rgba(19, 20, 24, 0.72);
+  color-scheme: dark;
 
-  /* Text */
-  --ui-fg:            #e8e9ec;
-  --ui-fg-2:          #b8bbc2;
-  --ui-fg-3:          #80848e;
-  --ui-fg-4:          #5b5f68;
-  --ui-fg-placeholder:#5b5f68;
-  --ui-fg-inverse:    var(--p-gray-900);
+  --ui-bg:           #0A0A0A;
+  --ui-bg-1:         #111113;
+  --ui-bg-2:         #18181B;
+  --ui-bg-3:         #27272A;
+  --ui-bg-inverse:   var(--p-zinc-50);
+  --ui-overlay:      rgba(0, 0, 0, 0.65);
 
-  /* Border */
-  --ui-border:        #26282d;
-  --ui-border-strong: #34373e;
-  --ui-border-subtle: #1d1f24;
-  --ui-border-focus:  var(--p-purple-400);
+  --ui-fg:           #FAFAFA;
+  --ui-fg-2:         #A1A1AA;
+  --ui-fg-3:         #71717A;
+  --ui-fg-4:         #52525B;
 
-  /* Brand (slightly lighter on dark) */
-  --ui-brand:         var(--p-purple-400);
-  --ui-brand-hover:   var(--p-purple-300);
-  --ui-brand-active:  var(--p-purple-500);
-  --ui-brand-soft:    rgba(94, 106, 210, 0.14);
-  --ui-brand-soft-2:  rgba(94, 106, 210, 0.22);
-  --ui-brand-fg:      var(--p-purple-200);
-  --ui-brand-ring:    rgba(129, 139, 218, 0.32);
+  --ui-border:       #27272A;
+  --ui-border-strong:#3F3F46;
 
-  /* Status (soft variants must work on dark) */
-  --ui-success-soft:  rgba(22, 163, 74, 0.14);
-  --ui-success-fg:    #4ade80;
-  --ui-warning-soft:  rgba(217, 119, 6, 0.14);
-  --ui-warning-fg:    #fbbf24;
-  --ui-danger-soft:   rgba(220, 38, 38, 0.16);
-  --ui-danger-fg:     #f87171;
-  --ui-info-soft:     rgba(37, 99, 235, 0.16);
-  --ui-info-fg:       #60a5fa;
-  --ui-muted-soft:    var(--ui-bg-subtle);
+  --ui-brand:        var(--p-green-500);
+  --ui-brand-hover:  var(--p-green-400);
+  --ui-brand-active: var(--p-green-600);
+  --ui-brand-soft:   rgba(16, 185, 129, 0.14);
+  --ui-brand-fg:     var(--p-green-300);
+  --ui-brand-ring:   rgba(16, 185, 129, 0.32);
 
-  /* Sidebar */
-  --ui-sidebar-bg:          #0d0e11;
-  --ui-sidebar-fg:          #9ba0a8;
-  --ui-sidebar-fg-active:   #ffffff;
-  --ui-sidebar-hover:       #181a1f;
-  --ui-sidebar-active-bg:   rgba(94, 106, 210, 0.18);
-  --ui-sidebar-active-line: var(--p-purple-400);
-  --ui-sidebar-group:       #5b5f68;
-  --ui-sidebar-border:      #1d1f24;
+  --ui-success-soft: rgba(16, 185, 129, 0.14);
+  --ui-success-fg:   #6EE7B7;
+  --ui-warning-soft: rgba(245, 158, 11, 0.14);
+  --ui-warning-fg:   #FBBF24;
+  --ui-danger-soft:  rgba(239, 68, 68, 0.14);
+  --ui-danger-fg:    #F87171;
+  --ui-info-soft:    rgba(59, 130, 246, 0.14);
+  --ui-info-fg:      #60A5FA;
+  --ui-muted-soft:   var(--ui-bg-2);
 
-  /* Header */
-  --ui-header-bg:     rgba(13, 14, 17, 0.72);
-  --ui-header-border: #1d1f24;
+  --ui-code-bg:      #050505;
+  --ui-code-fg:      #E4E4E7;
 
-  /* Table */
-  --ui-table-row-hover: #181a1f;
-  --ui-table-header-bg: #131418;
-  --ui-table-header-fg: #80848e;
-
-  /* Shadows reduced in dark */
-  --ui-shadow-xs: 0 1px 0 rgba(0, 0, 0, 0.4);
-  --ui-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.2);
-  --ui-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
-  --ui-shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.5);
-  --ui-shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.6);
-
-  /* TDesign dark remap */
-  --td-bg-color-page:        var(--ui-bg-canvas);
-  --td-bg-color-container:   var(--ui-bg-surface);
-  --td-text-color-primary:   var(--ui-fg);
-  --td-text-color-secondary: var(--ui-fg-2);
-  --td-component-stroke:     var(--ui-border);
-  --td-component-border:     var(--ui-border);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.3);
 }
-
-/* ============================================================
-   GLOBAL KEYFRAMES (animation library lives in animations.css)
-   ============================================================ */

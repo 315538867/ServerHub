@@ -1,101 +1,84 @@
 <template>
-  <div class="page-container">
-    <div class="section-block">
-      <!-- 标签页 -->
-      <t-tabs :value="activeTab" @change="activeTab = $event as string">
-        <t-tab-panel value="containers" label="容器">
-          <div class="tab-toolbar">
-            <div class="toolbar-left">
-              <t-button size="small" variant="outline" :loading="loading" @click="refresh">
-                <template #icon><refresh-icon /></template>
-                刷新
-              </t-button>
-            </div>
+  <div class="dk-page">
+    <UiCard padding="none">
+      <UiTabs :items="tabItems" :model-value="activeTab" @change="val => activeTab = String(val)" />
+      <div class="dk-tab-body">
+        <div v-if="activeTab === 'containers'">
+          <div class="dk-toolbar">
+            <div />
+            <UiButton variant="secondary" size="sm" :loading="loading" @click="refresh">
+              <template #icon><RefreshCw :size="14" /></template>
+              刷新
+            </UiButton>
           </div>
-          <t-table
-            :data="containers"
+          <NDataTable
             :columns="containerColumns"
+            :data="containers"
             :loading="loading"
-            row-key="id"
-            bordered
+            :row-key="(row: ContainerItem) => row.id"
             size="small"
-          >
-            <template #state="{ row }">
-              <t-tag :theme="stateTheme(row.state)" variant="light" size="small">{{ stateText(row.state) }}</t-tag>
-            </template>
-            <template #operations="{ row }">
-              <t-space size="small">
-                <t-button v-if="row.state !== 'running'" theme="success" size="small" variant="text" :loading="actionLoading === row.id + '_start'" @click="doAction(row, 'start')">启动</t-button>
-                <t-button v-if="row.state === 'running'" theme="warning" size="small" variant="text" :loading="actionLoading === row.id + '_stop'" @click="doAction(row, 'stop')">停止</t-button>
-                <t-button size="small" variant="text" :loading="actionLoading === row.id + '_restart'" @click="doAction(row, 'restart')">重启</t-button>
-                <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
-                <t-button size="small" variant="text" @click="openInspect(row)">详情</t-button>
-                <t-popconfirm content="确认删除该容器？" @confirm="doAction(row, 'remove')">
-                  <t-button theme="danger" size="small" variant="text" :loading="actionLoading === row.id + '_remove'">删除</t-button>
-                </t-popconfirm>
-              </t-space>
-            </template>
-          </t-table>
-        </t-tab-panel>
-
-        <t-tab-panel value="images" label="镜像">
-          <div class="tab-toolbar">
-            <div class="toolbar-left" />
-            <t-button theme="primary" size="small" @click="openPull">
-              <template #icon><download-icon /></template>
+            :bordered="false"
+          />
+        </div>
+        <div v-else-if="activeTab === 'images'">
+          <div class="dk-toolbar">
+            <div />
+            <UiButton variant="primary" size="sm" @click="openPull">
+              <template #icon><Download :size="14" /></template>
               拉取镜像
-            </t-button>
+            </UiButton>
           </div>
-          <t-table
-            :data="images"
+          <NDataTable
             :columns="imageColumns"
+            :data="images"
             :loading="imgLoading"
-            row-key="id"
-            bordered
+            :row-key="(row: ImageItem) => row.id"
             size="small"
-          >
-            <template #operations="{ row }">
-              <t-popconfirm content="确认删除该镜像？" @confirm="rmImage(row)">
-                <t-button theme="danger" size="small" variant="text">删除</t-button>
-              </t-popconfirm>
-            </template>
-          </t-table>
-        </t-tab-panel>
-      </t-tabs>
-    </div>
+            :bordered="false"
+          />
+        </div>
+      </div>
+    </UiCard>
 
-    <!-- 日志抽屉 -->
-    <t-drawer v-model:visible="logsVisible" :header="`容器日志 — ${logsContainer}`" size="60%" @close="onLogsClosed">
-      <div ref="logsEl" class="logs-terminal" />
-    </t-drawer>
+    <NDrawer v-model:show="logsVisible" :width="720" @after-leave="onLogsClosed">
+      <NDrawerContent :title="`容器日志 — ${logsContainer}`" :native-scrollbar="false">
+        <div ref="logsEl" class="logs-terminal" />
+      </NDrawerContent>
+    </NDrawer>
 
-    <!-- 详情对话框 -->
-    <t-dialog v-model:visible="inspectVisible" header="容器详情" width="720px" :footer="false">
+    <NModal v-model:show="inspectVisible" preset="card" title="容器详情" style="width: 720px" :bordered="false">
       <pre class="inspect-json">{{ inspectJson }}</pre>
-    </t-dialog>
+    </NModal>
 
-    <!-- 拉取镜像对话框 -->
-    <t-dialog
-      v-model:visible="pullVisible"
-      header="拉取镜像"
-      width="580px"
-      :close-on-overlay-click="!pulling"
-      :confirm-btn="{ content: '拉取', loading: pulling }"
-      :cancel-btn="{ disabled: pulling }"
-      @confirm="startPull"
-      @closed="onPullClosed"
+    <NModal
+      v-model:show="pullVisible"
+      preset="card"
+      title="拉取镜像"
+      style="width: 580px"
+      :bordered="false"
+      :mask-closable="!pulling"
+      @after-leave="onPullClosed"
     >
-      <t-input v-model="pullImage" placeholder="例如：ubuntu:22.04 或 nginx:latest" :disabled="pulling" @keydown.enter="startPull" />
+      <NInput v-model:value="pullImage" placeholder="例如：ubuntu:22.04 或 nginx:latest" :disabled="pulling" @keydown.enter="startPull" />
       <pre v-if="pullOutput" ref="pullOutputEl" class="pull-output">{{ pullOutput }}</pre>
-    </t-dialog>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" :disabled="pulling" @click="pullVisible = false">关闭</UiButton>
+          <UiButton variant="primary" size="sm" :loading="pulling" @click="startPull">拉取</UiButton>
+        </div>
+      </template>
+    </NModal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import { useRoute } from 'vue-router'
-import { RefreshIcon, DownloadIcon } from 'tdesign-icons-vue-next'
-import { MessagePlugin } from 'tdesign-vue-next'
+import {
+  NDataTable, NModal, NDrawer, NDrawerContent, NInput, NPopconfirm, useMessage,
+} from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { RefreshCw, Download } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -105,11 +88,22 @@ import {
   getImages, deleteImage, containerLogsWsUrl, pullImageWsUrl,
 } from '@/api/docker'
 import type { ContainerItem, ImageItem } from '@/api/docker'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import UiTabs from '@/components/ui/UiTabs.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
+const message = useMessage()
 const serverId = computed(() => Number(route.params.serverId))
 const activeTab = ref('containers')
+
+const tabItems = [
+  { value: 'containers', label: '容器' },
+  { value: 'images', label: '镜像' },
+]
+
 const containers = ref<ContainerItem[]>([])
 const loading = ref(false)
 const actionLoading = ref('')
@@ -132,27 +126,61 @@ const pulling = ref(false)
 const pullOutputEl = ref<HTMLPreElement>()
 let pullWs: WebSocket | null = null
 
-const containerColumns = [
-  { colKey: 'names', title: '名称', minWidth: 140, ellipsis: true },
-  { colKey: 'image', title: '镜像', minWidth: 160, ellipsis: true },
-  { colKey: 'state', title: '状态', width: 110 },
-  { colKey: 'ports', title: '端口', minWidth: 160, ellipsis: true },
-  { colKey: 'operations', title: '操作', width: 280, fixed: 'right' as const },
-]
-const imageColumns = [
-  { colKey: 'repository', title: '仓库', minWidth: 180, ellipsis: true },
-  { colKey: 'tag', title: 'Tag', width: 120 },
-  { colKey: 'size', title: '大小', width: 100 },
-  { colKey: 'created_at', title: '创建时间', minWidth: 140, ellipsis: true },
-  { colKey: 'operations', title: '操作', width: 80, fixed: 'right' as const },
-]
-
-function stateTheme(state: string) {
-  return ({ running: 'success', paused: 'warning', exited: 'default' } as Record<string, string>)[state] ?? 'danger'
+function stateTone(state: string): 'success' | 'warning' | 'neutral' | 'danger' {
+  if (state === 'running') return 'success'
+  if (state === 'paused') return 'warning'
+  if (state === 'exited') return 'neutral'
+  return 'danger'
 }
 function stateText(state: string) {
   return ({ running: '运行中', paused: '已暂停', exited: '已停止', restarting: '重启中', dead: '异常', created: '已创建', removing: '删除中' } as Record<string, string>)[state] ?? state
 }
+
+const containerColumns = computed<DataTableColumns<ContainerItem>>(() => [
+  { title: '名称', key: 'names', minWidth: 140, ellipsis: { tooltip: true } },
+  { title: '镜像', key: 'image', minWidth: 160, ellipsis: { tooltip: true } },
+  {
+    title: '状态', key: 'state', width: 110,
+    render: (row) => h(UiBadge, { tone: stateTone(row.state) }, () => stateText(row.state)),
+  },
+  { title: '端口', key: 'ports', minWidth: 160, ellipsis: { tooltip: true } },
+  {
+    title: '操作', key: 'ops', width: 300, fixed: 'right' as const,
+    render: (row) => h('div', { class: 'cell-ops' }, [
+      row.state !== 'running' ? h(UiButton, { variant: 'ghost', size: 'sm', loading: actionLoading.value === row.id + '_start', onClick: () => doAction(row, 'start') }, () => '启动') : null,
+      row.state === 'running' ? h(UiButton, { variant: 'ghost', size: 'sm', loading: actionLoading.value === row.id + '_stop', onClick: () => doAction(row, 'stop') }, () => '停止') : null,
+      h(UiButton, { variant: 'ghost', size: 'sm', loading: actionLoading.value === row.id + '_restart', onClick: () => doAction(row, 'restart') }, () => '重启'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openLogs(row) }, () => '日志'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openInspect(row) }, () => '详情'),
+      h(NPopconfirm, {
+        onPositiveClick: () => doAction(row, 'remove'),
+        positiveText: '删除', negativeText: '取消',
+      }, {
+        trigger: () => h(UiButton, { variant: 'ghost', size: 'sm', loading: actionLoading.value === row.id + '_remove' },
+          () => h('span', { class: 'text-danger' }, '删除')),
+        default: () => '确认删除该容器？',
+      }),
+    ]),
+  },
+])
+
+const imageColumns = computed<DataTableColumns<ImageItem>>(() => [
+  { title: '仓库', key: 'repository', minWidth: 180, ellipsis: { tooltip: true } },
+  { title: 'Tag', key: 'tag', width: 120 },
+  { title: '大小', key: 'size', width: 100 },
+  { title: '创建时间', key: 'created_at', minWidth: 140, ellipsis: { tooltip: true } },
+  {
+    title: '操作', key: 'ops', width: 90, fixed: 'right' as const,
+    render: (row) => h(NPopconfirm, {
+      onPositiveClick: () => rmImage(row),
+      positiveText: '删除', negativeText: '取消',
+    }, {
+      trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+        () => h('span', { class: 'text-danger' }, '删除')),
+      default: () => '确认删除该镜像？',
+    }),
+  },
+])
 
 async function refresh() {
   if (activeTab.value === 'containers') await loadContainers()
@@ -177,9 +205,9 @@ async function doAction(row: ContainerItem, action: 'start' | 'stop' | 'restart'
   actionLoading.value = key
   try {
     await containerAction(serverId.value, row.id, action)
-    MessagePlugin.success('操作成功')
+    message.success('操作成功')
     await loadContainers()
-  } catch { MessagePlugin.error('操作失败') }
+  } catch { message.error('操作失败') }
   finally { actionLoading.value = '' }
 }
 
@@ -188,7 +216,7 @@ function openLogs(row: ContainerItem) {
   nextTick(() => {
     if (!logsEl.value) return
     logsTerm?.dispose()
-    logsTerm = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
+    logsTerm = new Terminal({ theme: { background: '#0A0A0A', foreground: '#E4E4E7' }, convertEol: true, fontSize: 12 })
     const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
     logsWs?.close()
     logsWs = new WebSocket(containerLogsWsUrl(serverId.value, row.id, auth.token))
@@ -210,7 +238,7 @@ async function openInspect(row: ContainerItem) {
     }
     inspectJson.value = JSON.stringify(arr[0] ?? data, null, 2)
     inspectVisible.value = true
-  } catch { MessagePlugin.error('获取详情失败') }
+  } catch { message.error('获取详情失败') }
 }
 
 function openPull() { pullImage.value = ''; pullOutput.value = ''; pullVisible.value = true }
@@ -227,7 +255,7 @@ function startPull() {
       if (msg.type === 'output') {
         pullOutput.value += msg.data + '\n'
         nextTick(() => { if (pullOutputEl.value) pullOutputEl.value.scrollTop = pullOutputEl.value.scrollHeight })
-      } else if (msg.type === 'done') { pulling.value = false; MessagePlugin.success('拉取完成'); loadImages() }
+      } else if (msg.type === 'done') { pulling.value = false; message.success('拉取完成'); loadImages() }
       else if (msg.type === 'error') { pulling.value = false; pullOutput.value += '[错误] ' + msg.data + '\n' }
     } catch { /* ignore */ }
   }
@@ -237,8 +265,8 @@ function startPull() {
 function onPullClosed() { pullWs?.close(); pullWs = null; pulling.value = false }
 
 async function rmImage(row: ImageItem) {
-  try { await deleteImage(serverId.value, row.id); MessagePlugin.success('镜像已删除'); await loadImages() }
-  catch { MessagePlugin.error('删除失败') }
+  try { await deleteImage(serverId.value, row.id); message.success('镜像已删除'); await loadImages() }
+  catch { message.error('删除失败') }
 }
 
 onMounted(() => loadContainers())
@@ -246,18 +274,29 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
 </script>
 
 <style scoped>
+.dk-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+
+.dk-tab-body { padding: var(--space-4); }
+.dk-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: var(--space-3);
+}
+
 .logs-terminal {
   width: 100%;
-  height: calc(100vh - 120px);
-  background: #1a2332;
-  border-radius: 4px;
+  height: calc(100vh - 160px);
+  background: #0A0A0A;
+  border-radius: var(--radius-sm);
   overflow: hidden;
+  padding: var(--space-2);
 }
 
 .inspect-json {
-  background: var(--ui-muted-soft);
-  border-radius: 4px;
-  padding: var(--ui-space-4);
+  background: var(--ui-bg-2);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-4);
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
   overflow: auto;
@@ -265,28 +304,26 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
   margin: 0;
   white-space: pre-wrap;
   word-break: break-all;
-  font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;
+  color: var(--ui-fg-2);
 }
 
 .pull-output {
-  background: #1a2332;
-  color: #e0e0e0;
-  border-radius: 4px;
-  padding: var(--ui-space-4);
+  background: #0A0A0A;
+  color: #E4E4E7;
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.6;
   overflow: auto;
   max-height: 320px;
-  margin: var(--ui-space-4) 0 0;
+  margin: var(--space-3) 0 0;
   white-space: pre-wrap;
   word-break: break-all;
-  font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;
 }
 
-:deep(.t-table) {
-  font-size: 13px;
-}
-:deep(.t-tab-panel) {
-  padding: 0;
-}
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+
+:deep(.cell-ops) { display: inline-flex; gap: var(--space-1); }
+:deep(.text-danger) { color: var(--ui-danger-fg); }
 </style>

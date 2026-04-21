@@ -1,20 +1,15 @@
 <template>
   <div class="network-wrap">
     <div v-if="app" class="network-topo-wrap">
-      <network-topology :app-id="appId" />
+      <NetworkTopology :app-id="appId" />
     </div>
 
     <div class="sub-tabs">
-      <t-tabs :value="activeSub" @change="onChange">
-        <t-tab-panel
-          v-for="t in subTabs"
-          :key="t.value"
-          :value="t.value"
-          :label="t.label"
-        />
-      </t-tabs>
+      <UiTabs :items="subTabs" :model-value="activeSub" @change="onChange" />
     </div>
-    <router-view />
+    <div class="network-body">
+      <router-view />
+    </div>
   </div>
 </template>
 
@@ -23,6 +18,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import NetworkTopology from '@/components/apps/NetworkTopology.vue'
+import UiTabs from '@/components/ui/UiTabs.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -33,16 +29,10 @@ const app = computed(() => appStore.getById(appId.value))
 
 const subTabs = computed(() => {
   const a = app.value
-  const list = [] as Array<{ value: string; label: string }>
-  if (a?.expose_mode && a.expose_mode !== 'none') {
-    list.push({ value: 'routes', label: '路由配置' })
-  }
-  if (a?.site_name) {
-    list.push({ value: 'domain', label: '域名与 SSL' })
-  }
-  if (list.length === 0) {
-    list.push({ value: 'empty', label: '概览' })
-  }
+  const list: Array<{ value: string; label: string }> = []
+  if (a?.expose_mode && a.expose_mode !== 'none') list.push({ value: 'routes', label: '路由配置' })
+  if (a?.site_name) list.push({ value: 'domain', label: '域名与 SSL' })
+  if (list.length === 0) list.push({ value: 'empty', label: '概览' })
   return list
 })
 
@@ -59,15 +49,13 @@ function onChange(v: string | number) {
 <style scoped>
 .network-wrap { display: flex; flex-direction: column; height: 100%; }
 .network-topo-wrap {
-  padding: var(--ui-space-4) var(--ui-space-6) 0;
+  padding: var(--space-4) var(--space-6) 0;
   flex-shrink: 0;
 }
 .sub-tabs {
-  padding: 0 var(--ui-space-6);
-  background: var(--ui-bg-canvas);
-  border-bottom: 1px solid var(--ui-border);
+  padding: 0 var(--space-6);
+  background: var(--ui-bg);
   flex-shrink: 0;
 }
-.sub-tabs :deep(.t-tabs__nav) { border-bottom: none; }
-.sub-tabs :deep(.t-tabs__nav-container) { padding: 0; }
+.network-body { flex: 1; min-height: 0; overflow-y: auto; }
 </style>

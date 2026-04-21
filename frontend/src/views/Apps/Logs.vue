@@ -1,32 +1,31 @@
 <template>
-  <div class="page-container">
-    <!-- 日志源选择工具栏 -->
-    <div class="section-block toolbar-block">
-      <div class="toolbar-inner">
-        <t-radio-group v-model="activeSource" @change="switchSource">
-          <t-radio-button v-if="app?.container_name" value="container">容器日志</t-radio-button>
-          <t-radio-button v-if="app?.site_name" value="nginx_access">Nginx 访问</t-radio-button>
-          <t-radio-button v-if="app?.site_name" value="nginx_error">Nginx 错误</t-radio-button>
-        </t-radio-group>
-        <t-button size="small" variant="outline" @click="reconnect">
-          <template #icon><refresh-icon /></template>
+  <div class="logs-page">
+    <UiCard padding="none">
+      <div class="logs-toolbar">
+        <NRadioGroup v-model:value="activeSource" size="small" @update:value="switchSource">
+          <NRadioButton v-if="app?.container_name" value="container">容器日志</NRadioButton>
+          <NRadioButton v-if="app?.site_name" value="nginx_access">Nginx 访问</NRadioButton>
+          <NRadioButton v-if="app?.site_name" value="nginx_error">Nginx 错误</NRadioButton>
+        </NRadioGroup>
+        <UiButton variant="secondary" size="sm" :disabled="!activeSource" @click="reconnect">
+          <template #icon><RefreshCw :size="14" /></template>
           重连
-        </t-button>
+        </UiButton>
       </div>
-    </div>
+    </UiCard>
 
-    <!-- 日志终端 -->
-    <div class="section-block terminal-block">
+    <UiCard padding="none" class="logs-card">
       <div v-if="activeSource" ref="logsEl" class="logs-terminal" />
-      <t-empty v-else description="该应用未关联容器或 Nginx 站点，无日志可查看" style="padding: var(--ui-space-8) 0;" />
-    </div>
+      <EmptyBlock v-else description="该应用未关联容器或 Nginx 站点，无日志可查看" />
+    </UiCard>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { RefreshIcon } from 'tdesign-icons-vue-next'
+import { NRadioGroup, NRadioButton } from 'naive-ui'
+import { RefreshCw } from 'lucide-vue-next'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -34,6 +33,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { getContainers, containerLogsWsUrl } from '@/api/docker'
 import { accessLogsWsUrl, errorLogsWsUrl } from '@/api/nginx'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -57,7 +59,11 @@ function defaultSource() {
 async function startStream() {
   if (!logsEl.value || !serverId.value || !activeSource.value) return
   term?.dispose()
-  term = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
+  term = new Terminal({
+    theme: { background: '#0A0A0A', foreground: '#E4E4E7' },
+    convertEol: true, fontSize: 12,
+    fontFamily: 'ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace',
+  })
   const fit = new FitAddon(); term.loadAddon(fit); term.open(logsEl.value); fit.fit()
   ws?.close()
 
@@ -103,24 +109,30 @@ onBeforeUnmount(() => cleanup())
 </script>
 
 <style scoped>
-.toolbar-block {
-  margin-bottom: var(--ui-space-4) !important;
+.logs-page {
+  padding: var(--space-6);
+  display: flex; flex-direction: column;
+  gap: var(--space-4);
+  height: 100%;
+  min-height: 0;
 }
-.toolbar-inner {
-  padding: var(--ui-space-4) var(--ui-space-6);
+.logs-toolbar {
   display: flex;
   align-items: center;
-  gap: var(--ui-space-4);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   flex-wrap: wrap;
 }
-.terminal-block {
-  padding: 0;
+.logs-card {
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 .logs-terminal {
-  min-height: 400px;
-  background: #1a2332;
-  border-radius: 6px;
-  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-height: 360px;
+  background: #0A0A0A;
+  padding: var(--space-3);
 }
 </style>

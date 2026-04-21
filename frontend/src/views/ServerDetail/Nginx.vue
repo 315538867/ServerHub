@@ -1,104 +1,99 @@
 <template>
-  <div class="page-container">
-    <div class="section-block">
-      <div class="section-title">
-        <span>Nginx 站点</span>
-        <t-space size="small">
-          <t-button size="small" variant="outline" :loading="loading" @click="loadSites">
-            <template #icon><refresh-icon /></template>
-          </t-button>
-          <t-button size="small" variant="outline" :loading="reloading" @click="doReload">重载</t-button>
-          <t-button size="small" theme="warning" variant="outline" @click="doRestart">重启</t-button>
-          <t-button size="small" theme="primary" @click="openCreate">添加站点</t-button>
-        </t-space>
-      </div>
+  <div class="ng-page">
+    <UiSection title="Nginx 站点">
+      <template #extra>
+        <UiButton variant="primary" size="sm" @click="openCreate">添加站点</UiButton>
+        <UiButton variant="secondary" size="sm" :loading="reloading" @click="doReload">重载</UiButton>
+        <UiButton variant="warning" size="sm" @click="doRestart">重启</UiButton>
+        <UiButton variant="secondary" size="sm" :loading="loading" @click="loadSites">
+          <template #icon><RefreshCw :size="14" /></template>
+          刷新
+        </UiButton>
+      </template>
+      <UiCard padding="none">
+        <NDataTable
+          :columns="siteColumns"
+          :data="sites"
+          :loading="loading"
+          :row-key="(row: SiteItem) => row.name"
+          size="small"
+          :bordered="false"
+        />
+      </UiCard>
+    </UiSection>
 
-      <!-- 站点表格 -->
-      <t-table :data="sites" :columns="siteColumns" :loading="loading" row-key="name" bordered size="small">
-        <template #enabled="{ row }">
-          <t-tag :theme="row.enabled ? 'success' : 'default'" variant="light" size="small">
-            {{ row.enabled ? '启用' : '禁用' }}
-          </t-tag>
-        </template>
-        <template #operations="{ row }">
-          <t-space size="small">
-            <t-button v-if="!row.enabled" theme="success" size="small" variant="text" @click="toggleSite(row, true)">启用</t-button>
-            <t-button v-if="row.enabled" theme="warning" size="small" variant="text" @click="toggleSite(row, false)">禁用</t-button>
-            <t-button size="small" variant="text" @click="openEdit(row)">编辑配置</t-button>
-            <t-button size="small" variant="text" @click="openLogs(row)">日志</t-button>
-            <t-popconfirm :content="`确认删除站点 ${row.name}？`" @confirm="delSite(row)">
-              <t-button theme="danger" size="small" variant="text">删除</t-button>
-            </t-popconfirm>
-          </t-space>
-        </template>
-      </t-table>
-    </div>
-
-    <!-- 添加站点对话框 -->
-    <t-dialog
-      v-model:visible="createVisible"
-      header="添加站点"
-      width="520px"
-      :confirm-btn="{ content: '创建', loading: creating }"
-      @confirm="confirmCreate"
+    <NModal
+      v-model:show="createVisible"
+      preset="card"
+      title="添加站点"
+      style="width: 540px"
+      :bordered="false"
     >
-      <t-form :data="createForm" label-width="90px" colon>
-        <t-form-item label="站点名称">
-          <t-input v-model="createForm.name" placeholder="my-site" />
-        </t-form-item>
-        <t-form-item label="类型">
-          <t-select v-model="createForm.type" class="full-width">
-            <t-option label="静态文件" value="static" />
-            <t-option label="反向代理" value="proxy" />
-            <t-option label="PHP" value="php" />
-          </t-select>
-        </t-form-item>
-        <t-form-item label="域名">
-          <t-input v-model="createForm.domain" placeholder="example.com" />
-        </t-form-item>
-        <t-form-item label="监听端口">
-          <t-input-number v-model="createForm.port" :min="1" :max="65535" class="full-width" />
-        </t-form-item>
-        <t-form-item v-if="createForm.type !== 'proxy'" label="根目录">
-          <t-input v-model="createForm.root" placeholder="/var/www/html" />
-        </t-form-item>
-        <t-form-item v-if="createForm.type === 'proxy'" label="代理地址">
-          <t-input v-model="createForm.proxy" placeholder="http://127.0.0.1:3000" />
-        </t-form-item>
-      </t-form>
-    </t-dialog>
+      <NForm :model="createForm" label-placement="left" label-width="90">
+        <NFormItem label="站点名称">
+          <NInput v-model:value="createForm.name" placeholder="my-site" />
+        </NFormItem>
+        <NFormItem label="类型">
+          <NSelect v-model:value="createForm.type" :options="typeOptions" />
+        </NFormItem>
+        <NFormItem label="域名">
+          <NInput v-model:value="createForm.domain" placeholder="example.com" />
+        </NFormItem>
+        <NFormItem label="监听端口">
+          <NInputNumber v-model:value="createForm.port" :min="1" :max="65535" style="width: 100%" />
+        </NFormItem>
+        <NFormItem v-if="createForm.type !== 'proxy'" label="根目录">
+          <NInput v-model:value="createForm.root" placeholder="/var/www/html" />
+        </NFormItem>
+        <NFormItem v-if="createForm.type === 'proxy'" label="代理地址">
+          <NInput v-model:value="createForm.proxy" placeholder="http://127.0.0.1:3000" />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="createVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="creating" @click="confirmCreate">创建</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- 编辑配置对话框 (CodeMirror) -->
-    <t-dialog
-      v-model:visible="editVisible"
-      :header="`编辑配置 — ${editName}`"
-      width="800px"
-      placement="center"
-      :close-on-overlay-click="false"
-      :confirm-btn="{ content: '保存并验证', loading: saving }"
-      class="code-editor-dialog"
-      @confirm="saveConfig"
-      @closed="destroyEditor"
+    <NModal
+      v-model:show="editVisible"
+      preset="card"
+      :title="`编辑配置 — ${editName}`"
+      style="width: 800px"
+      :bordered="false"
+      :mask-closable="false"
+      @after-leave="destroyEditor"
     >
       <div ref="editorEl" class="code-editor" />
-    </t-dialog>
+      <template #footer>
+        <div class="modal-foot">
+          <UiButton variant="secondary" size="sm" @click="editVisible = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="saving" @click="saveConfig">保存并验证</UiButton>
+        </div>
+      </template>
+    </NModal>
 
-    <!-- 日志抽屉 -->
-    <t-drawer v-model:visible="logsVisible" :header="`日志 — ${logsSite}`" size="60%" @opened="initLogs" @close="closeLogs">
-      <t-tabs :value="logsTab" @change="switchLogsTab">
-        <t-tab-panel value="access" label="访问日志" />
-        <t-tab-panel value="error" label="错误日志" />
-      </t-tabs>
-      <div ref="logsEl" class="logs-terminal" />
-    </t-drawer>
+    <NDrawer v-model:show="logsVisible" :width="720" @after-leave="closeLogs">
+      <NDrawerContent :title="`日志 — ${logsSite}`" :native-scrollbar="false">
+        <UiTabs :items="logsTabs" :model-value="logsTab" @change="onLogsTabChange" />
+        <div ref="logsEl" class="logs-terminal" />
+      </NDrawerContent>
+    </NDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import { useRoute } from 'vue-router'
-import { RefreshIcon } from 'tdesign-icons-vue-next'
-import { MessagePlugin } from 'tdesign-vue-next'
+import {
+  NDataTable, NModal, NDrawer, NDrawerContent, NForm, NFormItem,
+  NInput, NInputNumber, NSelect, NPopconfirm, useMessage,
+} from 'naive-ui'
+import type { DataTableColumns } from 'naive-ui'
+import { RefreshCw } from 'lucide-vue-next'
+import { showApiError } from '@/utils/errors'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
 import { oneDark } from '@codemirror/theme-one-dark'
@@ -112,20 +107,58 @@ import {
   accessLogsWsUrl, errorLogsWsUrl,
 } from '@/api/nginx'
 import type { SiteItem } from '@/api/nginx'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import UiTabs from '@/components/ui/UiTabs.vue'
 
 const route = useRoute()
 const auth = useAuthStore()
+const message = useMessage()
 const serverId = computed(() => Number(route.params.serverId))
 const sites = ref<SiteItem[]>([])
 const loading = ref(false)
 const reloading = ref(false)
 
-const siteColumns = [
-  { colKey: 'name', title: '站点名', minWidth: 180, ellipsis: true },
-  { colKey: 'path', title: '配置文件', minWidth: 280, ellipsis: true },
-  { colKey: 'enabled', title: '状态', width: 90 },
-  { colKey: 'operations', title: '操作', width: 300, fixed: 'right' as const },
+const typeOptions = [
+  { label: '静态文件', value: 'static' },
+  { label: '反向代理', value: 'proxy' },
+  { label: 'PHP', value: 'php' },
 ]
+
+const logsTabs = [
+  { value: 'access', label: '访问日志' },
+  { value: 'error', label: '错误日志' },
+]
+
+const siteColumns = computed<DataTableColumns<SiteItem>>(() => [
+  { title: '站点名', key: 'name', minWidth: 180, ellipsis: { tooltip: true } },
+  { title: '配置文件', key: 'path', minWidth: 280, ellipsis: { tooltip: true } },
+  {
+    title: '状态', key: 'enabled', width: 90,
+    render: (row) => h(UiBadge,
+      { tone: row.enabled ? 'success' : 'neutral' },
+      () => row.enabled ? '启用' : '禁用'),
+  },
+  {
+    title: '操作', key: 'ops', width: 320, fixed: 'right' as const,
+    render: (row) => h('div', { class: 'cell-ops' }, [
+      !row.enabled ? h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => toggleSite(row, true) }, () => '启用') : null,
+      row.enabled ? h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => toggleSite(row, false) }, () => '禁用') : null,
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openEdit(row) }, () => '编辑配置'),
+      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openLogs(row) }, () => '日志'),
+      h(NPopconfirm, {
+        onPositiveClick: () => delSite(row),
+        positiveText: '删除', negativeText: '取消',
+      }, {
+        trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
+          () => h('span', { class: 'text-danger' }, '删除')),
+        default: () => `确认删除站点 ${row.name}？`,
+      }),
+    ]),
+  },
+])
 
 const createVisible = ref(false)
 const creating = ref(false)
@@ -141,14 +174,12 @@ async function confirmCreate() {
   creating.value = true
   try {
     await createSite(serverId.value, createForm.value)
-    MessagePlugin.success('站点已创建')
+    message.success('站点已创建')
     createVisible.value = false
     await loadSites()
   } catch (e: any) {
-    MessagePlugin.error(e?.response?.data?.msg ?? '创建失败')
-  } finally {
-    creating.value = false
-  }
+    showApiError(e, '创建失败')
+  } finally { creating.value = false }
 }
 
 const editVisible = ref(false)
@@ -168,10 +199,7 @@ async function openEdit(row: SiteItem) {
       state: EditorState.create({ doc: res.content, extensions: [basicSetup, oneDark] }),
       parent: editorEl.value!,
     })
-  } catch {
-    MessagePlugin.error('读取配置失败')
-    editVisible.value = false
-  }
+  } catch { message.error('读取配置失败'); editVisible.value = false }
 }
 
 async function saveConfig() {
@@ -179,13 +207,11 @@ async function saveConfig() {
   saving.value = true
   try {
     await putSiteConfig(serverId.value, editName.value, editorView.state.doc.toString())
-    MessagePlugin.success('配置已保存（nginx -t 验证通过）')
+    message.success('配置已保存（nginx -t 验证通过）')
     editVisible.value = false
   } catch (e: any) {
-    MessagePlugin.error(e?.response?.data?.msg ?? '保存失败')
-  } finally {
-    saving.value = false
-  }
+    showApiError(e, '保存失败')
+  } finally { saving.value = false }
 }
 
 function destroyEditor() { editorView?.destroy(); editorView = null }
@@ -194,57 +220,58 @@ async function toggleSite(row: SiteItem, enable: boolean) {
   try {
     if (enable) await enableSite(serverId.value, row.name)
     else await disableSite(serverId.value, row.name)
-    MessagePlugin.success(enable ? '已启用' : '已禁用')
+    message.success(enable ? '已启用' : '已禁用')
     await loadSites()
-  } catch { MessagePlugin.error('操作失败') }
+  } catch (e: any) { showApiError(e, '操作失败') }
 }
 
 async function delSite(row: SiteItem) {
-  try { await deleteSite(serverId.value, row.name); MessagePlugin.success('已删除'); await loadSites() }
-  catch { MessagePlugin.error('删除失败') }
+  try { await deleteSite(serverId.value, row.name); message.success('已删除'); await loadSites() }
+  catch (e: any) { showApiError(e, '删除失败') }
 }
 
 async function doReload() {
   reloading.value = true
-  try { await nginxReload(serverId.value); MessagePlugin.success('nginx reload 成功') }
-  catch { MessagePlugin.error('reload 失败') }
+  try { await nginxReload(serverId.value); message.success('nginx reload 成功') }
+  catch (e: any) { showApiError(e, 'reload 失败') }
   finally { reloading.value = false }
 }
 
 async function doRestart() {
-  try { await nginxRestart(serverId.value); MessagePlugin.success('nginx restart 成功') }
-  catch { MessagePlugin.error('restart 失败') }
+  try { await nginxRestart(serverId.value); message.success('nginx restart 成功') }
+  catch (e: any) { showApiError(e, 'restart 失败') }
 }
 
 const logsVisible = ref(false)
 const logsSite = ref('')
-const logsTab = ref<string>('access')
+const logsTab = ref<string | number>('access')
 const logsEl = ref<HTMLDivElement>()
 let logsTerm: Terminal | null = null
 let logsWs: WebSocket | null = null
 
 function openLogs(row: SiteItem) {
-  logsSite.value = row.name; logsTab.value = 'access'; logsVisible.value = true
+  logsSite.value = row.name
+  logsTab.value = 'access'
+  logsVisible.value = true
+  nextTick(() => startLogsStream('access'))
 }
 
-function initLogs() { startLogsStream(logsTab.value) }
-
-function switchLogsTab(tab: string | number) {
+function onLogsTabChange(val: string | number) {
+  logsTab.value = val
   closeLogs()
-  logsTab.value = tab as string
-  nextTick(() => startLogsStream(logsTab.value))
+  nextTick(() => startLogsStream(String(val)))
 }
 
 function startLogsStream(type: string) {
   if (!logsEl.value) return
   logsTerm?.dispose()
-  logsTerm = new Terminal({ theme: { background: '#1a2332' }, convertEol: true, fontSize: 13 })
-  const fit = new FitAddon()
-  logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
+  logsTerm = new Terminal({
+    theme: { background: '#0A0A0A', foreground: '#E4E4E7' },
+    convertEol: true, fontSize: 12,
+  })
+  const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
   logsWs?.close()
-  const url = type === 'access'
-    ? accessLogsWsUrl(serverId.value, auth.token)
-    : errorLogsWsUrl(serverId.value, auth.token)
+  const url = type === 'access' ? accessLogsWsUrl(serverId.value, auth.token) : errorLogsWsUrl(serverId.value, auth.token)
   logsWs = new WebSocket(url)
   logsWs.onmessage = (e) => {
     try { const msg = JSON.parse(e.data); if (msg.type === 'output') logsTerm?.writeln(msg.data) } catch { /* ignore */ }
@@ -263,27 +290,20 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy() })
 </script>
 
 <style scoped>
-.code-editor {
-  height: 60vh;
-  overflow: auto;
-  font-size: 13px;
-}
-
+.ng-page { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-4); }
+.modal-foot { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.code-editor { height: 60vh; overflow: auto; font-size: 13px; border-radius: var(--radius-sm); border: 1px solid var(--ui-border); }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
-
 .logs-terminal {
   width: 100%;
-  height: calc(100vh - 220px);
-  background: #1a2332;
-  border-radius: 4px;
+  height: calc(100vh - 240px);
+  background: #0A0A0A;
+  border-radius: var(--radius-sm);
   overflow: hidden;
-  margin-top: var(--ui-space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-2);
 }
-
-:deep(.t-table) {
-  font-size: 13px;
-}
-
-.full-width { width: 100%; }
+:deep(.cell-ops) { display: inline-flex; gap: var(--space-1); }
+:deep(.text-danger) { color: var(--ui-danger-fg); }
 </style>

@@ -24,9 +24,6 @@ function applyDom(resolved: ThemeResolved) {
   if (typeof document === 'undefined') return
   const root = document.documentElement
   root.dataset.theme = resolved
-  // TDesign Vue Next dark mode trigger (required for .t-input/.t-select/.t-dialog etc.)
-  if (resolved === 'dark') root.setAttribute('theme-mode', 'dark')
-  else root.removeAttribute('theme-mode')
   root.style.colorScheme = resolved
 }
 

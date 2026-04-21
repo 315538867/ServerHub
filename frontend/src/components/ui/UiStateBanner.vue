@@ -1,20 +1,15 @@
 <template>
   <div class="ui-banner" :class="[`ui-banner--${tone}`]">
-    <div class="ui-banner__bg" />
+    <div class="ui-banner__icon">
+      <component :is="icon" :size="18" />
+    </div>
     <div class="ui-banner__main">
       <div class="ui-banner__head">
-        <div class="ui-banner__status">
-          <StatusDot :status="status" />
-          <span class="ui-banner__status-label">{{ statusLabel }}</span>
-        </div>
-        <div v-if="$slots.meta" class="ui-banner__meta"><slot name="meta" /></div>
+        <h3 v-if="title" class="ui-banner__title">{{ title }}</h3>
+        <slot name="title" />
       </div>
-      <h2 class="ui-banner__title">
-        <slot name="title">{{ title }}</slot>
-      </h2>
-      <div v-if="$slots.subtitle || subtitle" class="ui-banner__subtitle">
-        <slot name="subtitle">{{ subtitle }}</slot>
-      </div>
+      <p v-if="description" class="ui-banner__desc">{{ description }}</p>
+      <slot />
     </div>
     <div v-if="$slots.actions" class="ui-banner__actions">
       <slot name="actions" />
@@ -23,98 +18,42 @@
 </template>
 
 <script setup lang="ts">
-import StatusDot from './StatusDot.vue'
+import { computed } from 'vue'
+import { Info, CheckCircle2, AlertTriangle, XCircle } from 'lucide-vue-next'
 
-withDefaults(defineProps<{
+interface Props {
+  tone?: 'info' | 'success' | 'warning' | 'danger'
   title?: string
-  subtitle?: string
-  status?: 'online' | 'offline' | 'error' | 'unknown'
-  statusLabel?: string
-  tone?: 'brand' | 'neutral'
-}>(), {
-  status: 'unknown',
-  statusLabel: '',
-  tone: 'brand',
-})
+  description?: string
+}
+const props = withDefaults(defineProps<Props>(), { tone: 'info' })
+
+const icon = computed(() => ({
+  info: Info,
+  success: CheckCircle2,
+  warning: AlertTriangle,
+  danger: XCircle,
+}[props.tone]))
 </script>
 
 <style scoped>
 .ui-banner {
-  position: relative;
-  border-radius: var(--ui-radius-xl);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid var(--ui-border);
-  background: var(--ui-bg-surface);
-  padding: var(--ui-space-5) var(--ui-space-6);
-  display: flex;
-  align-items: stretch;
-  justify-content: space-between;
-  gap: var(--ui-space-5);
-  overflow: hidden;
-  margin-bottom: var(--ui-space-4);
-  animation: ui-slide-up var(--ui-dur-slow) var(--ui-ease-standard);
+  border-radius: var(--radius-md);
+  background: var(--ui-bg-1);
 }
+.ui-banner__icon { flex-shrink: 0; margin-top: 2px; }
+.ui-banner__main { flex: 1; min-width: 0; }
+.ui-banner__title { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--ui-fg); }
+.ui-banner__desc  { font-size: var(--fs-sm); color: var(--ui-fg-2); margin-top: var(--space-1); line-height: var(--lh-relaxed); }
+.ui-banner__actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 
-.ui-banner__bg {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: .9;
-}
-.ui-banner--brand .ui-banner__bg {
-  background:
-    radial-gradient(120% 120% at 0% 0%, rgba(94, 106, 210, 0.16) 0%, transparent 50%),
-    radial-gradient(80% 80% at 100% 100%, rgba(70, 177, 201, 0.10) 0%, transparent 50%);
-}
-.ui-banner--brand::after {
-  content: '';
-  position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 3px;
-  background: var(--ui-brand-grad);
-}
-
-.ui-banner__main { position: relative; min-width: 0; flex: 1; }
-.ui-banner__head {
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-3);
-  margin-bottom: var(--ui-space-2);
-}
-.ui-banner__status {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: var(--ui-fs-xs);
-  color: var(--ui-fg-2);
-  font-weight: var(--ui-fw-medium);
-  background: var(--ui-bg-subtle);
-  padding: 3px 8px 3px 6px;
-  border-radius: var(--ui-radius-pill);
-  border: 1px solid var(--ui-border);
-}
-.ui-banner__meta {
-  display: inline-flex; align-items: center; gap: var(--ui-space-2);
-  font-size: var(--ui-fs-xs);
-  color: var(--ui-fg-3);
-}
-.ui-banner__title {
-  margin: 0;
-  font-size: var(--ui-fs-3xl);
-  font-weight: var(--ui-fw-semibold);
-  color: var(--ui-fg);
-  letter-spacing: var(--ui-tracking-tight);
-  line-height: 1.15;
-  display: flex; align-items: center; gap: var(--ui-space-2);
-}
-.ui-banner__subtitle {
-  margin-top: 6px;
-  font-size: var(--ui-fs-sm);
-  color: var(--ui-fg-3);
-}
-
-.ui-banner__actions {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: var(--ui-space-2);
-  flex-shrink: 0;
-}
+.ui-banner--info    { background: var(--ui-info-soft); border-color: transparent; color: var(--ui-info-fg); }
+.ui-banner--success { background: var(--ui-success-soft); border-color: transparent; color: var(--ui-success-fg); }
+.ui-banner--warning { background: var(--ui-warning-soft); border-color: transparent; color: var(--ui-warning-fg); }
+.ui-banner--danger  { background: var(--ui-danger-soft); border-color: transparent; color: var(--ui-danger-fg); }
 </style>
