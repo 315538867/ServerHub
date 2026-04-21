@@ -83,6 +83,7 @@ const fitAddons: Record<number, FitAddon> = {}
 const searchAddons: Record<number, SearchAddon> = {}
 const wss: Record<number, WebSocket> = {}
 const resizeObs: Record<number, ResizeObserver> = {}
+const inputDisposables: Record<number, { dispose: () => void }> = {}
 
 const searchVisible = ref(false)
 const searchQuery = ref('')
@@ -145,8 +146,8 @@ function connectWs(id: number) {
   if (!tab) return
   tab.status = 'connecting'
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const url = `${protocol}//${location.host}/panel/api/v1/servers/${serverId.value}/terminal?token=${authStore.token}`
-  const ws = new WebSocket(url)
+  const url = `${protocol}//${location.host}/panel/api/v1/servers/${serverId.value}/terminal`
+  const ws = new WebSocket(url, ['bearer', authStore.token ?? ''])
   ws.binaryType = 'arraybuffer'
   wss[id] = ws
   const term = terms[id]
@@ -155,7 +156,10 @@ function connectWs(id: number) {
     if (tab) tab.status = 'connected'
     term.clear(); fitAddons[id]?.fit()
     ws.send(JSON.stringify({ type: 'resize', cols: term.cols, rows: term.rows }))
-    term.onData(data => { if (ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(data)) })
+    inputDisposables[id]?.dispose()
+    inputDisposables[id] = term.onData(data => {
+      if (ws.readyState === WebSocket.OPEN) ws.send(new TextEncoder().encode(data))
+    })
   }
   ws.onmessage = e => {
     if (e.data instanceof ArrayBuffer) term.write(new Uint8Array(e.data))
@@ -182,6 +186,7 @@ function closeTab(id: number) {
 }
 
 function destroyTab(id: number) {
+  inputDisposables[id]?.dispose(); delete inputDisposables[id]
   wss[id]?.close(); delete wss[id]
   resizeObs[id]?.disconnect(); delete resizeObs[id]
   terms[id]?.dispose(); delete terms[id]

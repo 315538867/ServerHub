@@ -39,9 +39,9 @@ export function deleteImage(serverId: number, iid: string) {
 }
 
 export function containerLogsWsUrl(serverId: number, cid: string, token: string) {
-  return `ws://${location.host}/panel/api/v1/servers/${serverId}/docker/containers/${cid}/logs?token=${token}`
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${serverId}/docker/containers/${cid}/logs?token=${token}`
 }
 
 export function pullImageWsUrl(serverId: number, image: string, token: string) {
-  return `ws://${location.host}/panel/api/v1/servers/${serverId}/docker/images/pull?image=${encodeURIComponent(image)}&token=${token}`
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${serverId}/docker/images/pull?image=${encodeURIComponent(image)}&token=${token}`
 }

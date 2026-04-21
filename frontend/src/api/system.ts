@@ -68,7 +68,7 @@ export function serviceAction(sid: number, name: string, action: string) {
   return request.post(`/servers/${sid}/system/services/${encodeURIComponent(name)}/action`, { action })
 }
 export function serviceLogsWsUrl(sid: number, name: string, token: string) {
-  return `ws://${location.host}/panel/api/v1/servers/${sid}/system/services/${encodeURIComponent(name)}/logs?token=${token}`
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${sid}/system/services/${encodeURIComponent(name)}/logs?token=${token}`
 }
 
 export interface SelfMetrics {

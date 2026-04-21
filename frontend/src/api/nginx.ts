@@ -46,9 +46,9 @@ export function nginxRestart(sid: number) {
 }
 
 export function accessLogsWsUrl(sid: number, token: string) {
-  return `ws://${location.host}/panel/api/v1/servers/${sid}/nginx/logs/access?token=${token}`
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${sid}/nginx/logs/access?token=${token}`
 }
 
 export function errorLogsWsUrl(sid: number, token: string) {
-  return `ws://${location.host}/panel/api/v1/servers/${sid}/nginx/logs/error?token=${token}`
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${sid}/nginx/logs/error?token=${token}`
 }

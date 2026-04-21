@@ -33,9 +33,9 @@ export function requestCertWsUrl(serverId: number, params: { domain: string; web
   const q = new URLSearchParams({ token, domain: params.domain })
   if (params.webroot) q.set('webroot', params.webroot)
   if (params.email) q.set('email', params.email)
-  return `ws://${location.host}/panel/api/v1/servers/${serverId}/ssl/certs/request?${q}`
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${serverId}/ssl/certs/request?${q}`
 }
 
 export function renewCertWsUrl(serverId: number, certId: number, token: string) {
-  return `ws://${location.host}/panel/api/v1/servers/${serverId}/ssl/certs/${certId}/renew?token=${token}`
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${serverId}/ssl/certs/${certId}/renew?token=${token}`
 }
