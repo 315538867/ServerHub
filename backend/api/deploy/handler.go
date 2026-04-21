@@ -483,13 +483,17 @@ func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if workDir == "" {
 			workDir = "/tmp"
 		}
-		if err := fc.MkdirAll(workDir); err != nil {
+		targetDir := workDir
+		if d.Type == "static" {
+			targetDir = workDir + "/_pending"
+		}
+		if err := fc.MkdirAll(targetDir); err != nil {
 			sendUpEvent("error", map[string]any{"msg": "创建目录失败: " + err.Error()})
 			return
 		}
 
 		filename := filepath.Base(fh.Filename)
-		remotePath := workDir + "/" + filename
+		remotePath := targetDir + "/" + filename
 		total := fh.Size
 
 		sendUpEvent("start", map[string]any{"filename": filename, "total": total})

@@ -36,7 +36,7 @@
 索引：`(server_id, created_at DESC)`
 
 ### deploys
-`id, name, server_id, type(docker|docker-compose|native), work_dir, env_vars (AES), webhook_secret, desired_version, actual_version, auto_sync, sync_status, created_at`
+`id, name, server_id, type(docker|docker-compose|native|static), work_dir, env_vars (AES), webhook_secret, desired_version, actual_version, auto_sync, sync_status, created_at`
 
 ### deploy_logs
 `id, deploy_id(idx), output(text), status(success|failed), duration(s), trigger_source(manual|webhook|schedule|api), created_at`

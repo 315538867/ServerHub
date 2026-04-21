@@ -6,7 +6,7 @@ type Deploy struct {
 	ID          uint   `gorm:"primaryKey" json:"id"`
 	Name        string `gorm:"not null" json:"name"`
 	ServerID    uint   `gorm:"not null" json:"server_id"`
-	Type        string `gorm:"default:docker-compose" json:"type"` // docker|docker-compose|native
+	Type        string `gorm:"default:docker-compose" json:"type"` // docker|docker-compose|native|static
 
 	// Execution config
 	WorkDir     string `gorm:"default:''" json:"work_dir"`

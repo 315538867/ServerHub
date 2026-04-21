@@ -61,7 +61,8 @@
 
 ## 部署
 
-- 三类执行器：docker、docker-compose、原生命令
+- 四类执行器：docker、docker-compose、原生命令、静态站点（static）
+- 静态站点：上传 `dist.zip` / `dist.tar.gz` 到 `_pending/`，解压归档到 `releases/<ts>/`，原子切换 `current` 软链；回滚即切换软链（秒级）
 - env_vars AES 加密存入库，运行时注入远端
 - 手动触发 + Webhook 触发（密钥校验）
 - 实时输出（WS）+ 历史日志列表

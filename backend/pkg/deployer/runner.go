@@ -38,6 +38,13 @@ func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string
 	now := time.Now()
 	db.Model(&app).Updates(map[string]any{"last_run_at": now, "last_status": "running"})
 
+	// For static sites, auto-assign a version label per deploy so releases/<ts>/
+	// directories are unique and snapshots carry meaningful versions.
+	if app.Type == "static" && app.DesiredVersion == "" {
+		app.DesiredVersion = time.Now().UTC().Format("20060102-150405")
+		db.Model(&app).Update("desired_version", app.DesiredVersion)
+	}
+
 	session, err := rn.NewSession()
 	if err != nil {
 		db.Model(&app).Update("last_status", "failed")
@@ -153,6 +160,8 @@ func BuildCmd(app model.Deploy, aesKey string) string {
 				fmt.Sprintf("docker compose -f %s up -d --build 2>&1", shellQuote(cf)),
 			)
 		}
+	case "static":
+		parts = append(parts, buildStaticParts(app.DesiredVersion)...)
 	default:
 		if hasStartupSh {
 			parts = append(parts, "bash startup.sh 2>&1")
@@ -205,4 +214,45 @@ func statusStr(ok bool) string {
 
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
+}
+
+// buildStaticParts returns shell fragments (to be joined with ` && `) that:
+//  1. Ensure releases/<version>/ exists.
+//  2. If empty, pick a single archive under _pending/ (or the whole dir as a
+//     flat copy) and extract it into releases/<version>/.
+//  3. Atomically switch `current` symlink to releases/<version>/.
+//  4. Clean up _pending/.
+//
+// When releases/<version>/ already exists and is non-empty (rollback path),
+// extraction is skipped — we just re-point `current`.
+func buildStaticParts(version string) []string {
+	if version == "" {
+		version = "untagged"
+	}
+	rel := "releases/" + version
+	rq := shellQuote(rel)
+	return []string{
+		fmt.Sprintf("mkdir -p %s _pending", rq),
+		fmt.Sprintf(`if [ -z "$(ls -A %s 2>/dev/null)" ]; then `+
+			`archive=$(ls -1 _pending/*.tar.gz _pending/*.tgz _pending/*.zip 2>/dev/null | head -n1); `+
+			`if [ -n "$archive" ]; then `+
+			`  echo "extracting $archive -> %s"; `+
+			`  case "$archive" in `+
+			`    *.zip) unzip -q -o "$archive" -d %s ;; `+
+			`    *.tar.gz|*.tgz) tar -xzf "$archive" -C %s ;; `+
+			`  esac; `+
+			`  inner=$(ls -1 %s); `+
+			`  if [ "$(echo "$inner" | wc -l)" = "1" ] && [ -d "%s/$inner" ]; then `+
+			`    mv %s/$inner/* %s/ 2>/dev/null || true; `+
+			`    mv %s/$inner/.[!.]* %s/ 2>/dev/null || true; `+
+			`    rmdir %s/$inner 2>/dev/null || true; `+
+			`  fi; `+
+			`else `+
+			`  echo "no archive in _pending/, skip extraction"; `+
+			`fi; `+
+			`else echo "release %s already exists, switching only"; fi`,
+			rq, rel, rq, rq, rq, rel, rq, rq, rq, rq, rq, rel),
+		fmt.Sprintf("ln -sfn %s current && echo 'current -> %s'", rq, rel),
+		"rm -rf _pending 2>&1 || true",
+	}
 }

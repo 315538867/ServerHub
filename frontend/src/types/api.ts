@@ -81,7 +81,7 @@ export interface Deploy {
   id: number
   name: string
   server_id: number
-  type: 'docker' | 'docker-compose' | 'native'
+  type: 'docker' | 'docker-compose' | 'native' | 'static'
   work_dir: string
   compose_file: string
   start_cmd: string
@@ -105,7 +105,7 @@ export interface Deploy {
 export interface DeployForm {
   name: string
   server_id: number | null
-  type: 'docker' | 'docker-compose' | 'native'
+  type: 'docker' | 'docker-compose' | 'native' | 'static'
   work_dir: string
   compose_file?: string
   start_cmd?: string

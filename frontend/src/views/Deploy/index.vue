@@ -117,6 +117,7 @@
             <NRadio value="docker-compose">Docker Compose</NRadio>
             <NRadio value="docker">Docker</NRadio>
             <NRadio value="native">Native</NRadio>
+            <NRadio value="static">Static</NRadio>
           </NRadioGroup>
         </NFormItem>
         <NFormItem label="工作目录">
@@ -128,9 +129,12 @@
         <NFormItem v-if="createForm.type === 'docker'" label="镜像名">
           <NInput v-model:value="createForm.image_name" placeholder="nginx（不含 tag）" />
         </NFormItem>
-        <NFormItem v-if="createForm.type !== 'docker-compose'" label="部署脚本">
+        <NFormItem v-if="createForm.type === 'native' || createForm.type === 'docker'" label="部署脚本">
           <NInput v-model:value="createForm.start_cmd" type="textarea" :autosize="{ minRows: 3 }" placeholder="./app --port 8080" />
         </NFormItem>
+        <NAlert v-if="createForm.type === 'static'" type="info" :show-icon="false" style="margin-bottom: var(--space-3)">
+          静态站点：创建后到详情页上传 dist.zip / dist.tar.gz，部署时自动归档到 <code>releases/&lt;时间戳&gt;/</code> 并切换 <code>current</code> 软链。Nginx 把 root 指向 <code>{{ createForm.work_dir || '&lt;work_dir&gt;' }}/current</code> 即可。
+        </NAlert>
         <div class="form-section-label">版本控制</div>
         <NFormItem label="期望版本">
           <NInput v-model:value="createForm.desired_version" placeholder="v1.0 / latest（留空仅保存配置）" />
@@ -195,6 +199,31 @@
             </div>
           </NTabPane>
 
+          <NTabPane v-if="detailApp?.type === 'static'" name="upload" tab="上传产物">
+            <div class="upload-tip">
+              支持 <code>.zip</code> / <code>.tar.gz</code> / <code>.tgz</code>。上传后点击"立即同步"完成归档切换。
+            </div>
+            <div class="upload-row">
+              <input ref="uploadInputRef" type="file" accept=".zip,.tar.gz,.tgz" class="upload-file" @change="onUploadPick" />
+              <UiButton
+                variant="primary"
+                size="sm"
+                :loading="uploading"
+                :disabled="!pendingFile"
+                @click="doUpload"
+              >开始上传</UiButton>
+            </div>
+            <NProgress
+              v-if="uploading || uploadDone"
+              :percentage="uploadPct"
+              :status="uploadDone ? 'success' : 'default'"
+              style="margin-top: var(--space-3)"
+            />
+            <div v-if="uploadLog.length" class="upload-log">
+              <div v-for="(l, i) in uploadLog" :key="i">{{ l }}</div>
+            </div>
+          </NTabPane>
+
           <NTabPane name="config" tab="应用配置">
             <NForm :model="detailConfigForm" label-placement="left" label-width="90" class="drawer-form">
               <NFormItem label="服务器">
@@ -205,6 +234,7 @@
                   <NRadio value="docker-compose">Docker Compose</NRadio>
                   <NRadio value="docker">Docker</NRadio>
                   <NRadio value="native">Native</NRadio>
+                  <NRadio value="static">Static</NRadio>
                 </NRadioGroup>
               </NFormItem>
               <NFormItem label="工作目录">
@@ -216,9 +246,12 @@
               <NFormItem v-if="detailConfigForm.type === 'docker'" label="镜像名">
                 <NInput v-model:value="detailConfigForm.image_name" />
               </NFormItem>
-              <NFormItem v-if="detailConfigForm.type !== 'docker-compose'" label="部署脚本">
+              <NFormItem v-if="detailConfigForm.type === 'native' || detailConfigForm.type === 'docker'" label="部署脚本">
                 <NInput v-model:value="detailConfigForm.start_cmd" type="textarea" :autosize="{ minRows: 4 }" />
               </NFormItem>
+              <NAlert v-if="detailConfigForm.type === 'static'" type="info" :show-icon="false" style="margin-bottom: var(--space-3)">
+                静态站点：上传 dist.zip / dist.tar.gz 后点击"立即同步"即可完成归档与软链切换。
+              </NAlert>
               <NFormItem :show-label="false">
                 <UiButton variant="primary" size="sm" :loading="detailSaving" @click="saveDetailConfig">保存配置</UiButton>
               </NFormItem>
@@ -310,7 +343,7 @@ import { ref, reactive, computed, nextTick, onMounted, watch, h } from 'vue'
 import {
   NSelect, NDataTable, NModal, NDrawer, NDrawerContent, NTabs, NTabPane,
   NForm, NFormItem, NInput, NInputNumber, NRadioGroup, NRadio, NSwitch,
-  NCheckbox, NDropdown, NAlert, useMessage, useDialog,
+  NCheckbox, NDropdown, NAlert, NProgress, useMessage, useDialog,
 } from 'naive-ui'
 import type { DataTableColumns, FormInst, FormRules } from 'naive-ui'
 import { Plus, Trash2, MoreHorizontal, Server } from 'lucide-vue-next'
@@ -355,7 +388,7 @@ function isDrifted(app: Deploy) {
 }
 type Tone = 'brand' | 'success' | 'warning' | 'danger' | 'neutral'
 function typeTone(type: string): Tone {
-  return ({ 'docker-compose': 'brand', docker: 'success', native: 'warning' } as Record<string, Tone>)[type] ?? 'neutral'
+  return ({ 'docker-compose': 'brand', docker: 'success', native: 'warning', static: 'neutral' } as Record<string, Tone>)[type] ?? 'neutral'
 }
 function syncStatusTone(s: Deploy['sync_status']): Tone {
   return ({ synced: 'success', drifted: 'warning', syncing: 'brand', error: 'danger' } as Record<string, Tone>)[s ?? ''] ?? 'neutral'
@@ -703,6 +736,75 @@ const versionColumns: DataTableColumns<DeployVersion> = [
   },
 ]
 
+// ── Static Upload ─────────────────────────────────────────────
+const uploadInputRef = ref<HTMLInputElement | null>(null)
+const pendingFile = ref<File | null>(null)
+const uploading = ref(false)
+const uploadDone = ref(false)
+const uploadPct = ref(0)
+const uploadLog = ref<string[]>([])
+
+function onUploadPick(e: Event) {
+  const f = (e.target as HTMLInputElement).files?.[0] ?? null
+  pendingFile.value = f
+  uploadDone.value = false
+  uploadPct.value = 0
+  uploadLog.value = []
+}
+
+async function doUpload() {
+  if (!detailApp.value || !pendingFile.value) return
+  const file = pendingFile.value
+  uploading.value = true
+  uploadDone.value = false
+  uploadPct.value = 0
+  uploadLog.value = [`上传 ${file.name} ...`]
+  try {
+    const fd = new FormData()
+    fd.append('file', file)
+    const res = await fetch(`/panel/api/v1/deploys/${detailApp.value.id}/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${authStore.token}` },
+      body: fd,
+    })
+    if (!res.body) throw new Error('no body')
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      const parts = buf.split('\n\n')
+      buf = parts.pop() ?? ''
+      for (const part of parts) {
+        const line = part.trim()
+        if (!line.startsWith('data: ')) continue
+        try {
+          const evt = JSON.parse(line.slice(6))
+          if (evt.type === 'progress' && evt.total) {
+            uploadPct.value = Math.round((evt.bytes / evt.total) * 100)
+          } else if (evt.type === 'done') {
+            uploadDone.value = true
+            uploadPct.value = 100
+            uploadLog.value.push(`已上传到 ${evt.path}`)
+          } else if (evt.type === 'error') {
+            uploadLog.value.push('[错误] ' + evt.msg)
+          }
+        } catch {}
+      }
+    }
+    if (uploadDone.value) message.success('上传成功，点击"立即同步"部署')
+  } catch (e) {
+    uploadLog.value.push('[异常] ' + String(e))
+    message.error('上传失败')
+  } finally {
+    uploading.value = false
+    pendingFile.value = null
+    if (uploadInputRef.value) uploadInputRef.value.value = ''
+  }
+}
+
 // ── Delete ────────────────────────────────────────────────────
 function handleDelete(app: Deploy) {
   dialog.warning({
@@ -945,4 +1047,30 @@ onMounted(loadAll)
   margin: 0;
 }
 .log-output--static { height: 420px; }
+
+.upload-tip {
+  font-size: var(--fs-sm);
+  color: var(--ui-fg-3);
+  margin-bottom: var(--space-3);
+}
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.upload-file {
+  flex: 1;
+  font-size: var(--fs-sm);
+}
+.upload-log {
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--ui-bg-1);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ui-fg);
+  max-height: 160px;
+  overflow: auto;
+}
 </style>

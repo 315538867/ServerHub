@@ -108,7 +108,7 @@ CRUD + `POST /deploys/:id/run`（手动触发，SSE 流）+ `GET /deploys/:id/lo
 
 环境变量：`GET|PUT /deploys/:id/env`（AES 加密，secret 字段以 `***` 占位返回）。
 
-文件上传：`POST /deploys/:id/upload`（multipart，SSE 进度事件 `start/progress/done/error`）。
+文件上传：`POST /deploys/:id/upload`（multipart，SSE 进度事件 `start/progress/done/error`）。`type=static` 时上传到 `<work_dir>/_pending/`，由后续部署触发解压切链；其他类型直接上传到 `work_dir/`。
 
 Webhook：`GET /deploys/:id/webhook` 返回 `{url, secret}`。
 

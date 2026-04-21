@@ -57,7 +57,7 @@
             </template>
           </div>
 
-          <template v-if="wizardType !== 'docker-compose'">
+          <template v-if="wizardType !== 'docker-compose' && wizardType !== 'static'">
             <div class="wizard-divider">运行环境 <span class="divider-hint">选择后自动生成 startup.sh 模板</span></div>
             <div class="runtime-chips">
               <div
@@ -135,8 +135,8 @@
             <div class="cfg-cell"><span class="lbl">最后运行</span><span class="val">{{ deploy.last_run_at ? fmtTime(deploy.last_run_at) : '—' }}</span></div>
             <div class="cfg-cell"><span class="lbl">工作目录</span><code class="mono">{{ deploy.work_dir || '—' }}</code></div>
             <div v-if="deploy.type === 'docker-compose'" class="cfg-cell"><span class="lbl">Compose 文件</span><span class="val">{{ deploy.compose_file || '—' }}</span></div>
-            <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">镜像名称</span><span class="val">{{ deploy.image_name || '—' }}</span></div>
-            <div v-if="deploy.type !== 'docker-compose' && deploy.start_cmd" class="cfg-cell"><span class="lbl">启动命令</span><code class="mono">{{ deploy.start_cmd }}</code></div>
+            <div v-if="deploy.type === 'docker' || deploy.type === 'docker-compose'" class="cfg-cell"><span class="lbl">镜像名称</span><span class="val">{{ deploy.image_name || '—' }}</span></div>
+            <div v-if="(deploy.type === 'native' || deploy.type === 'docker') && deploy.start_cmd" class="cfg-cell"><span class="lbl">启动命令</span><code class="mono">{{ deploy.start_cmd }}</code></div>
             <div v-if="deploy.runtime" class="cfg-cell"><span class="lbl">运行时</span><UiBadge tone="neutral">{{ RUNTIME_LABELS[deploy.runtime] ?? deploy.runtime }}</UiBadge></div>
             <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">期望版本</span><span class="val">{{ deploy.desired_version || '—' }}</span></div>
             <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">实际版本</span><span class="val">{{ deploy.actual_version || '—' }}</span></div>
@@ -163,7 +163,7 @@
                 <NInput v-model:value="editForm.image_name" />
               </div>
             </template>
-            <template v-if="editForm.type !== 'docker-compose'">
+            <template v-if="editForm.type === 'native' || editForm.type === 'docker'">
               <div class="form-field form-field--full">
                 <label class="form-label">启动命令 <span class="form-hint">（可选，有 startup.sh 时此项被忽略）</span></label>
                 <NInput v-model:value="editForm.start_cmd" placeholder="作为 startup.sh 的备用方案" />
@@ -225,7 +225,7 @@
           <UiButton v-else variant="danger" size="sm" @click="stopRun">中止</UiButton>
         </template>
 
-        <UiCard v-if="deploy.type === 'native'" padding="md" class="upload-card">
+        <UiCard v-if="deploy.type === 'native' || deploy.type === 'static'" padding="md" class="upload-card">
           <div
             class="upload-zone"
             :class="{ 'is-active': !!uploadFile, 'is-drag': isDragging }"
@@ -238,7 +238,7 @@
             <template v-if="!uploadFile">
               <div class="upload-zone__icon">📁</div>
               <div class="upload-zone__text">拖拽文件到此处，或点击选择文件</div>
-              <div class="upload-zone__hint">支持任意可执行文件（jar、binary、zip 等）</div>
+              <div class="upload-zone__hint">{{ deploy.type === 'static' ? '上传 dist.zip / dist.tar.gz，将归档到 releases/<ts>/ 并切换 current 软链' : '支持任意可执行文件（jar、binary、zip 等）' }}</div>
             </template>
             <template v-else>
               <div class="upload-zone__icon">📄</div>
@@ -495,6 +495,7 @@ const wizardOptions = [
   { value: 'docker-compose', icon: '⚙️', label: 'Docker Compose', desc: '使用 docker-compose.yml 编排多个容器，支持 pull + up -d' },
   { value: 'docker', icon: '🐳', label: 'Docker 单容器', desc: '拉取指定镜像，执行 docker run 命令启动单个容器' },
   { value: 'native', icon: '📦', label: '文件部署', desc: '上传可执行文件（jar / binary / zip）到服务器并运行' },
+  { value: 'static', icon: '🌐', label: '静态站点', desc: '上传 dist.zip / tar.gz，归档到 releases/<ts>/ 并切换 current 软链' },
 ] as const
 
 async function saveCfList() {
@@ -595,7 +596,7 @@ watch(() => app.value?.deploy_id, (newId) => {
   else deploy.value = null
 })
 
-const wizardType = ref<'docker-compose' | 'docker' | 'native' | ''>('')
+const wizardType = ref<'docker-compose' | 'docker' | 'native' | 'static' | ''>('')
 const wizardForm = reactive({
   work_dir: '', compose_file: 'docker-compose.yml', image_name: '', desired_version: '',
 })
@@ -625,7 +626,7 @@ async function createAndLink() {
     const payload: DeployForm = {
       name: `${app.value.name}-deploy`,
       server_id: app.value.server_id,
-      type: wizardType.value as 'docker-compose' | 'docker' | 'native',
+      type: wizardType.value as 'docker-compose' | 'docker' | 'native' | 'static',
       work_dir: wizardForm.work_dir,
       compose_file: wizardForm.compose_file || 'docker-compose.yml',
       image_name: wizardForm.image_name,
