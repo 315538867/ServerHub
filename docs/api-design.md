@@ -104,7 +104,19 @@ POST /servers/:id/logs/search
 
 ### 部署 `/deploys`
 
-CRUD + `POST /deploys/:id/run`（手动触发）+ `GET /deploys/:id/logs/stream` WS + `GET /deploys/:id/logs` 列表查询。
+CRUD + `POST /deploys/:id/run`（手动触发，SSE 流）+ `GET /deploys/:id/logs` 列表查询。
+
+环境变量：`GET|PUT /deploys/:id/env`（AES 加密，secret 字段以 `***` 占位返回）。
+
+文件上传：`POST /deploys/:id/upload`（multipart，SSE 进度事件 `start/progress/done/error`）。
+
+Webhook：`GET /deploys/:id/webhook` 返回 `{url, secret}`。
+
+版本与回滚：
+- `GET /deploys/:id/versions` — 列出最近 7 条历史快照
+- `GET /deploys/:id/versions/:vid` — 单条快照详情
+- `POST /deploys/:id/rollback` — SSE，回滚到与当前 `actual_version` 不同的最新快照
+- `POST /deploys/:id/versions/:vid/rollback` — SSE，按指定快照重新部署
 
 ### 数据库 `/database`
 

@@ -18,7 +18,7 @@
 | `logsearch` | `/servers/:id/logs/search` | 一次性 grep（journalctl/docker/nginx）+ 并发 429 |
 | `application` | `/apps` | 应用 CRUD（聚合 server/deploy/db） |
 | `approutes` | `/apps/:id/routes` | 应用 Nginx 反代路由 CRUD，写回 nginx 配置 |
-| `deploy` | `/deploys` | 部署配置 CRUD、手动触发、日志流 WS |
+| `deploy` | `/deploys` | 部署配置 CRUD、手动触发（SSE）、日志列表、env/webhook/upload、版本快照与回滚 |
 | `deploy` (webhook) | `/webhooks/*` | Webhook 触发部署（公开 + 密钥校验） |
 | `database` | `/database` | DBConn CRUD（MySQL/Redis） |
 | `alerts` | `/alerts` | AlertRule / NotifyChannel / AlertEvent |
@@ -39,7 +39,7 @@
 | `auditq` | `New(db)` `Submit(log)` `Close()` | 审计日志异步队列：cap=2000 channel，500 批/1s flush，满则丢并 atomic 计数 |
 | `scheduler` | `Start(db, cfg)` `StartReconciler(db, cfg)` | 周期采集指标 + 触发告警；部署对账 reconciler |
 | `retention` | `Start(db)` | 每日 02:00 清理 audit/metrics/deploy_logs；月初 VACUUM |
-| `deployer` | `Run(db, cfg, deploy, trigger)` | 三类部署执行（docker/docker-compose/native）+ 日志写库 |
+| `deployer` | `Run(db, cfg, deploy, trigger)` | 三类部署执行（docker/docker-compose/native）+ 日志写库 + 成功后写 `deploy_versions` 快照并 FIFO 裁剪到 7 条（`SnapshotDeploy` / `PruneVersions` / `PruneAllVersions`） |
 | `notify` | `Send(channel, event)` | 告警通知发送：企业微信、钉钉、Telegram、自定义 Webhook |
 | `crypto` | `Encrypt(plain, key)` `Decrypt(cipher, key)` `HashPassword` `CheckPassword` | AES-256-GCM + bcrypt |
 | `totp` | `GenerateSecret` `Verify` | TOTP MFA |

@@ -100,7 +100,7 @@
               <UiButton
                 variant="secondary"
                 size="sm"
-                :disabled="!deploy.previous_version"
+                :disabled="!canRollback"
                 @click="doRun('rollback')"
               >
                 <template #icon><RotateCcw :size="12" /></template>
@@ -140,7 +140,7 @@
             <div v-if="deploy.runtime" class="cfg-cell"><span class="lbl">运行时</span><UiBadge tone="neutral">{{ RUNTIME_LABELS[deploy.runtime] ?? deploy.runtime }}</UiBadge></div>
             <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">期望版本</span><span class="val">{{ deploy.desired_version || '—' }}</span></div>
             <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">实际版本</span><span class="val">{{ deploy.actual_version || '—' }}</span></div>
-            <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">上一版本</span><span class="val">{{ deploy.previous_version || '—' }}</span></div>
+            <div v-if="deploy.type !== 'native'" class="cfg-cell"><span class="lbl">上一版本</span><span class="val">{{ prevVersionLabel || '—' }}</span></div>
           </div>
           <div v-else class="form-grid">
             <div class="form-field">
@@ -218,9 +218,9 @@
             <UiButton variant="primary" size="sm" @click="doRun('run')">立即部署</UiButton>
             <UiButton
               variant="secondary" size="sm"
-              :disabled="!deploy.previous_version"
+              :disabled="!canRollback"
               @click="doRun('rollback')"
-            >回滚{{ deploy.previous_version ? ` (→ ${deploy.previous_version})` : '' }}</UiButton>
+            >回滚{{ prevVersionLabel ? ` (→ ${prevVersionLabel})` : '' }}</UiButton>
           </template>
           <UiButton v-else variant="danger" size="sm" @click="stopRun">中止</UiButton>
         </template>
@@ -390,9 +390,9 @@ import type { DataTableColumns } from 'naive-ui'
 import { RefreshCw, Play, RotateCcw, Loader2 } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
-import { getDeploy, createDeploy, updateDeploy, getDeployLogs, getDeployEnv, putDeployEnv, getWebhookInfo } from '@/api/deploy'
+import { getDeploy, createDeploy, updateDeploy, getDeployLogs, getDeployEnv, putDeployEnv, getWebhookInfo, getDeployVersions } from '@/api/deploy'
 import { updateApp } from '@/api/application'
-import type { Deploy, DeployLog, DeployForm, ConfigFile } from '@/types/api'
+import type { Deploy, DeployLog, DeployForm, ConfigFile, DeployVersion } from '@/types/api'
 import type { EnvVar } from '@/api/deploy'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
@@ -584,7 +584,7 @@ async function loadDeploy() {
   try {
     deploy.value = await getDeploy(deployId)
     cfList.value = parseCfJson(deploy.value.config_files)
-    await Promise.all([loadLogs(), loadEnv(), loadWebhook()])
+    await Promise.all([loadLogs(), loadEnv(), loadWebhook(), loadVersions()])
   } finally {
     loading.value = false
   }
@@ -856,6 +856,22 @@ function copyText(text: string, msg: string) {
 
 const logs = ref<DeployLog[]>([])
 const logsLoading = ref(false)
+const versions = ref<DeployVersion[]>([])
+
+const canRollback = computed(() => {
+  if (!deploy.value) return false
+  const cur = deploy.value.actual_version
+  return versions.value.some(v => v.version && v.version !== cur)
+})
+const prevVersionLabel = computed(() => {
+  if (!deploy.value) return ''
+  const cur = deploy.value.actual_version
+  return versions.value.find(v => v.version && v.version !== cur)?.version ?? ''
+})
+async function loadVersions() {
+  if (!deploy.value) return
+  try { versions.value = await getDeployVersions(deploy.value.id) } catch { versions.value = [] }
+}
 
 const logColumns = computed<DataTableColumns<DeployLog>>(() => [
   { type: 'expand', renderExpand: (row) => h('pre', { class: 'log-detail' }, row.output) },

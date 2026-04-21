@@ -91,7 +91,6 @@ export interface Deploy {
   // version management
   desired_version: string
   actual_version: string
-  previous_version: string
   // reconcile
   auto_sync: boolean
   sync_interval: number
@@ -179,4 +178,22 @@ export interface ApplicationForm {
   expose_mode: 'none' | 'path' | 'site'
   deploy_id: number | null
   db_conn_id: number | null
+}
+
+export interface DeployVersion {
+  id: number
+  deploy_id: number
+  version: string
+  status: 'success' | 'failed'
+  trigger_source: 'manual' | 'webhook' | 'schedule' | 'api' | 'rollback'
+  type: string
+  work_dir: string
+  compose_file: string
+  start_cmd: string
+  image_name: string
+  runtime: string
+  config_files: string
+  deploy_log_id: number
+  note: string
+  created_at: string
 }

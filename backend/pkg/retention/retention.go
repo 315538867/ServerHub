@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/pkg/deployer"
 	"gorm.io/gorm"
 )
 
@@ -48,6 +49,7 @@ func runAll(db *gorm.DB) {
 	cleanTable(db, "audit_logs", auditKeepDays)
 	cleanTable(db, "metrics", metricsKeepDays)
 	cleanTable(db, "deploy_logs", deployLogKeepDays(db))
+	deployer.PruneAllVersions(db, deployer.MaxVersionsPerDeploy)
 	if time.Now().Day() == 1 {
 		if err := db.Exec("VACUUM").Error; err != nil {
 			log.Printf("[retention] VACUUM error: %v", err)

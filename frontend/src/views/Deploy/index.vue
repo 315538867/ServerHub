@@ -164,9 +164,6 @@
               <NFormItem label="实际版本">
                 <NInput :value="detailApp.actual_version || '—'" readonly />
               </NFormItem>
-              <NFormItem label="历史版本">
-                <NInput :value="detailApp.previous_version || '—'" readonly />
-              </NFormItem>
               <NFormItem label="自动同步">
                 <NSwitch v-model:value="detailVersionForm.auto_sync" />
               </NFormItem>
@@ -177,12 +174,25 @@
               <NFormItem :show-label="false">
                 <div class="row-actions">
                   <UiButton variant="primary" size="sm" :loading="detailSaving" @click="saveDetailVersion">保存</UiButton>
-                  <UiButton v-if="detailApp.previous_version" variant="warning" size="sm" @click="handleRollbackFromDetail">
-                    回滚到 {{ detailApp.previous_version }}
-                  </UiButton>
                 </div>
               </NFormItem>
             </NForm>
+
+            <div class="ver-history" v-if="detailApp">
+              <div class="ver-history-head">
+                <span class="ver-history-title">历史版本（最多 {{ 7 }} 条）</span>
+                <UiButton size="sm" variant="ghost" :loading="versionsLoading" @click="loadDetailVersions">刷新</UiButton>
+              </div>
+              <NDataTable
+                :columns="versionColumns"
+                :data="detailVersions"
+                :loading="versionsLoading"
+                :row-key="(r: DeployVersion) => r.id"
+                size="small"
+                :bordered="false"
+                :max-height="260"
+              />
+            </div>
           </NTabPane>
 
           <NTabPane name="config" tab="应用配置">
@@ -310,9 +320,10 @@ import { getServers } from '@/api/servers'
 import {
   getDeploys, createDeploy, updateDeploy, deleteDeploy,
   getDeployLogs, getDeployEnv, putDeployEnv, getWebhookInfo,
+  getDeployVersions,
 } from '@/api/deploy'
 import type { EnvVar } from '@/api/deploy'
-import type { Server as ServerType, Deploy, DeployForm, DeployLog } from '@/types/api'
+import type { Server as ServerType, Deploy, DeployForm, DeployLog, DeployVersion } from '@/types/api'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
@@ -364,19 +375,15 @@ function toUpdateForm(app: Deploy, override: Partial<DeployForm> = {}): DeployFo
   }
 }
 
-function dropdownOptions(app: Deploy) {
+function dropdownOptions(_app: Deploy) {
   const items: any[] = [
     { label: '应用详情', key: 'detail' },
     { label: '环境变量', key: 'env' },
     { label: '同步历史', key: 'history' },
     { label: 'Webhook', key: 'webhook' },
+    { type: 'divider', key: 'd2' },
+    { label: '删除', key: 'delete', props: { style: 'color: var(--ui-danger-fg)' } },
   ]
-  if (app.previous_version) {
-    items.push({ type: 'divider', key: 'd1' })
-    items.push({ label: `回滚到 ${app.previous_version}`, key: 'rollback' })
-  }
-  items.push({ type: 'divider', key: 'd2' })
-  items.push({ label: '删除', key: 'delete', props: { style: 'color: var(--ui-danger-fg)' } })
   return items
 }
 
@@ -535,6 +542,8 @@ async function openDetail(app: Deploy, tab = 'version') {
   historyLogs.value = []
   webhookUrl.value = ''
   webhookSecret.value = ''
+  detailVersions.value = []
+  if (tab === 'version') await loadDetailVersions()
   if (tab === 'env') await loadEnv(app.id)
   if (tab === 'history') await loadHistory(app.id)
   if (tab === 'webhook') await loadWebhook(app.id)
@@ -543,6 +552,7 @@ async function openDetail(app: Deploy, tab = 'version') {
 
 watch(detailTab, async (tab) => {
   if (!detailApp.value) return
+  if (tab === 'version' && detailVersions.value.length === 0) await loadDetailVersions()
   if (tab === 'env' && envVars.value.length === 0) await loadEnv(detailApp.value.id)
   if (tab === 'history') await loadHistory(detailApp.value.id)
   if (tab === 'webhook' && !webhookUrl.value) await loadWebhook(detailApp.value.id)
@@ -622,12 +632,76 @@ function copyWebhook() {
 // ── Rollback ──────────────────────────────────────────────────
 function handleRollback(app: Deploy) { return runWithSSE(app, 'rollback') }
 
-async function handleRollbackFromDetail() {
+// ── Version History ───────────────────────────────────────────
+const detailVersions = ref<DeployVersion[]>([])
+const versionsLoading = ref(false)
+
+async function loadDetailVersions() {
+  if (!detailApp.value) return
+  versionsLoading.value = true
+  try { detailVersions.value = await getDeployVersions(detailApp.value.id) }
+  finally { versionsLoading.value = false }
+}
+
+function rollbackToVersion(v: DeployVersion) {
   if (!detailApp.value) return
   const app = detailApp.value
-  detailVisible.value = false
-  await handleRollback(app)
+  dialog.warning({
+    title: '回滚确认',
+    content: `确认将「${app.name}」回滚到版本 ${v.version || '#' + v.id}？将以快照配置重新部署。`,
+    positiveText: '确认回滚',
+    negativeText: '取消',
+    onPositiveClick: async () => {
+      detailVisible.value = false
+      await runWithSSEPath(app, `versions/${v.id}/rollback`)
+      await loadDetailVersions()
+    },
+  })
 }
+
+async function runWithSSEPath(app: Deploy, path: string) {
+  logAppName.value = app.name
+  syncing.value = app.id
+  logLines.value = []
+  runStatus.value = 'running'
+  logDrawerVisible.value = true
+  abortCtrl = new AbortController()
+  try {
+    const res = await fetch(`/panel/api/v1/deploys/${app.id}/${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${authStore.token}` },
+      signal: abortCtrl.signal,
+    })
+    if (!res.body) throw new Error('no response body')
+    await streamSSE(res)
+  } catch (e: unknown) {
+    if ((e as Error).name !== 'AbortError') {
+      logLines.value.push('[连接错误] ' + String(e))
+      runStatus.value = 'failed'
+    }
+  } finally {
+    syncing.value = null
+    await loadAll()
+  }
+}
+
+const versionColumns: DataTableColumns<DeployVersion> = [
+  { title: '时间', key: 'created_at', width: 140, render: (r) => dayjs(r.created_at).format('MM-DD HH:mm:ss') },
+  { title: '版本', key: 'version', width: 120, render: (r) => r.version || '—' },
+  {
+    title: '触发', key: 'trigger_source', width: 90,
+    render: (r) => ({ manual: '手动', webhook: 'Webhook', schedule: '定时', api: 'API', rollback: '回滚' } as Record<string, string>)[r.trigger_source] ?? r.trigger_source,
+  },
+  {
+    title: '状态', key: 'status', width: 70,
+    render: (r) => h(UiBadge, { tone: r.status === 'success' ? 'success' : 'danger' as Tone },
+      () => r.status === 'success' ? '成功' : '失败'),
+  },
+  {
+    title: '', key: 'ops', width: 80,
+    render: (r) => h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => rollbackToVersion(r) }, () => '回滚'),
+  },
+]
 
 // ── Delete ────────────────────────────────────────────────────
 function handleDelete(app: Deploy) {

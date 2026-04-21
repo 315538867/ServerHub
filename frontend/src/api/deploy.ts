@@ -1,5 +1,5 @@
 import request from './request'
-import type { Deploy, DeployForm, DeployLog } from '@/types/api'
+import type { Deploy, DeployForm, DeployLog, DeployVersion } from '@/types/api'
 
 export function getDeploys() {
   return request.get<never, Deploy[]>('/deploys')
@@ -37,4 +37,12 @@ export function putDeployEnv(id: number, vars: EnvVar[]) {
 
 export function getWebhookInfo(id: number): Promise<{ url: string; secret: string }> {
   return request.get(`/deploys/${id}/webhook`)
+}
+
+export function getDeployVersions(id: number) {
+  return request.get<never, DeployVersion[]>(`/deploys/${id}/versions`)
+}
+
+export function getDeployVersion(id: number, vid: number) {
+  return request.get<never, DeployVersion>(`/deploys/${id}/versions/${vid}`)
 }

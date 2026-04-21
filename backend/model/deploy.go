@@ -21,9 +21,8 @@ type Deploy struct {
 	WebhookSecret string `gorm:"default:''" json:"-"`
 
 	// Version management
-	DesiredVersion  string `gorm:"default:''" json:"desired_version"`
-	ActualVersion   string `gorm:"default:''" json:"actual_version"`
-	PreviousVersion string `gorm:"default:''" json:"previous_version"`
+	DesiredVersion string `gorm:"default:''" json:"desired_version"`
+	ActualVersion  string `gorm:"default:''" json:"actual_version"`
 
 	// Reconcile loop
 	AutoSync     bool   `gorm:"default:false" json:"auto_sync"`

@@ -41,6 +41,10 @@
 ### deploy_logs
 `id, deploy_id(idx), output(text), status(success|failed), duration(s), trigger_source(manual|webhook|schedule|api), created_at`
 
+### deploy_versions
+`id, deploy_id, version, status(success|failed), trigger_source, type, work_dir, compose_file, start_cmd, image_name, runtime, config_files(text), env_vars (AES), deploy_log_id, note, created_at`
+索引：`(deploy_id, created_at DESC)` — 每个 deploy 最多保留 7 条，超限时 FIFO 淘汰（`pkg/deployer.PruneVersions`）。成功部署后写入快照，供回滚 API 读取。
+
 ### applications
 `id, name(UQ), server_id, domain, container_name, deploy_id, db_conn_id, expose_mode(path|domain), status, created_at`
 
@@ -79,6 +83,7 @@
 
 - `servers.password`、`servers.private_key`
 - `deploys.env_vars`
+- `deploy_versions.env_vars`
 - `db_conns.password`
 - `notify_channels.url`
 
@@ -91,5 +96,6 @@
 | `audit_logs` | 90 天 |
 | `metrics` | 30 天 |
 | `deploy_logs` | `settings.deploy_log_keep_days`（默认 30） |
+| `deploy_versions` | 每个 deploy 保留最近 7 条（FIFO） |
 
 每月 1 号执行 `VACUUM` 收缩文件。

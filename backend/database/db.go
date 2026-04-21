@@ -48,6 +48,7 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.Metric{},
 		&model.Deploy{},
 		&model.DeployLog{},
+		&model.DeployVersion{},
 		&model.SSLCert{},
 		&model.DBConn{},
 		&model.AlertRule{},
@@ -74,6 +75,7 @@ func ensureIndexes(db *gorm.DB) {
 		"CREATE INDEX IF NOT EXISTS idx_audit_username ON audit_logs(username)",
 		"CREATE INDEX IF NOT EXISTS idx_audit_path     ON audit_logs(path)",
 		"CREATE INDEX IF NOT EXISTS idx_metrics_server_created ON metrics(server_id, created_at DESC)",
+		"CREATE INDEX IF NOT EXISTS idx_deploy_ver_deploy_created ON deploy_versions(deploy_id, created_at DESC)",
 	}
 	for _, s := range stmts {
 		if err := db.Exec(s).Error; err != nil {

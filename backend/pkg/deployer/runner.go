@@ -70,13 +70,14 @@ func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string
 	duration := int(time.Since(now).Seconds())
 	output := buf.String()
 
-	db.Create(&model.DeployLog{
+	logEntry := model.DeployLog{
 		DeployID:      app.ID,
 		Output:        output,
 		Status:        statusStr(success),
 		Duration:      duration,
 		TriggerSource: triggerSource,
-	})
+	}
+	db.Create(&logEntry)
 
 	if success {
 		oldVersion := app.ActualVersion
@@ -85,10 +86,15 @@ func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string
 			"sync_status": "synced",
 		}
 		if app.DesiredVersion != "" {
-			updates["previous_version"] = oldVersion
 			updates["actual_version"] = app.DesiredVersion
 		}
 		db.Model(&app).Updates(updates)
+
+		if app.DesiredVersion != "" {
+			app.ActualVersion = app.DesiredVersion
+		}
+		SnapshotDeploy(db, app, logEntry.ID, triggerSource, "")
+		PruneVersions(db, app.ID, MaxVersionsPerDeploy)
 
 		if app.ImageName != "" && oldVersion != "" && oldVersion != app.DesiredVersion {
 			go deleteOldImage(rn, app.ImageName, oldVersion)

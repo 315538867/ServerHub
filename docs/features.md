@@ -66,6 +66,8 @@
 - 手动触发 + Webhook 触发（密钥校验）
 - 实时输出（WS）+ 历史日志列表
 - 期望版本 / 实际版本对账（reconciler 自动同步）
+- 版本历史快照：每次成功部署写入 `deploy_versions`（类型、目录、compose、镜像、runtime、config_files、env_vars 密文），每个 deploy 保留最近 7 条，FIFO 淘汰
+- 回滚：`POST /deploys/:id/rollback` 回到上一快照；`POST /deploys/:id/versions/:vid/rollback` 按指定快照重新部署（SSE 输出）
 - 定时清理日志（保留期可配置）
 
 ## 数据库

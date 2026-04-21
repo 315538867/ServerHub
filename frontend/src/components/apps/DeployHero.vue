@@ -19,10 +19,6 @@
           <span class="ver-cap">当前版本</span>
           <code class="ver-val ver-actual">{{ deploy.actual_version || '—' }}</code>
         </div>
-        <div v-if="deploy.previous_version" class="hero-ver-item ver-prev">
-          <span class="ver-cap">上次</span>
-          <code class="ver-val">{{ deploy.previous_version }}</code>
-        </div>
       </div>
 
       <div class="hero-meta">
@@ -44,7 +40,7 @@
         <UiButton
           variant="secondary"
           size="md"
-          :disabled="!deploy.previous_version"
+          :disabled="!canRollback"
           @click="$emit('rollback')"
         >
           <template #icon><RotateCcw :size="14" /></template>
@@ -74,6 +70,7 @@ type Tone = 'brand' | 'success' | 'warning' | 'danger' | 'neutral'
 const props = defineProps<{
   deploy: Deploy
   running: boolean
+  canRollback?: boolean
 }>()
 
 defineEmits<{

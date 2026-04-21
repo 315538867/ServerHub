@@ -32,7 +32,10 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.GET("/:id/logs", logsHandler(db))
 	r.GET("/:id/env", getEnvHandler(db, cfg))
 	r.PUT("/:id/env", putEnvHandler(db, cfg))
-	r.POST("/:id/rollback", rollbackHandler(db, cfg))
+	r.POST("/:id/rollback", rollbackLatestHandler(db, cfg))
+	r.GET("/:id/versions", listVersionsHandler(db))
+	r.GET("/:id/versions/:vid", getVersionHandler(db))
+	r.POST("/:id/versions/:vid/rollback", rollbackToVersionHandler(db, cfg))
 	r.GET("/:id/webhook", webhookInfoHandler(db))
 	r.POST("/:id/upload", uploadHandler(db, cfg))
 }
@@ -189,45 +192,144 @@ func runHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-// ── Rollback ───────────────────────────────────────────────────────────────
+// ── Rollback & Versions ────────────────────────────────────────────────────
 
-func rollbackHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+// rollbackLatestHandler rolls back to the most recent historical version
+// whose `version` differs from the current actual_version. Streams the
+// redeploy output as SSE.
+func rollbackLatestHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		d, ok := findDeploy(c, db)
 		if !ok {
 			return
 		}
-		if d.PreviousVersion == "" {
-			resp.BadRequest(c, "无历史版本记录")
+		target, err := pickPreviousVersion(db, d)
+		if err != nil {
+			resp.BadRequest(c, err.Error())
 			return
 		}
+		streamRollback(c, db, cfg, d, target)
+	}
+}
 
-		db.Model(&d).Updates(map[string]any{
-			"desired_version": d.PreviousVersion,
-			"sync_status":     "drifted",
-		})
-		d.DesiredVersion = d.PreviousVersion
-
-		c.Header("Content-Type", "text/event-stream")
-		c.Header("Cache-Control", "no-cache")
-		c.Header("Connection", "keep-alive")
-		c.Header("X-Accel-Buffering", "no")
-		c.Header("Access-Control-Allow-Origin", "*")
-
-		sendEvent := func(eventType, data string) {
-			payload, _ := json.Marshal(map[string]string{"type": eventType, "line": data})
-			fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
-			c.Writer.Flush()
+func rollbackToVersionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		d, ok := findDeploy(c, db)
+		if !ok {
+			return
 		}
-
-		result := deployer.Run(db, cfg, d, "manual", func(line string) {
-			sendEvent("output", line)
-		})
-		if result.Success {
-			sendEvent("done", "success")
-		} else {
-			sendEvent("done", "failed")
+		vid, err := strconv.Atoi(c.Param("vid"))
+		if err != nil {
+			resp.BadRequest(c, "版本 ID 格式错误")
+			return
 		}
+		var v model.DeployVersion
+		if err := db.Where("id = ? AND deploy_id = ?", vid, d.ID).First(&v).Error; err != nil {
+			resp.NotFound(c, "版本不存在")
+			return
+		}
+		streamRollback(c, db, cfg, d, v)
+	}
+}
+
+func listVersionsHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		d, ok := findDeploy(c, db)
+		if !ok {
+			return
+		}
+		var versions []model.DeployVersion
+		db.Where("deploy_id = ?", d.ID).
+			Order("created_at DESC").
+			Limit(deployer.MaxVersionsPerDeploy).
+			Find(&versions)
+		resp.OK(c, versions)
+	}
+}
+
+func getVersionHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		d, ok := findDeploy(c, db)
+		if !ok {
+			return
+		}
+		vid, err := strconv.Atoi(c.Param("vid"))
+		if err != nil {
+			resp.BadRequest(c, "版本 ID 格式错误")
+			return
+		}
+		var v model.DeployVersion
+		if err := db.Where("id = ? AND deploy_id = ?", vid, d.ID).First(&v).Error; err != nil {
+			resp.NotFound(c, "版本不存在")
+			return
+		}
+		resp.OK(c, v)
+	}
+}
+
+// pickPreviousVersion returns the most recent DeployVersion whose version
+// label differs from the deploy's current actual_version.
+func pickPreviousVersion(db *gorm.DB, d model.Deploy) (model.DeployVersion, error) {
+	var versions []model.DeployVersion
+	db.Where("deploy_id = ?", d.ID).Order("created_at DESC").
+		Limit(deployer.MaxVersionsPerDeploy).Find(&versions)
+	for _, v := range versions {
+		if v.Version != "" && v.Version != d.ActualVersion {
+			return v, nil
+		}
+	}
+	return model.DeployVersion{}, fmt.Errorf("无可用历史版本")
+}
+
+// streamRollback applies a version snapshot to the deploy and triggers a
+// redeploy, streaming output as SSE.
+func streamRollback(c *gin.Context, db *gorm.DB, cfg *config.Config, d model.Deploy, v model.DeployVersion) {
+	updates := map[string]any{
+		"type":         v.Type,
+		"work_dir":     v.WorkDir,
+		"compose_file": v.ComposeFile,
+		"start_cmd":    v.StartCmd,
+		"image_name":   v.ImageName,
+		"runtime":      v.Runtime,
+		"config_files": v.ConfigFiles,
+		"env_vars":     v.EnvVars,
+		"sync_status":  "drifted",
+	}
+	if v.Version != "" {
+		updates["desired_version"] = v.Version
+	}
+	db.Model(&d).Updates(updates)
+	d.Type = v.Type
+	d.WorkDir = v.WorkDir
+	d.ComposeFile = v.ComposeFile
+	d.StartCmd = v.StartCmd
+	d.ImageName = v.ImageName
+	d.Runtime = v.Runtime
+	d.ConfigFiles = v.ConfigFiles
+	d.EnvVars = v.EnvVars
+	if v.Version != "" {
+		d.DesiredVersion = v.Version
+	}
+
+	c.Header("Content-Type", "text/event-stream")
+	c.Header("Cache-Control", "no-cache")
+	c.Header("Connection", "keep-alive")
+	c.Header("X-Accel-Buffering", "no")
+	c.Header("Access-Control-Allow-Origin", "*")
+
+	sendEvent := func(eventType, data string) {
+		payload, _ := json.Marshal(map[string]string{"type": eventType, "line": data})
+		fmt.Fprintf(c.Writer, "data: %s\n\n", payload)
+		c.Writer.Flush()
+	}
+
+	result := deployer.Run(db, cfg, d, "rollback", func(line string) {
+		sendEvent("output", line)
+	})
+	if result.Success {
+		sendEvent("done", "success")
+	} else {
+		sendEvent("done", "failed")
 	}
 }
 
