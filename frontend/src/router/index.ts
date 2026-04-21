@@ -74,6 +74,7 @@ const router = createRouter({
             { path: 'logs-search', name: 'ServerLogSearch', component: () => import('@/views/ServerDetail/LogSearch.vue') },
             { path: 'files', name: 'ServerFiles', component: () => import('@/views/ServerDetail/Files.vue') },
             { path: 'terminal', name: 'ServerTerminal', component: () => import('@/views/ServerDetail/Terminal.vue') },
+            { path: 'discover', name: 'ServerDiscover', component: () => import('@/views/ServerDetail/Discover.vue') },
           ],
         },
 

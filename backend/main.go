@@ -17,6 +17,7 @@ import (
 	apiauth "github.com/serverhub/serverhub/api/auth"
 	apidatabase "github.com/serverhub/serverhub/api/database"
 	apideploy "github.com/serverhub/serverhub/api/deploy"
+	apidiscovery "github.com/serverhub/serverhub/api/discovery"
 	apidocker "github.com/serverhub/serverhub/api/docker"
 	apifiles "github.com/serverhub/serverhub/api/files"
 	"github.com/serverhub/serverhub/api/health"
@@ -122,6 +123,7 @@ func main() {
 
 	serversGroup := protected.Group("/servers")
 	apiservers.RegisterRoutes(serversGroup, db, cfg)
+	apidiscovery.RegisterRoutes(serversGroup, db, cfg)
 	apidocker.RegisterRoutes(serversGroup, db, cfg)
 	apifiles.RegisterRoutes(serversGroup, db, cfg)
 	apisystem.RegisterRoutes(serversGroup, db, cfg)

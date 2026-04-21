@@ -1,0 +1,40 @@
+// Package discovery scans a server for running services (Docker containers,
+// docker-compose projects, systemd units) and produces Candidate records that
+// the user can selectively import as Deploy resources.
+package discovery
+
+// Kind enumerates supported service-source kinds.
+const (
+	KindDocker  = "docker"
+	KindCompose = "compose"
+	KindSystemd = "systemd"
+)
+
+// Candidate is a normalized representation of a discovered service. The
+// Suggested map is merged directly into a Deploy at import time.
+type Candidate struct {
+	Kind        string            `json:"kind"`
+	SourceID    string            `json:"source_id"` // stable identifier for dedup
+	Name        string            `json:"name"`
+	Summary     string            `json:"summary"` // short one-line human blurb
+	Suggested   SuggestedDeploy   `json:"suggested"`
+	ExtraLabels map[string]string `json:"extra_labels,omitempty"`
+}
+
+// SuggestedDeploy is the subset of Deploy fields the importer fills in.
+type SuggestedDeploy struct {
+	Type        string `json:"type"`
+	WorkDir     string `json:"work_dir"`
+	ComposeFile string `json:"compose_file,omitempty"`
+	StartCmd    string `json:"start_cmd,omitempty"`
+	ImageName   string `json:"image_name,omitempty"`
+	Runtime     string `json:"runtime,omitempty"`
+}
+
+// Result bundles scan output across all detectors.
+type Result struct {
+	Docker  []Candidate `json:"docker"`
+	Compose []Candidate `json:"compose"`
+	Systemd []Candidate `json:"systemd"`
+	Errors  []string    `json:"errors,omitempty"`
+}

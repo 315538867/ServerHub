@@ -32,6 +32,11 @@ type Deploy struct {
 	// Status
 	LastRunAt  *time.Time `json:"last_run_at"`
 	LastStatus string     `gorm:"default:''" json:"last_status"` // ""|running|success|failed
+
+	// Discovery source (non-empty when imported via service discovery)
+	SourceKind string `gorm:"default:'';index:idx_deploy_source,priority:2" json:"source_kind"` // ""|docker|compose|systemd
+	SourceID   string `gorm:"default:'';index:idx_deploy_source,priority:3" json:"source_id"`   // container_id|compose_project|systemd_unit
+
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
 }

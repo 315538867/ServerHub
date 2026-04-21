@@ -64,6 +64,7 @@ const tabs = [
   { value: 'logs-search', label: '日志搜索' },
   { value: 'files',     label: '文件' },
   { value: 'terminal',  label: '终端' },
+  { value: 'discover',  label: '发现' },
 ]
 
 function onTabChange(val: string | number) {
