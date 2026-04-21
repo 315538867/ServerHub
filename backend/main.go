@@ -119,6 +119,7 @@ func main() {
 	apidocker.RegisterRoutes(serversGroup, db, cfg)
 	apifiles.RegisterRoutes(serversGroup, db, cfg)
 	apisystem.RegisterRoutes(serversGroup, db, cfg)
+	apisystem.RegisterSelfRoutes(protected.Group("/system/self"))
 	apinginx.RegisterRoutes(serversGroup, db, cfg)
 	apissl.RegisterRoutes(serversGroup, db, cfg)
 	apidatabase.RegisterRoutes(protected, db, cfg)

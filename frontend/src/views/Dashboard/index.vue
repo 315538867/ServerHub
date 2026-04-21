@@ -1,5 +1,17 @@
 <template>
   <div class="page dash">
+    <!-- ServerHub 自身资源 -->
+    <div v-if="self" class="dash__self">
+      <UiStatCard title="ServerHub CPU" :value="cpuText" :hint="`${self.num_cpu} 核`">
+        <UiSparkline :points="self.history.cpu" :width="120" :height="28" color="brand" />
+      </UiStatCard>
+      <UiStatCard title="ServerHub 内存" :value="memText" :hint="`堆 ${memSysText}`">
+        <UiSparkline :points="self.history.mem" :width="120" :height="28" color="success" />
+      </UiStatCard>
+      <UiStatCard title="Goroutine" :value="self.goroutines" :hint="`连接 ${self.connections}`" />
+      <UiStatCard title="运行时长" :value="uptimeText" hint="自服务启动" />
+    </div>
+
     <!-- 顶部统计 -->
     <div class="dash__stats">
       <UiStatCard title="服务器总数" :value="total" />
@@ -112,6 +124,7 @@ import * as echarts from 'echarts'
 import dayjs from 'dayjs'
 import { Server, LineChart, Package, Plus } from 'lucide-vue-next'
 import { getOverview, getServerMetrics, type ServerOverview } from '@/api/metrics'
+import { getSelfMetrics, type SelfMetrics } from '@/api/system'
 import { useAppStore } from '@/stores/app'
 import type { Metric } from '@/types/api'
 import UiSection from '@/components/ui/UiSection.vue'
@@ -119,6 +132,7 @@ import UiStatCard from '@/components/ui/UiStatCard.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
 import UiButton from '@/components/ui/UiButton.vue'
+import UiSparkline from '@/components/ui/UiSparkline.vue'
 import StatusDot from '@/components/ui/StatusDot.vue'
 import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 import { useThemeStore } from '@/stores/theme'
@@ -152,7 +166,26 @@ function round(n: number) { return Math.round(n) }
 function formatUptime(sec: number) {
   const d = Math.floor(sec / 86400)
   const h = Math.floor((sec % 86400) / 3600)
-  return d > 0 ? `${d}天${h}时` : `${h}时`
+  const m = Math.floor((sec % 3600) / 60)
+  if (d > 0) return `${d}天${h}时`
+  if (h > 0) return `${h}时${m}分`
+  return `${m}分`
+}
+function formatBytes(b: number) {
+  if (b >= 1024 ** 3) return `${(b / 1024 ** 3).toFixed(1)} GB`
+  if (b >= 1024 ** 2) return `${(b / 1024 ** 2).toFixed(0)} MB`
+  if (b >= 1024) return `${(b / 1024).toFixed(0)} KB`
+  return `${b} B`
+}
+
+const self = ref<SelfMetrics | null>(null)
+let selfTimer: ReturnType<typeof setInterval> | null = null
+const cpuText  = computed(() => self.value ? `${self.value.cpu_percent.toFixed(1)}%` : '—')
+const memText  = computed(() => self.value ? formatBytes(self.value.mem_rss) : '—')
+const memSysText = computed(() => self.value ? formatBytes(self.value.mem_sys) : '—')
+const uptimeText = computed(() => self.value ? formatUptime(self.value.uptime) : '—')
+async function loadSelf() {
+  try { self.value = await getSelfMetrics() } catch { /* ignore */ }
 }
 
 const MetricRow = (props: { label: string; value: number }) => {
@@ -219,11 +252,13 @@ watch(chartMetrics, () => { if (chart) renderChart() })
 watch(() => theme.isDark, () => { if (chart) renderChart() })
 
 onMounted(async () => {
-  await Promise.all([loadOverview(), appStore.fetch()])
+  await Promise.all([loadOverview(), appStore.fetch(), loadSelf()])
   timer = setInterval(loadOverview, refreshInterval)
+  selfTimer = setInterval(loadSelf, 5000)
 })
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)
+  if (selfTimer) clearInterval(selfTimer)
   chart?.dispose()
 })
 </script>
@@ -234,6 +269,13 @@ onBeforeUnmount(() => {
   gap: var(--space-6);
   padding: var(--space-6);
 }
+
+.dash__self {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+}
+@media (max-width: 1024px) { .dash__self { grid-template-columns: repeat(2, 1fr); } }
 
 .dash__stats {
   display: grid;

@@ -70,3 +70,18 @@ export function serviceAction(sid: number, name: string, action: string) {
 export function serviceLogsWsUrl(sid: number, name: string, token: string) {
   return `ws://${location.host}/panel/api/v1/servers/${sid}/system/services/${encodeURIComponent(name)}/logs?token=${token}`
 }
+
+export interface SelfMetrics {
+  cpu_percent: number
+  mem_rss: number
+  mem_sys: number
+  goroutines: number
+  uptime: number
+  connections: number
+  num_cpu: number
+  history: { cpu: number[]; mem: number[] }
+}
+
+export function getSelfMetrics() {
+  return request.get<never, SelfMetrics>('/system/self')
+}
