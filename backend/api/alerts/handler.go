@@ -12,6 +12,7 @@ import (
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/safehttp"
 	"gorm.io/gorm"
 )
 
@@ -39,7 +40,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 func listRules(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var rules []model.AlertRule
-		db.Order("id asc").Find(&rules)
+		db.Order("id asc").Limit(500).Find(&rules)
 		resp.OK(c, rules)
 	}
 }
@@ -86,7 +87,10 @@ func updateRule(db *gorm.DB) gin.HandlerFunc {
 			Duration  *int     `json:"duration"`
 			Enabled   *bool    `json:"enabled"`
 		}
-		c.ShouldBindJSON(&body) //nolint:errcheck
+		if err := c.ShouldBindJSON(&body); err != nil {
+			resp.BadRequest(c, "请求体格式错误")
+			return
+		}
 		if body.Operator != nil {
 			rule.Operator = *body.Operator
 		}
@@ -153,7 +157,7 @@ type channelResp struct {
 func listChannels(db *gorm.DB, _ *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var channels []model.NotifyChannel
-		db.Find(&channels)
+		db.Order("id asc").Limit(500).Find(&channels)
 		result := make([]channelResp, len(channels))
 		for i, ch := range channels {
 			result[i] = channelResp{ID: ch.ID, Name: ch.Name, Type: ch.Type,
@@ -173,6 +177,10 @@ func createChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		if err := c.ShouldBindJSON(&body); err != nil {
 			resp.BadRequest(c, "名称、类型和 URL 不能为空")
+			return
+		}
+		if err := safehttp.ValidateOutboundURL(body.URL); err != nil {
+			resp.BadRequest(c, "URL 不允许: "+err.Error())
 			return
 		}
 		encURL, err := crypto.Encrypt(body.URL, cfg.Security.AESKey)
@@ -202,11 +210,18 @@ func updateChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			Template *string `json:"template"`
 			Enabled  *bool   `json:"enabled"`
 		}
-		c.ShouldBindJSON(&body) //nolint:errcheck
+		if err := c.ShouldBindJSON(&body); err != nil {
+			resp.BadRequest(c, "请求体格式错误")
+			return
+		}
 		if body.Name != nil {
 			ch.Name = *body.Name
 		}
 		if body.URL != nil && *body.URL != "" {
+			if err := safehttp.ValidateOutboundURL(*body.URL); err != nil {
+				resp.BadRequest(c, "URL 不允许: "+err.Error())
+				return
+			}
 			enc, err := crypto.Encrypt(*body.URL, cfg.Security.AESKey)
 			if err == nil {
 				ch.URL = enc
@@ -266,6 +281,9 @@ func sendTestWebhook(chType, rawURL, template string, srv model.Server, rule mod
 }
 
 func sendWebhookRaw(chType, rawURL, text string) {
+	if err := safehttp.ValidateOutboundURL(rawURL); err != nil {
+		return
+	}
 	var payload []byte
 	switch chType {
 	case "webhook_wechat", "webhook_dingtalk":
@@ -278,9 +296,9 @@ func sendWebhookRaw(chType, rawURL, text string) {
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	client := safehttp.Client(10 * time.Second)
+	r, err := client.Do(req)
 	if err == nil {
-		resp.Body.Close()
+		r.Body.Close()
 	}
 }

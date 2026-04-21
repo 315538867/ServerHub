@@ -13,6 +13,7 @@ import (
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/notify"
+	"github.com/serverhub/serverhub/pkg/safehttp"
 	"gorm.io/gorm"
 )
 
@@ -139,7 +140,10 @@ func sendWebhook(cfg *config.Config, ch model.NotifyChannel, srv model.Server, r
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: 10 * time.Second}
+	if err := safehttp.ValidateOutboundURL(rawURL); err != nil {
+		return
+	}
+	client := safehttp.Client(10 * time.Second)
 	resp, err := client.Do(req)
 	if err == nil {
 		resp.Body.Close()

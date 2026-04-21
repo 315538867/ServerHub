@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
@@ -18,7 +19,6 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin:    func(_ *http.Request) bool { return true },
 	ReadBufferSize: 4096, WriteBufferSize: 4096,
 }
 
@@ -43,6 +43,7 @@ type ImageItem struct {
 }
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+	upgrader.CheckOrigin = middleware.WSCheckOrigin(cfg)
 	r.GET("/:id/docker/containers", listContainersHandler(db, cfg))
 	r.POST("/:id/docker/containers/:cid/action", containerActionHandler(db, cfg))
 	r.GET("/:id/docker/containers/:cid/logs", containerLogsHandler(db, cfg))

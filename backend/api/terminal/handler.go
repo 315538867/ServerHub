@@ -24,15 +24,6 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		if origin == "" {
-			return true
-		}
-		host := r.Host
-		return origin == "http://"+host || origin == "https://"+host ||
-			origin == "http://localhost:5173"
-	},
 	ReadBufferSize:  4096,
 	WriteBufferSize: 4096,
 }
@@ -44,13 +35,17 @@ type resizeMsg struct {
 }
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+	upgrader.CheckOrigin = middleware.WSCheckOrigin(cfg)
 	r.GET("/:id/terminal", handler(db, cfg))
 }
 
 func handler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── auth ──
-		tokenStr := c.Query("token")
+		// Prefer Sec-WebSocket-Protocol "bearer, <token>" — JWT then doesn't
+		// land in proxy access logs or browser history. Fallback to ?token=
+		// for the duration of the frontend migration.
+		tokenStr, viaSubproto := middleware.ExtractWSToken(c.Request)
 		if tokenStr == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "missing token"})
 			return
@@ -61,9 +56,15 @@ func handler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				return nil, jwt.ErrSignatureInvalid
 			}
 			return []byte(cfg.Security.JWTSecret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 		if err != nil || !token.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "Token 无效"})
+			return
+		}
+		// Reject the temporary tmp_totp role — those tokens are only for
+		// completing the second-factor exchange, not for opening a shell.
+		if claims.Role == "tmp_totp" {
+			c.JSON(http.StatusUnauthorized, gin.H{"code": 401, "msg": "Token 不允许用于终端"})
 			return
 		}
 
@@ -79,7 +80,12 @@ func handler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		// Echo the negotiated subprotocol so the browser handshake succeeds.
+		var respHeader http.Header
+		if viaSubproto {
+			respHeader = http.Header{"Sec-WebSocket-Protocol": []string{"bearer"}}
+		}
+		ws, err := upgrader.Upgrade(c.Writer, c.Request, respHeader)
 		if err != nil {
 			return
 		}

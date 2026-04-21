@@ -19,6 +19,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/deployer"
 	"github.com/serverhub/serverhub/pkg/fsclient"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/safeshell"
 	"gorm.io/gorm"
 )
 
@@ -71,6 +72,10 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
+		if err := validateDeployReq(&req); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
 		applyDefaults(&req)
 		d := model.Deploy{
 			Name: req.Name, ServerID: req.ServerID, Type: req.Type,
@@ -109,6 +114,10 @@ func updateHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 		var req deployReq
 		if err := c.ShouldBindJSON(&req); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
+		if err := validateDeployReq(&req); err != nil {
 			resp.BadRequest(c, err.Error())
 			return
 		}
@@ -173,7 +182,6 @@ func runHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		c.Header("Cache-Control", "no-cache")
 		c.Header("Connection", "keep-alive")
 		c.Header("X-Accel-Buffering", "no")
-		c.Header("Access-Control-Allow-Origin", "*")
 
 		sendEvent := func(eventType, data string) {
 			payload, _ := json.Marshal(map[string]string{"type": eventType, "line": data})
@@ -284,6 +292,13 @@ func pickPreviousVersion(db *gorm.DB, d model.Deploy) (model.DeployVersion, erro
 // streamRollback applies a version snapshot to the deploy and triggers a
 // redeploy, streaming output as SSE.
 func streamRollback(c *gin.Context, db *gorm.DB, cfg *config.Config, d model.Deploy, v model.DeployVersion) {
+	// Snapshot the pre-rollback state first. If the rollback target turns out
+	// to be broken too, the operator can re-rollback to where we started —
+	// otherwise that state is lost the moment we overwrite the row below.
+	prev := d
+	deployer.SnapshotDeploy(db, prev, 0, "pre-rollback", "auto snapshot before rollback")
+	deployer.PruneVersions(db, prev.ID, deployer.MaxVersionsPerDeploy)
+
 	updates := map[string]any{
 		"type":         v.Type,
 		"work_dir":     v.WorkDir,
@@ -315,7 +330,6 @@ func streamRollback(c *gin.Context, db *gorm.DB, cfg *config.Config, d model.Dep
 	c.Header("Cache-Control", "no-cache")
 	c.Header("Connection", "keep-alive")
 	c.Header("X-Accel-Buffering", "no")
-	c.Header("Access-Control-Allow-Origin", "*")
 
 	sendEvent := func(eventType, data string) {
 		payload, _ := json.Marshal(map[string]string{"type": eventType, "line": data})
@@ -328,9 +342,13 @@ func streamRollback(c *gin.Context, db *gorm.DB, cfg *config.Config, d model.Dep
 	})
 	if result.Success {
 		sendEvent("done", "success")
-	} else {
-		sendEvent("done", "failed")
+		return
 	}
+	// Surface rollback failure explicitly so the dashboard can flag it —
+	// otherwise it looks identical to "drifted" and the operator has to guess
+	// whether the new snapshot was applied successfully.
+	db.Model(&d).Update("sync_status", "rollback_failed")
+	sendEvent("done", "failed")
 }
 
 // ── Env vars ───────────────────────────────────────────────────────────────
@@ -438,11 +456,13 @@ func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		// Cap the upload at 2 GiB to bound memory/disk on the ingress side.
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 2<<30)
+
 		c.Header("Content-Type", "text/event-stream")
 		c.Header("Cache-Control", "no-cache")
 		c.Header("Connection", "keep-alive")
 		c.Header("X-Accel-Buffering", "no")
-		c.Header("Access-Control-Allow-Origin", "*")
 
 		sendUpEvent := func(eventType string, extra map[string]any) {
 			m := map[string]any{"type": eventType}
@@ -553,6 +573,30 @@ func applyDefaults(req *deployReq) {
 	if req.ComposeFile == "" {
 		req.ComposeFile = "docker-compose.yml"
 	}
+}
+
+// validateDeployReq enforces format/whitelist on user-controlled fields that
+// are spliced into shell commands or filesystem paths on the remote host.
+func validateDeployReq(req *deployReq) error {
+	if req.DesiredVersion != "" {
+		if err := safeshell.ValidVersion(req.DesiredVersion); err != nil {
+			return fmt.Errorf("desired_version 非法: %w", err)
+		}
+	}
+	if req.WorkDir != "" {
+		if err := safeshell.AbsPath(req.WorkDir); err != nil {
+			return fmt.Errorf("work_dir 非法: %w", err)
+		}
+	}
+	if req.ComposeFile != "" {
+		if strings.ContainsAny(req.ComposeFile, "\n\r\x00`$;|&<>*?") {
+			return fmt.Errorf("compose_file 包含非法字符")
+		}
+	}
+	if req.SyncInterval < 0 || req.SyncInterval > 86400 {
+		return fmt.Errorf("sync_interval 超出范围")
+	}
+	return nil
 }
 
 func generateSecret() string {

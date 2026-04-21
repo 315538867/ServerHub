@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
@@ -16,11 +17,10 @@ import (
 	"gorm.io/gorm"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(_ *http.Request) bool { return true },
-}
+var upgrader = websocket.Upgrader{}
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+	upgrader.CheckOrigin = middleware.WSCheckOrigin(cfg)
 	r.GET("/:id/system/firewall/rules", firewallListHandler(db, cfg))
 	r.POST("/:id/system/firewall/rules", firewallAddHandler(db, cfg))
 	r.DELETE("/:id/system/firewall/rules", firewallDelHandler(db, cfg))

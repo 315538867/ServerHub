@@ -1,6 +1,7 @@
 package sshpool
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -16,9 +17,33 @@ type entry struct {
 }
 
 var (
-	mu          sync.Map // key: serverID uint → *entry
-	clientToID  sync.Map // key: *gossh.Client → uint (reverse map for self-healing)
+	mu         sync.Map // key: serverID uint → *entry
+	clientToID sync.Map // key: *gossh.Client → uint (reverse map for self-healing)
 )
+
+// HostKeyStore is the integration point used by Connect/Dial to enforce TOFU
+// host-key pinning. Implementations are typically backed by the Server model.
+//
+//   - Get returns the pinned fingerprint (e.g. "SHA256:abc...") for serverID
+//     and ok=false if nothing is pinned yet.
+//   - Set persists the freshly observed fingerprint after a first successful
+//     connection (TOFU path). Errors are surfaced — failure to persist must
+//     abort the connect, otherwise the pin would be silently lost.
+type HostKeyStore interface {
+	Get(serverID uint) (fingerprint string, ok bool)
+	Set(serverID uint, fingerprint string) error
+}
+
+// hostKeyStore is set once at startup via SetHostKeyStore. Until then,
+// connections are rejected when no fingerprint can be checked — refusing to
+// connect is safer than the previous InsecureIgnoreHostKey behaviour.
+var hostKeyStore HostKeyStore
+
+func SetHostKeyStore(s HostKeyStore) { hostKeyStore = s }
+
+// ErrHostKeyMismatch indicates the server presented a key that does not match
+// the previously pinned fingerprint — possible MITM or genuine key rotation.
+var ErrHostKeyMismatch = errors.New("ssh host key mismatch")
 
 const idleTimeout = 30 * time.Minute
 
@@ -41,8 +66,37 @@ func init() {
 	}()
 }
 
+// hostKeyCallback returns an ssh.HostKeyCallback that:
+//   - rejects the connection if no HostKeyStore is configured (fail-closed),
+//   - on first connect for serverID, records the fingerprint via Set (TOFU),
+//   - on subsequent connects, requires the fingerprint to match.
+//
+// serverID==0 means "no pinning" (e.g. ad-hoc Dial without an associated
+// Server row); we still require a store but accept any key without pinning.
+func hostKeyCallback(serverID uint) gossh.HostKeyCallback {
+	return func(hostname string, remote net.Addr, key gossh.PublicKey) error {
+		store := hostKeyStore
+		if store == nil {
+			return errors.New("ssh host key store not initialised; refusing to connect")
+		}
+		fp := gossh.FingerprintSHA256(key)
+		if serverID == 0 {
+			return nil
+		}
+		if pinned, ok := store.Get(serverID); ok && pinned != "" {
+			if pinned != fp {
+				return fmt.Errorf("%w: server=%d host=%s pinned=%s got=%s",
+					ErrHostKeyMismatch, serverID, hostname, pinned, fp)
+			}
+			return nil
+		}
+		return store.Set(serverID, fp)
+	}
+}
+
 // buildClientConfig constructs an SSH client config from credentials.
-func buildClientConfig(user, authType, cred string) (*gossh.ClientConfig, error) {
+// serverID is used to look up / store the pinned host-key fingerprint.
+func buildClientConfig(serverID uint, user, authType, cred string) (*gossh.ClientConfig, error) {
 	var authMethods []gossh.AuthMethod
 	switch authType {
 	case "key":
@@ -57,7 +111,7 @@ func buildClientConfig(user, authType, cred string) (*gossh.ClientConfig, error)
 	return &gossh.ClientConfig{
 		User:            user,
 		Auth:            authMethods,
-		HostKeyCallback: gossh.InsecureIgnoreHostKey(), //nolint:gosec
+		HostKeyCallback: hostKeyCallback(serverID),
 		Timeout:         10 * time.Second,
 	}, nil
 }
@@ -67,7 +121,14 @@ func buildClientConfig(user, authType, cred string) (*gossh.ClientConfig, error)
 // Use this for long-lived dedicated sessions (e.g. interactive terminals)
 // to avoid exhausting the pool client's MaxSessions budget.
 func Dial(host string, port int, user, authType, cred string) (*gossh.Client, error) {
-	cfg, err := buildClientConfig(user, authType, cred)
+	return DialPinned(0, host, port, user, authType, cred)
+}
+
+// DialPinned is the host-key-pinning variant of Dial; pass the Server row's
+// ID so the host key is checked / stored. Use Dial (serverID=0) only for
+// truly ephemeral dials with no persistent identity.
+func DialPinned(serverID uint, host string, port int, user, authType, cred string) (*gossh.Client, error) {
+	cfg, err := buildClientConfig(serverID, user, authType, cred)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +137,6 @@ func Dial(host string, port int, user, authType, cred string) (*gossh.Client, er
 }
 
 func Connect(id uint, host string, port int, user, authType, cred string) (*gossh.Client, error) {
-	// reuse live connection
 	if v, ok := mu.Load(id); ok {
 		e := v.(*entry)
 		if _, _, err := e.client.SendRequest("keepalive@openssh.com", true, nil); err == nil {
@@ -88,7 +148,7 @@ func Connect(id uint, host string, port int, user, authType, cred string) (*goss
 		mu.Delete(id)
 	}
 
-	cfg, err := buildClientConfig(user, authType, cred)
+	cfg, err := buildClientConfig(id, user, authType, cred)
 	if err != nil {
 		return nil, err
 	}

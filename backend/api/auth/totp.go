@@ -104,10 +104,20 @@ func totpLoginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.Fail(c, http.StatusUnauthorized, 1011, "TOTP 密钥无效")
 			return
 		}
-		if !totp.Verify(secret, body.Code) {
+		step, ok := totp.VerifyAt(secret, body.Code, time.Now())
+		if !ok {
 			resp.Fail(c, http.StatusUnauthorized, 1011, "验证码错误")
 			return
 		}
+		// Replay guard: reject codes at or before the last accepted step.
+		res := db.Model(&user).
+			Where("id = ? AND last_totp_step < ?", user.ID, step).
+			Update("last_totp_step", step)
+		if res.Error != nil || res.RowsAffected == 0 {
+			resp.Fail(c, http.StatusUnauthorized, 1011, "验证码已被使用")
+			return
+		}
+		user.LastTOTPStep = step
 		token, err := signToken(&user, cfg.Security.JWTSecret)
 		if err != nil {
 			resp.InternalError(c, "生成 Token 失败")

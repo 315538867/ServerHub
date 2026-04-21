@@ -13,6 +13,7 @@ import (
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/safeshell"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
@@ -70,14 +71,47 @@ func connectSSH(db *gorm.DB, cfg *config.Config, serverID uint) (*gossh.Client, 
 }
 
 func initAppDirs(db *gorm.DB, cfg *config.Config, app *model.Application) error {
+	if err := safeshell.AbsPath(app.BaseDir); err != nil {
+		return fmt.Errorf("base_dir 非法: %w", err)
+	}
 	client, err := connectSSH(db, cfg, app.ServerID)
 	if err != nil {
 		return err
 	}
+	bd := safeshell.Quote(app.BaseDir)
 	cmd := fmt.Sprintf("mkdir -p %s/data %s/logs %s/config %s/backup",
-		app.BaseDir, app.BaseDir, app.BaseDir, app.BaseDir)
+		bd, bd, bd, bd)
 	_, err = sshpool.Run(client, cmd)
 	return err
+}
+
+// validateAppReq enforces shell/path safety on user-controlled fields that
+// are spliced into remote commands or filesystem paths.
+func validateAppReq(req *appReq) error {
+	if err := safeshell.ValidName(req.Name, 64); err != nil {
+		return fmt.Errorf("name 非法: %w", err)
+	}
+	if req.BaseDir != "" {
+		if err := safeshell.AbsPath(req.BaseDir); err != nil {
+			return fmt.Errorf("base_dir 非法: %w", err)
+		}
+	}
+	if req.ContainerName != "" {
+		if err := safeshell.ValidName(req.ContainerName, 64); err != nil {
+			return fmt.Errorf("container_name 非法: %w", err)
+		}
+	}
+	if req.SiteName != "" {
+		if err := safeshell.ValidName(req.SiteName, 64); err != nil {
+			return fmt.Errorf("site_name 非法: %w", err)
+		}
+	}
+	if req.Domain != "" {
+		if err := safeshell.NginxValue(req.Domain); err != nil {
+			return fmt.Errorf("domain 非法: %w", err)
+		}
+	}
+	return nil
 }
 
 // ── list ──────────────────────────────────────────────────────────────────────
@@ -103,6 +137,10 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
+		if err := validateAppReq(&req); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
 		var server model.Server
 		if err := db.First(&server, req.ServerID).Error; err != nil {
 			resp.BadRequest(c, "服务器不存在")
@@ -115,6 +153,10 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		baseDir := req.BaseDir
 		if baseDir == "" {
 			baseDir = "/srv/apps/" + req.Name
+		}
+		if err := safeshell.AbsPath(baseDir); err != nil {
+			resp.BadRequest(c, "base_dir 非法: "+err.Error())
+			return
 		}
 		app := model.Application{
 			Name:          req.Name,
@@ -174,6 +216,10 @@ func updateHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 		var req appReq
 		if err := c.ShouldBindJSON(&req); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
+		if err := validateAppReq(&req); err != nil {
 			resp.BadRequest(c, err.Error())
 			return
 		}
@@ -239,13 +285,18 @@ func dirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.OK(c, []dirEntry{})
 			return
 		}
+		if err := safeshell.AbsPath(app.BaseDir); err != nil {
+			resp.BadRequest(c, "base_dir 非法: "+err.Error())
+			return
+		}
 		client, err := connectSSH(db, cfg, app.ServerID)
 		if err != nil {
 			resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
 			return
 		}
+		bd := safeshell.Quote(app.BaseDir)
 		cmd := fmt.Sprintf(`for d in data logs config backup; do
-  p="%s/$d"
+  p=%s/$d
   if [ -d "$p" ]; then
     sz=$(du -sh "$p" 2>/dev/null | cut -f1)
     mt=$(date -r "$p" "+%%Y-%%m-%%d %%H:%%M:%%S" 2>/dev/null || stat -c "%%y" "$p" 2>/dev/null | cut -d'.' -f1)
@@ -253,7 +304,7 @@ func dirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
   else
     echo "$d|||missing"
   fi
-done`, app.BaseDir)
+done`, bd)
 		out, err := sshpool.Run(client, cmd)
 		if err != nil {
 			resp.InternalError(c, "执行失败: "+err.Error())

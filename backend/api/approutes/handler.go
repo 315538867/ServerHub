@@ -11,6 +11,7 @@ import (
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/safeshell"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
@@ -27,8 +28,31 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func sq(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+func sq(s string) string { return safeshell.Quote(s) }
+
+// validateRoute rejects route fields that would let a caller break out of the
+// nginx directive or inject a shell terminator when written via base64+tee.
+func validateRoute(r *routeReq) error {
+	if err := safeshell.NginxValue(r.Path); err != nil {
+		return fmt.Errorf("path 非法: %w", err)
+	}
+	if err := safeshell.NginxValue(r.Upstream); err != nil {
+		return fmt.Errorf("upstream 非法: %w", err)
+	}
+	if r.Extra != "" {
+		// Extra is spliced as a raw directive line — disallow newlines and
+		// braces so callers cannot open/close nested contexts.
+		if strings.ContainsAny(r.Extra, "\n\r{}") {
+			return fmt.Errorf("extra 包含非法字符")
+		}
+	}
+	return nil
+}
+
+// validateAppName ensures an Application.Name is safe to use as the filename
+// for its generated nginx location/site include. Called in applyHandler.
+func validateAppName(name string) error {
+	return safeshell.ValidName(name, 64)
 }
 
 func getApp(c *gin.Context, db *gorm.DB) (*model.Application, bool) {
@@ -150,6 +174,10 @@ func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
+		if err := validateRoute(&req); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
 		route := model.AppNginxRoute{
 			AppID:    app.ID,
 			Path:     req.Path,
@@ -185,6 +213,10 @@ func updateRouteHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 		var req routeReq
 		if err := c.ShouldBindJSON(&req); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
+		if err := validateRoute(&req); err != nil {
 			resp.BadRequest(c, err.Error())
 			return
 		}
@@ -232,8 +264,21 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		if err := validateAppName(app.Name); err != nil {
+			resp.BadRequest(c, "应用名包含不能用作文件名的字符: "+err.Error())
+			return
+		}
 		var routes []model.AppNginxRoute
 		db.Where("app_id = ?", app.ID).Order("sort asc, id asc").Find(&routes)
+		// Re-validate persisted routes — DB rows from before this validation
+		// landed could still contain dangerous values.
+		for i := range routes {
+			r := routeReq{Path: routes[i].Path, Upstream: routes[i].Upstream, Extra: routes[i].Extra}
+			if err := validateRoute(&r); err != nil {
+				resp.BadRequest(c, fmt.Sprintf("路由 #%d 非法: %s", routes[i].ID, err.Error()))
+				return
+			}
+		}
 
 		var output string
 		var err error
@@ -290,7 +335,7 @@ func applyPath(client *gossh.Client, name string, routes []model.AppNginxRoute) 
 	}
 
 	locPath := fmt.Sprintf("%s/%s.conf", appLocationsDir, name)
-	writeCmd := fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(locPath), sb.String())
+	writeCmd := safeshell.WriteRemoteFile(locPath, sb.String(), true)
 	if _, err := sshpool.Run(client, writeCmd); err != nil {
 		return "", fmt.Errorf("写入 location 配置失败")
 	}
@@ -308,7 +353,7 @@ func applyPath(client *gossh.Client, name string, routes []model.AppNginxRoute) 
 	checkCmd := fmt.Sprintf("test -f %s", sq(hubAvail))
 	if _, err := sshpool.Run(client, checkCmd); err != nil {
 		// hub doesn't exist, create it
-		createCmd := fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(hubAvail), hubConf)
+		createCmd := safeshell.WriteRemoteFile(hubAvail, hubConf, true)
 		if _, err := sshpool.Run(client, createCmd); err != nil {
 			return "", fmt.Errorf("创建 app-hub 站点失败")
 		}
@@ -321,6 +366,9 @@ func applyPath(client *gossh.Client, name string, routes []model.AppNginxRoute) 
 func applySite(client *gossh.Client, name, domain string, routes []model.AppNginxRoute) (string, error) {
 	if domain == "" {
 		return "", fmt.Errorf("site 模式需要配置域名")
+	}
+	if err := safeshell.NginxValue(domain); err != nil {
+		return "", fmt.Errorf("domain 非法: %w", err)
 	}
 
 	var sb strings.Builder
@@ -342,7 +390,7 @@ func applySite(client *gossh.Client, name, domain string, routes []model.AppNgin
 	sitePath := fmt.Sprintf("/etc/nginx/sites-available/%s-sh.conf", name)
 	symlinkPath := fmt.Sprintf("/etc/nginx/sites-enabled/%s-sh", name)
 
-	writeCmd := fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(sitePath), sb.String())
+	writeCmd := safeshell.WriteRemoteFile(sitePath, sb.String(), true)
 	if _, err := sshpool.Run(client, writeCmd); err != nil {
 		return "", fmt.Errorf("写入站点配置失败")
 	}

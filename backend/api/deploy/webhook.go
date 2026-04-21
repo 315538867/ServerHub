@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
@@ -14,10 +15,19 @@ import (
 	"gorm.io/gorm"
 )
 
+// maxWebhookBody caps Git provider payloads we'll read into memory.
+const maxWebhookBody = 1 << 20 // 1 MiB
+
 func RegisterWebhookRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.POST("/:token", webhookHandler(db, cfg))
 }
 
+// webhookHandler authenticates the sender via either:
+//   - X-Hub-Signature-256 (GitHub): HMAC-SHA256(webhookSecret, body)
+//   - X-Gitlab-Token (GitLab): raw secret compared with constant-time
+//
+// Requests carrying neither header are rejected so a leaked URL alone cannot
+// trigger a deploy.
 func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.Param("token")
@@ -27,29 +37,38 @@ func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		body, _ := io.ReadAll(c.Request.Body)
-
-		// Verify GitHub signature if present
-		if sig := c.GetHeader("X-Hub-Signature-256"); sig != "" {
-			mac := hmac.New(sha256.New, []byte(token))
-			mac.Write(body)
-			expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-			if !hmac.Equal([]byte(sig), []byte(expected)) {
-				resp.Fail(c, 401, 401, "签名验证失败")
-				return
-			}
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxWebhookBody)
+		body, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			resp.Fail(c, http.StatusRequestEntityTooLarge, 413, "请求体过大")
+			return
 		}
 
-		// GitLab: X-Gitlab-Token is the raw token
-		if gitlabToken := c.GetHeader("X-Gitlab-Token"); gitlabToken != "" {
-			if gitlabToken != token {
-				resp.Fail(c, 401, 401, "Token 不匹配")
+		ghSig := c.GetHeader("X-Hub-Signature-256")
+		glTok := c.GetHeader("X-Gitlab-Token")
+		if ghSig == "" && glTok == "" {
+			resp.Fail(c, http.StatusUnauthorized, 401, "缺少签名或 Token 请求头")
+			return
+		}
+
+		secret := []byte(d.WebhookSecret)
+
+		if ghSig != "" {
+			mac := hmac.New(sha256.New, secret)
+			mac.Write(body)
+			expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+			if !hmac.Equal([]byte(ghSig), []byte(expected)) {
+				resp.Fail(c, http.StatusUnauthorized, 401, "签名验证失败")
+				return
+			}
+		} else if glTok != "" {
+			if !hmac.Equal([]byte(glTok), secret) {
+				resp.Fail(c, http.StatusUnauthorized, 401, "Token 不匹配")
 				return
 			}
 		}
 
 		go deployer.Run(db, cfg, d, "webhook", nil)
-
 		resp.OK(c, gin.H{"triggered": true})
 	}
 }

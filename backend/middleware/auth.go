@@ -39,9 +39,15 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 				return nil, jwt.ErrSignatureInvalid
 			}
 			return []byte(cfg.Security.JWTSecret), nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 		if err != nil || !token.Valid {
 			resp.Unauthorized(c, "invalid token")
+			return
+		}
+		// Tokens minted for the TOTP second-step exchange are not full session
+		// tokens and must never authorize protected routes.
+		if claims.Role == "tmp_totp" {
+			resp.Unauthorized(c, "token not valid for this route")
 			return
 		}
 
@@ -65,7 +71,7 @@ func ParseToken(tokenStr, secret string) (*Claims, error) {
 			return nil, jwt.ErrSignatureInvalid
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 	if err != nil || !token.Valid {
 		return nil, jwt.ErrSignatureInvalid
 	}

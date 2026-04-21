@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -225,10 +227,28 @@ func shellQuote(s string) string {
 //
 // When releases/<version>/ already exists and is non-empty (rollback path),
 // extraction is skipped — we just re-point `current`.
-func buildStaticParts(version string) []string {
-	if version == "" {
-		version = "untagged"
+// safeVersionRe is the second line of defence against path-traversal in the
+// `releases/<version>` directory. The API layer (validateDeployReq) already
+// rejects bad versions; this guard ensures buildStaticParts cannot emit a
+// dangerous path even if it is invoked from a future code path that bypasses
+// the API validation.
+var safeVersionRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
+
+func sanitizeVersion(v string) string {
+	if v == "" {
+		return "untagged"
 	}
+	// Reject anything containing a path separator or that resolves to a
+	// non-relative path after Clean.
+	clean := path.Clean(v)
+	if !safeVersionRe.MatchString(v) || clean != v || strings.HasPrefix(clean, ".") {
+		return "untagged"
+	}
+	return v
+}
+
+func buildStaticParts(version string) []string {
+	version = sanitizeVersion(version)
 	rel := "releases/" + version
 	rq := shellQuote(rel)
 	return []string{

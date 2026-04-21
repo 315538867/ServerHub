@@ -33,6 +33,7 @@ import (
 	"github.com/serverhub/serverhub/database"
 	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/pkg/scheduler"
+	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/retention"
 	"github.com/serverhub/serverhub/pkg/auditq"
 )
@@ -77,17 +78,26 @@ func main() {
 
 	db := database.Init(cfg)
 
+	sshpool.SetHostKeyStore(sshpool.NewGormHostKeyStore(db))
+
 	auditq.Default = auditq.New(db)
 	defer auditq.Default.Close()
 
 	if !cfg.DevMode {
 		const devJWT = "serverhub-dev-jwt-secret-change-in-production!!"
 		const devAES = "6465766b6579363436343634363436346465766b657936343634363436343634"
-		if cfg.Security.JWTSecret == devJWT || cfg.Security.AESKey == devAES {
+		if cfg.Security.JWTSecret == "" || cfg.Security.AESKey == "" ||
+			cfg.Security.JWTSecret == devJWT || cfg.Security.AESKey == devAES {
 			fmt.Fprintln(os.Stderr, "╔══════════════════════════════════════════════════════════════╗")
-			fmt.Fprintln(os.Stderr, "║  CRITICAL: default JWT/AES secrets detected in production!  ║")
+			fmt.Fprintln(os.Stderr, "║  FATAL: default or empty JWT/AES secrets in production mode. ║")
 			fmt.Fprintln(os.Stderr, "║  Set security.jwt_secret and security.aes_key in config.yaml ║")
+			fmt.Fprintln(os.Stderr, "║  (aes_key = 64 hex chars / 32 bytes). Refusing to start.     ║")
 			fmt.Fprintln(os.Stderr, "╚══════════════════════════════════════════════════════════════╝")
+			os.Exit(1)
+		}
+		if len(cfg.Security.AESKey) != 64 {
+			fmt.Fprintln(os.Stderr, "FATAL: security.aes_key must be 64 hex chars (32 bytes) for AES-256")
+			os.Exit(1)
 		}
 	}
 

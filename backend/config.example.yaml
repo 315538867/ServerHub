@@ -3,8 +3,11 @@ server:
   data_dir: /opt/serverhub
 
 security:
-  jwt_secret: "replace-with-64-char-random-string-generated-by-serverhub-init"
-  aes_key: "replace-with-32-byte-hex-key-generated-by-serverhub-init-cmd"
+  # jwt_secret: 至少 32 字节随机字符串 (推荐 openssl rand -base64 48)
+  jwt_secret: "replace-with-random-string-at-least-32-bytes"
+  # aes_key: 必须为 64 个十六进制字符 (= 32 字节，用于 AES-256)
+  #   生成: openssl rand -hex 32
+  aes_key: "replace-with-64-hex-chars-32-bytes-for-aes256"
   allow_register: false
   login_max_attempts: 5
   login_lockout_min: 15

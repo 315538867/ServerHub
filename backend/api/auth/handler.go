@@ -43,16 +43,28 @@ func loginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
+		// Per-account lockout — supplements the per-IP RateLimit middleware.
+		// Stops attackers who rotate IPs (botnets, residential proxies) from
+		// brute-forcing a single account.
+		if middleware.AccountLocked(req.Username) {
+			resp.Fail(c, http.StatusTooManyRequests, 1005, "账号暂时锁定，请稍后再试")
+			return
+		}
+
 		var user model.User
 		if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
+			middleware.RecordAccountFailure(req.Username)
 			resp.Fail(c, http.StatusUnauthorized, 1001, "用户名或密码错误")
 			return
 		}
 
 		if !crypto.BcryptVerify(req.Password, user.Password) {
+			middleware.RecordAccountFailure(req.Username)
 			resp.Fail(c, http.StatusUnauthorized, 1001, "用户名或密码错误")
 			return
 		}
+
+		middleware.RecordAccountSuccess(req.Username)
 
 		// MFA: return tmp token for second step
 		if user.MFAEnabled && user.MFASecret != "" {

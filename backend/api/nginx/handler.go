@@ -9,17 +9,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
+	"github.com/serverhub/serverhub/pkg/safeshell"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/wsstream"
 	"gorm.io/gorm"
 )
 
-var upgrader = websocket.Upgrader{CheckOrigin: func(_ *http.Request) bool { return true }}
+var upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096}
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+	upgrader.CheckOrigin = middleware.WSCheckOrigin(cfg)
 	r.GET("/:id/nginx/sites", listSitesHandler(db, cfg))
 	r.POST("/:id/nginx/sites", createSiteHandler(db, cfg))
 	r.GET("/:id/nginx/sites/:name/config", getSiteConfigHandler(db, cfg))
@@ -73,8 +76,18 @@ func getDedicatedRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner
 	return rn, true
 }
 
-func sq(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+func sq(s string) string { return safeshell.Quote(s) }
+
+// siteName returns the :name URL param if it passes whitelist validation,
+// otherwise it writes a 400 and returns ("", false). This stops path traversal
+// into /etc/nginx/sites-{available,enabled} via values like "../etc/passwd".
+func siteName(c *gin.Context) (string, bool) {
+	name := c.Param("name")
+	if err := safeshell.ValidName(name, 64); err != nil {
+		resp.BadRequest(c, "站点名无效："+err.Error())
+		return "", false
+	}
+	return name, true
 }
 
 // ── site list ─────────────────────────────────────────────────────────────────
@@ -138,14 +151,38 @@ func createSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "请求体格式错误")
 			return
 		}
+		if err := safeshell.ValidName(body.Name, 64); err != nil {
+			resp.BadRequest(c, "站点名无效："+err.Error())
+			return
+		}
+		if err := safeshell.NginxValue(body.Domain); err != nil {
+			resp.BadRequest(c, "domain 非法："+err.Error())
+			return
+		}
+		if body.Root != "" {
+			if err := safeshell.NginxValue(body.Root); err != nil {
+				resp.BadRequest(c, "root 非法："+err.Error())
+				return
+			}
+		}
+		if body.Proxy != "" {
+			if err := safeshell.NginxValue(body.Proxy); err != nil {
+				resp.BadRequest(c, "proxy 非法："+err.Error())
+				return
+			}
+		}
 		if body.Port == 0 {
 			body.Port = 80
 		}
-		config := generateNginxConfig(body.Type, body.Domain, body.Port, body.Root, body.Proxy)
+		if body.Port < 1 || body.Port > 65535 {
+			resp.BadRequest(c, "port 超出范围")
+			return
+		}
+		cfgText := generateNginxConfig(body.Type, body.Domain, body.Port, body.Root, body.Proxy)
 		path := "/etc/nginx/sites-available/" + body.Name
 
-		// write config (sudo tee so root-owned target is writable)
-		out, err := client.Run(fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), config))
+		// write config via base64-piped tee; immune to heredoc terminator injection
+		out, err := client.Run(safeshell.WriteRemoteFile(path, cfgText, true))
 		if err != nil {
 			resp.InternalError(c, "写入配置失败: "+sshpool.HumanizeErr(out))
 			return
@@ -224,9 +261,12 @@ func getSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		name := c.Param("name")
+		name, ok2 := siteName(c)
+		if !ok2 {
+			return
+		}
 		path := "/etc/nginx/sites-available/" + name
-		out, err := client.Run("cat "+sq(path)+" 2>&1")
+		out, err := client.Run("cat " + sq(path) + " 2>&1")
 		if err != nil {
 			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
@@ -241,7 +281,10 @@ func putSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		name := c.Param("name")
+		name, ok2 := siteName(c)
+		if !ok2 {
+			return
+		}
 		var body struct {
 			Content string `json:"content" binding:"required"`
 		}
@@ -251,14 +294,20 @@ func putSiteConfigHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		path := "/etc/nginx/sites-available/" + name
 		// backup
-		backup, _ := client.Run("sudo -n cat "+sq(path)+" 2>/dev/null")
-		// write new
-		client.Run(fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), body.Content)) //nolint:errcheck
+		backup, _ := client.Run("sudo -n cat " + sq(path) + " 2>/dev/null")
+		// write new via base64 (no heredoc terminator injection risk)
+		if _, err := client.Run(safeshell.WriteRemoteFile(path, body.Content, true)); err != nil {
+			resp.InternalError(c, "写入失败: "+err.Error())
+			return
+		}
 		// validate
 		out, err := client.Run("sudo -n nginx -t 2>&1")
 		if err != nil {
-			// restore backup
-			client.Run(fmt.Sprintf("sudo -n tee %s > /dev/null << 'NGINX_EOF'\n%s\nNGINX_EOF", sq(path), backup)) //nolint:errcheck
+			// restore backup (only if we had one; an empty file is valid though)
+			if _, rerr := client.Run(safeshell.WriteRemoteFile(path, backup, true)); rerr != nil {
+				resp.InternalError(c, "Nginx 校验失败且回滚失败: "+sshpool.HumanizeErr(out))
+				return
+			}
 			resp.InternalError(c, "Nginx 配置验证失败: "+sshpool.HumanizeErr(out))
 			return
 		}
@@ -274,9 +323,12 @@ func deleteSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		name := c.Param("name")
-		client.Run("sudo -n rm -f "+sq("/etc/nginx/sites-enabled/"+name)) //nolint:errcheck
-		out, err := client.Run("sudo -n rm -f "+sq("/etc/nginx/sites-available/"+name))
+		name, ok2 := siteName(c)
+		if !ok2 {
+			return
+		}
+		client.Run("sudo -n rm -f " + sq("/etc/nginx/sites-enabled/"+name)) //nolint:errcheck
+		out, err := client.Run("sudo -n rm -f " + sq("/etc/nginx/sites-available/"+name))
 		if err != nil {
 			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return
@@ -292,7 +344,10 @@ func enableSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		name := c.Param("name")
+		name, ok2 := siteName(c)
+		if !ok2 {
+			return
+		}
 		src := "/etc/nginx/sites-available/" + name
 		dst := "/etc/nginx/sites-enabled/" + name
 		out, err := client.Run(fmt.Sprintf("sudo -n ln -sf %s %s && sudo -n nginx -s reload 2>&1", sq(src), sq(dst)))
@@ -310,8 +365,11 @@ func disableSiteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		name := c.Param("name")
-		out, err := client.Run("sudo -n rm -f "+sq("/etc/nginx/sites-enabled/"+name)+" && sudo -n nginx -s reload 2>&1")
+		name, ok2 := siteName(c)
+		if !ok2 {
+			return
+		}
+		out, err := client.Run("sudo -n rm -f " + sq("/etc/nginx/sites-enabled/"+name) + " && sudo -n nginx -s reload 2>&1")
 		if err != nil {
 			resp.InternalError(c, sshpool.HumanizeErr(out))
 			return

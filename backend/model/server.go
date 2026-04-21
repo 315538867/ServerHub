@@ -15,6 +15,10 @@ type Server struct {
 	Remark      string     `gorm:"default:''" json:"remark"`
 	Status      string     `gorm:"default:unknown" json:"status"` // "online"|"offline"|"unknown"
 	LastCheckAt *time.Time `json:"last_check_at"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	// HostKeyFP stores the pinned SSH host-key fingerprint (SHA256:base64,
+	// matching ssh.FingerprintSHA256). Populated on first successful dial
+	// (TOFU). Later dials must match; mismatches abort the connection.
+	HostKeyFP string    `gorm:"default:''" json:"host_key_fp"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }

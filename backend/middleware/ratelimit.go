@@ -17,9 +17,79 @@ type ipState struct {
 }
 
 var (
-	rateMu   sync.Mutex
-	ipStates = make(map[string]*ipState)
+	rateMu       sync.Mutex
+	ipStates     = make(map[string]*ipState)
+	acctStates   = make(map[string]*ipState)
+	acctMaxFail  = 5
+	acctLockMin  = 15
 )
+
+// SetAccountLimits adjusts the per-account thresholds (called once at boot
+// from RateLimit so we share config). Defaults match RateLimit's defaults.
+func setAccountLimits(maxFail, lockMin int) {
+	rateMu.Lock()
+	defer rateMu.Unlock()
+	if maxFail > 0 {
+		acctMaxFail = maxFail
+	}
+	if lockMin > 0 {
+		acctLockMin = lockMin
+	}
+}
+
+// AccountLocked reports whether the given account is currently locked out
+// due to too many recent failures. Login handlers should call this before
+// validating credentials to avoid leaking timing information about valid
+// usernames vs. invalid ones.
+func AccountLocked(username string) bool {
+	if username == "" {
+		return false
+	}
+	rateMu.Lock()
+	defer rateMu.Unlock()
+	s, ok := acctStates[username]
+	if !ok {
+		return false
+	}
+	return time.Now().Before(s.lockUntil)
+}
+
+// RecordAccountFailure increments the failure counter for username and
+// applies a lockout when the threshold is reached. Call after any
+// authentication attempt that fails for credential reasons.
+func RecordAccountFailure(username string) {
+	if username == "" {
+		return
+	}
+	rateMu.Lock()
+	defer rateMu.Unlock()
+	s, ok := acctStates[username]
+	if !ok {
+		s = &ipState{}
+		acctStates[username] = s
+	}
+	s.lastSeen = time.Now()
+	s.failures++
+	if s.failures >= acctMaxFail {
+		s.lockUntil = time.Now().Add(time.Duration(acctLockMin) * time.Minute)
+		s.failures = 0
+	}
+}
+
+// RecordAccountSuccess resets the failure counter for username. Call after
+// successful authentication.
+func RecordAccountSuccess(username string) {
+	if username == "" {
+		return
+	}
+	rateMu.Lock()
+	defer rateMu.Unlock()
+	if s, ok := acctStates[username]; ok {
+		s.failures = 0
+		s.lockUntil = time.Time{}
+		s.lastSeen = time.Now()
+	}
+}
 
 func RateLimit(cfg *config.Config) gin.HandlerFunc {
 	maxFail := cfg.Security.LoginMaxAttempts
@@ -30,6 +100,7 @@ func RateLimit(cfg *config.Config) gin.HandlerFunc {
 	if lockMin <= 0 {
 		lockMin = 15
 	}
+	setAccountLimits(maxFail, lockMin)
 
 	// Clean up stale entries periodically.
 	go func() {
@@ -41,6 +112,11 @@ func RateLimit(cfg *config.Config) gin.HandlerFunc {
 			for ip, s := range ipStates {
 				if s.lastSeen.Before(cutoff) {
 					delete(ipStates, ip)
+				}
+			}
+			for u, s := range acctStates {
+				if s.lastSeen.Before(cutoff) {
+					delete(acctStates, u)
 				}
 			}
 			rateMu.Unlock()

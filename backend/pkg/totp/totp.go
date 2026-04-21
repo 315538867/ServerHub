@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
+	"crypto/subtle"
 	"encoding/base32"
 	"encoding/binary"
 	"fmt"
@@ -29,18 +30,28 @@ func OtpAuthURI(secret, account, issuer string) string {
 
 // Verify checks code against current ± 1 time window (90s tolerance).
 func Verify(secret, code string) bool {
+	_, ok := VerifyAt(secret, code, time.Now())
+	return ok
+}
+
+// VerifyAt is like Verify but takes an explicit "now" and also returns the
+// matched time-step (Unix seconds / 30) for replay protection. Callers can
+// persist the step per-user and reject any subsequent code whose step is
+// less than or equal to the stored value.
+func VerifyAt(secret, code string, now time.Time) (int64, bool) {
 	secret = strings.ToUpper(strings.ReplaceAll(secret, " ", ""))
 	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(secret)
 	if err != nil {
-		return false
+		return 0, false
 	}
-	t := time.Now().Unix() / 30
+	t := now.Unix() / 30
 	for _, delta := range []int64{-1, 0, 1} {
-		if generate(key, t+delta) == code {
-			return true
+		step := t + delta
+		if subtle.ConstantTimeCompare([]byte(generate(key, step)), []byte(code)) == 1 {
+			return step, true
 		}
 	}
-	return false
+	return 0, false
 }
 
 func generate(key []byte, counter int64) string {
