@@ -312,17 +312,17 @@ onMounted(async () => {
 .notifications-page {
   display: flex;
   flex-direction: column;
-  gap: var(--sh-space-md);
+  gap: var(--ui-space-4);
 }
 
 .block-body {
-  padding: var(--sh-space-md) var(--sh-space-lg);
+  padding: var(--ui-space-4) var(--ui-space-6);
 }
 
 .title-actions {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
 }
 
 .full-width { width: 100%; }
@@ -330,12 +330,12 @@ onMounted(async () => {
 .pagination-row {
   display: flex;
   justify-content: flex-end;
-  margin-top: var(--sh-space-md);
+  margin-top: var(--ui-space-4);
 }
 
 .form-hint {
   font-size: 11px;
-  color: var(--sh-text-secondary);
-  margin-top: var(--sh-space-xs);
+  color: var(--ui-fg-3);
+  margin-top: var(--ui-space-1);
 }
 </style>

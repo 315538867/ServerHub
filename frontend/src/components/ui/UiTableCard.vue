@@ -72,17 +72,17 @@ const tableAttrs = computed(() => props.tableAttrs)
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--ui-space-4);
-  padding: var(--ui-space-3) var(--ui-space-6);
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-3) var(--ui-space-5);
   border-bottom: 1px solid var(--ui-border-subtle);
-  background: var(--ui-bg-elevated);
+  background: var(--ui-bg-surface);
 }
 .ui-tc__table {
-  padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6);
+  padding: var(--ui-space-3) var(--ui-space-5) var(--ui-space-4);
 }
 .ui-tc__pagination {
   display: flex;
   justify-content: flex-end;
-  padding: 0 var(--ui-space-6) var(--ui-space-4);
+  padding: 0 var(--ui-space-5) var(--ui-space-3);
 }
 </style>

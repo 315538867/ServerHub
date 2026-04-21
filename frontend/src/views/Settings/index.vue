@@ -243,32 +243,32 @@ onMounted(async () => {
 .settings-page {
   display: flex;
   flex-direction: column;
-  gap: var(--sh-space-md);
+  gap: var(--ui-space-4);
 }
 
 .settings-body {
-  padding: var(--sh-space-lg);
+  padding: var(--ui-space-6);
 }
 .settings-body--table {
-  padding: 0 var(--sh-space-lg) var(--sh-space-md);
+  padding: 0 var(--ui-space-6) var(--ui-space-4);
 }
 
 .settings-group-label {
   font-size: 12px;
   font-weight: 600;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  padding: var(--sh-space-md) 0 var(--sh-space-sm);
-  border-bottom: 1px solid var(--sh-border);
-  margin-bottom: var(--sh-space-md);
+  padding: var(--ui-space-4) 0 var(--ui-space-2);
+  border-bottom: 1px solid var(--ui-border);
+  margin-bottom: var(--ui-space-4);
 }
 .settings-group-label:first-child { padding-top: 0; }
 
 .settings-desc {
   font-size: 13px;
-  color: var(--sh-text-secondary);
-  margin: 0 0 var(--sh-space-md);
+  color: var(--ui-fg-3);
+  margin: 0 0 var(--ui-space-4);
   line-height: 1.6;
 }
 
@@ -277,22 +277,22 @@ onMounted(async () => {
 
 /* TOTP */
 .totp-setup { max-width: 560px; }
-.totp-desc  { margin: var(--sh-space-md) 0; }
+.totp-desc  { margin: var(--ui-space-4) 0; }
 .totp-secret {
   font-family: 'JetBrains Mono', monospace;
   word-break: break-all;
-  color: var(--sh-blue);
+  color: var(--ui-brand);
 }
 .totp-uri {
   font-size: 11px;
   word-break: break-all;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
 }
 .totp-confirm-row {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
-  margin-top: var(--sh-space-sm);
+  gap: var(--ui-space-2);
+  margin-top: var(--ui-space-2);
 }
 .totp-input { width: 200px; }
 
@@ -300,7 +300,7 @@ onMounted(async () => {
 .audit-filters {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
   flex-wrap: wrap;
 }
 .filter-input-sm { width: 120px; }
@@ -309,6 +309,6 @@ onMounted(async () => {
 .pagination-row {
   display: flex;
   justify-content: flex-end;
-  padding: var(--sh-space-md) 0 var(--sh-space-xs);
+  padding: var(--ui-space-4) 0 var(--ui-space-1);
 }
 </style>

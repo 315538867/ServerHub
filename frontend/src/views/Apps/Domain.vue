@@ -391,10 +391,10 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy(); certWs?.close() })
 
 <style scoped>
 .table-wrap {
-  padding: 0 var(--sh-space-lg) var(--sh-space-md);
+  padding: 0 var(--ui-space-6) var(--ui-space-4);
 }
 .empty-block {
-  padding: var(--sh-space-xl) var(--sh-space-lg);
+  padding: var(--ui-space-8) var(--ui-space-6);
   display: flex;
   justify-content: center;
 }
@@ -404,7 +404,7 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy(); certWs?.close() })
 .code-editor { height: 60vh; overflow: auto; font-size: 13px; }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
-.logs-terminal { width: 100%; height: calc(100vh - 240px); background: #1a2332; border-radius: 4px; overflow: hidden; margin-top: var(--sh-space-md); }
-.cert-output { background: #1a2332; color: #e0e0e0; border-radius: 4px; padding: var(--sh-space-md); font-size: 12px; line-height: 1.6; overflow: auto; max-height: 280px; margin: var(--sh-space-md) 0 0; white-space: pre-wrap; word-break: break-all; }
+.logs-terminal { width: 100%; height: calc(100vh - 240px); background: #1a2332; border-radius: 4px; overflow: hidden; margin-top: var(--ui-space-4); }
+.cert-output { background: #1a2332; color: #e0e0e0; border-radius: 4px; padding: var(--ui-space-4); font-size: 12px; line-height: 1.6; overflow: auto; max-height: 280px; margin: var(--ui-space-4) 0 0; white-space: pre-wrap; word-break: break-all; }
 .full-width { width: 100%; }
 </style>

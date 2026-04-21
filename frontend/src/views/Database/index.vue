@@ -4,7 +4,9 @@
     <div class="db-sidebar section-block">
       <div class="section-title">
         <span>数据库连接</span>
-        <t-button :icon="() => h(AddIcon)" shape="circle" size="small" variant="outline" @click="openAddConn" />
+        <UiIconButton variant="ghost" size="sm" aria-label="新增连接" title="新增连接" @click="openAddConn">
+          <add-icon />
+        </UiIconButton>
       </div>
       <div class="sidebar-list">
         <div
@@ -29,7 +31,7 @@
             <template #icon><delete-icon /></template>
           </t-button>
         </div>
-        <t-empty v-if="conns.length === 0" description="暂无连接" style="padding: var(--sh-space-lg) 0" />
+        <t-empty v-if="conns.length === 0" description="暂无连接" style="padding: var(--ui-space-6) 0" />
       </div>
     </div>
 
@@ -41,7 +43,7 @@
           <div class="section-title">
             <div class="db-main-title">
               <span>{{ selectedConn.name }}</span>
-              <t-tag :theme="selectedConn.type === 'redis' ? 'warning' : 'primary'" size="small" variant="light" style="margin-left: var(--sh-space-sm)">
+              <t-tag :theme="selectedConn.type === 'redis' ? 'warning' : 'primary'" size="small" variant="light" style="margin-left: var(--ui-space-2)">
                 {{ selectedConn.type.toUpperCase() }}
               </t-tag>
             </div>
@@ -101,7 +103,7 @@
 
               <t-tab-panel value="status" label="状态">
                 <div class="tab-content">
-                  <t-button size="small" variant="outline" :loading="statusLoading" @click="loadStatus" style="margin-bottom: var(--sh-space-md)">刷新</t-button>
+                  <t-button size="small" variant="outline" :loading="statusLoading" @click="loadStatus" style="margin-bottom: var(--ui-space-4)">刷新</t-button>
                   <t-table :data="statusRowsData" :columns="statusColumns" :loading="statusLoading" size="small" max-height="500" row-key="key" />
                 </div>
               </t-tab-panel>
@@ -115,7 +117,7 @@
             <t-tabs :value="redisTab" @change="val => (redisTab = val as string)">
               <t-tab-panel value="info" label="状态">
                 <div class="tab-content">
-                  <t-button size="small" variant="outline" :loading="infoLoading" @click="loadRedisInfo" style="margin-bottom: var(--sh-space-md)">刷新</t-button>
+                  <t-button size="small" variant="outline" :loading="infoLoading" @click="loadRedisInfo" style="margin-bottom: var(--ui-space-4)">刷新</t-button>
                   <div class="redis-info-grid">
                     <div v-for="(val, key) in redisInfo" :key="key" class="info-item">
                       <span class="info-key">{{ key }}</span>
@@ -265,6 +267,7 @@
 <script setup lang="ts">
 import { h, ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { AddIcon, DeleteIcon, ComponentGridIcon, StarIcon } from 'tdesign-icons-vue-next'
+import UiIconButton from '@/components/ui/UiIconButton.vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { EditorView, basicSetup } from 'codemirror'
 import { EditorState } from '@codemirror/state'
@@ -323,11 +326,17 @@ async function deleteConnItem(c: DBConn) {
 }
 
 function selectConn(c: DBConn) {
+  destroySqlEditor()
   selectedConn.value = c
   mysqlTab.value = 'databases'
   redisTab.value = 'info'
   if (c.type === 'mysql') loadDatabases()
   else loadRedisInfo()
+}
+
+function destroySqlEditor() {
+  sqlEditor?.destroy()
+  sqlEditor = null
 }
 
 async function testConnection() {
@@ -392,7 +401,13 @@ watch(mysqlTab, async (tab) => {
 })
 
 function initSqlEditor() {
-  if (!sqlEditorEl.value || sqlEditor) return
+  if (!sqlEditorEl.value) return
+  // DOM 已分离（切换连接 / tab 销毁重建）→ 释放旧实例
+  if (sqlEditor && !sqlEditorEl.value.contains(sqlEditor.dom)) {
+    sqlEditor.destroy()
+    sqlEditor = null
+  }
+  if (sqlEditor) return
   sqlEditor = new EditorView({
     state: EditorState.create({ doc: 'SELECT 1', extensions: [basicSetup, sql(), oneDark] }),
     parent: sqlEditorEl.value,
@@ -556,8 +571,8 @@ init()
 /* 整体两栏布局 */
 .db-layout {
   display: flex;
-  gap: var(--sh-space-md);
-  padding: var(--sh-space-lg);
+  gap: var(--ui-space-4);
+  padding: var(--ui-space-6);
   min-height: calc(100vh - 60px);
   align-items: flex-start;
 }
@@ -572,9 +587,9 @@ init()
   overflow: hidden;
 }
 .db-sidebar .section-title {
-  padding: var(--sh-space-md);
+  padding: var(--ui-space-4);
   font-size: 13px;
-  border-bottom: 1px solid var(--sh-border);
+  border-bottom: 1px solid var(--ui-border);
 }
 
 .sidebar-list {
@@ -585,8 +600,8 @@ init()
 .conn-item {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-sm) var(--sh-space-md);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-2) var(--ui-space-4);
   cursor: pointer;
   border-bottom: 1px solid #f5f5f5;
   transition: background 0.15s;
@@ -595,9 +610,9 @@ init()
 .conn-item:hover { background: #f7f8fa; }
 .conn-item.active {
   background: #EFF4FF;
-  border-left: 3px solid var(--sh-blue);
+  border-left: 3px solid var(--ui-brand);
 }
-.conn-item.active .conn-name { color: var(--sh-blue); }
+.conn-item.active .conn-name { color: var(--ui-brand); }
 
 .conn-item__icon {
   width: 28px;
@@ -609,19 +624,19 @@ init()
   font-size: 14px;
   flex-shrink: 0;
 }
-.conn-item__icon--mysql { background: #EFF4FF; color: var(--sh-blue); }
-.conn-item__icon--redis { background: #FFF3E8; color: var(--sh-orange); }
+.conn-item__icon--mysql { background: var(--ui-brand-soft); color: var(--ui-brand); }
+.conn-item__icon--redis { background: var(--ui-warning-soft); color: var(--ui-warning); }
 
 .conn-info { flex: 1; min-width: 0; }
 .conn-name {
   font-size: 13px;
   font-weight: 500;
-  color: var(--sh-text-primary);
+  color: var(--ui-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.conn-meta { font-size: 11px; color: var(--sh-text-secondary); margin-top: 1px; }
+.conn-meta { font-size: 11px; color: var(--ui-fg-3); margin-top: 1px; }
 
 .conn-type-badge { display: none; }
 .conn-delete-btn { opacity: 0; transition: opacity 0.15s; }
@@ -633,7 +648,7 @@ init()
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--sh-space-md);
+  gap: var(--ui-space-4);
 }
 
 .db-main-header {
@@ -641,7 +656,7 @@ init()
 }
 .db-main-header .section-title {
   border-bottom: none;
-  padding: var(--sh-space-md);
+  padding: var(--ui-space-4);
 }
 .db-main-title {
   display: flex;
@@ -658,58 +673,58 @@ init()
 }
 
 /* Tabs 内容 */
-.tab-content { padding: var(--sh-space-md) 0; }
-.tab-toolbar { display: flex; gap: var(--sh-space-sm); margin-bottom: var(--sh-space-md); align-items: center; }
-.query-toolbar { display: flex; gap: var(--sh-space-sm); margin-bottom: var(--sh-space-sm); align-items: center; }
+.tab-content { padding: var(--ui-space-4) 0; }
+.tab-toolbar { display: flex; gap: var(--ui-space-2); margin-bottom: var(--ui-space-4); align-items: center; }
+.query-toolbar { display: flex; gap: var(--ui-space-2); margin-bottom: var(--ui-space-2); align-items: center; }
 
 .sql-editor {
   height: 200px;
   overflow: auto;
-  border: 1px solid var(--sh-border);
+  border: 1px solid var(--ui-border);
   border-radius: 4px;
-  margin-bottom: var(--sh-space-md);
+  margin-bottom: var(--ui-space-4);
 }
 :deep(.cm-editor) { height: 100%; }
 :deep(.cm-scroller) { overflow: auto; }
 
-.query-result { margin-top: var(--sh-space-sm); }
-.result-meta { font-size: 12px; color: var(--sh-text-secondary); margin-top: var(--sh-space-sm); }
+.query-result { margin-top: var(--ui-space-2); }
+.result-meta { font-size: 12px; color: var(--ui-fg-3); margin-top: var(--ui-space-2); }
 .query-error {
-  color: var(--sh-red);
-  background: #fff0f0;
-  padding: var(--sh-space-sm) var(--sh-space-md);
+  color: var(--ui-danger);
+  background: var(--ui-danger-soft);
+  padding: var(--ui-space-2) var(--ui-space-4);
   border-radius: 4px;
   font-size: 13px;
-  margin-top: var(--sh-space-sm);
+  margin-top: var(--ui-space-2);
 }
 
 /* Redis */
 .redis-info-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
 }
 .info-item {
   display: flex;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-sm);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-2);
   background: #f7f8fa;
   border-radius: 4px;
   font-size: 12px;
 }
-.info-key { color: var(--sh-text-secondary); min-width: 180px; flex-shrink: 0; }
-.info-val { color: var(--sh-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info-key { color: var(--ui-fg-3); min-width: 180px; flex-shrink: 0; }
+.info-val { color: var(--ui-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.keys-layout { display: flex; gap: var(--sh-space-md); height: 400px; }
+.keys-layout { display: flex; gap: var(--ui-space-4); height: 400px; }
 .keys-list {
   width: 260px;
   flex-shrink: 0;
   overflow-y: auto;
-  border: 1px solid var(--sh-border);
+  border: 1px solid var(--ui-border);
   border-radius: 4px;
 }
 .key-item {
-  padding: var(--sh-space-sm);
+  padding: var(--ui-space-2);
   font-size: 12px;
   font-family: monospace;
   cursor: pointer;
@@ -717,28 +732,28 @@ init()
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--sh-text-primary);
+  color: var(--ui-fg);
 }
 .key-item:hover { background: #f7f8fa; }
-.key-item.active { background: #EFF4FF; color: var(--sh-blue); }
+.key-item.active { background: #EFF4FF; color: var(--ui-brand); }
 
 .key-detail {
   flex: 1;
-  border: 1px solid var(--sh-border);
+  border: 1px solid var(--ui-border);
   border-radius: 4px;
-  padding: var(--sh-space-md);
+  padding: var(--ui-space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
   overflow: auto;
 }
-.key-detail-header { display: flex; align-items: center; gap: var(--sh-space-sm); }
-.key-ttl { font-size: 12px; color: var(--sh-text-secondary); }
+.key-detail-header { display: flex; align-items: center; gap: var(--ui-space-2); }
+.key-ttl { font-size: 12px; color: var(--ui-fg-3); }
 .key-value {
   flex: 1;
   background: #1a2332;
   color: #a0f0a0;
-  padding: var(--sh-space-sm);
+  padding: var(--ui-space-2);
   border-radius: 4px;
   font-size: 12px;
   font-family: monospace;

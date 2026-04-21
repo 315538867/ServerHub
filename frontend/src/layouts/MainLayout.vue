@@ -1,152 +1,209 @@
 <template>
-  <t-layout class="sh-layout">
+  <div class="sh-shell" :class="{ 'sh-shell--collapsed': collapsed }">
 
     <!-- ══════════════ 侧边栏 ══════════════ -->
-    <t-aside class="sh-aside" width="208px">
+    <aside class="sh-aside">
       <!-- Logo -->
-      <div class="sh-logo">
-        <div class="sh-logo-icon">S</div>
-        <span class="sh-logo-text">ServerHub</span>
+      <div class="sh-logo" :title="collapsed ? 'ServerHub' : ''">
+        <div class="sh-logo-icon">
+          <span class="sh-logo-icon__glyph">S</span>
+        </div>
+        <transition name="sh-fade">
+          <span v-if="!collapsed" class="sh-logo-text">ServerHub</span>
+        </transition>
       </div>
 
-      <!-- 导航菜单 -->
+      <!-- 导航 -->
       <div class="sh-nav">
         <!-- 工作台 -->
-        <router-link to="/dashboard" class="sh-nav-item" :class="{ active: route.path === '/dashboard' }">
-          <dashboard-icon class="sh-nav-icon" />
-          <span>工作台</span>
-        </router-link>
+        <SidebarItem
+          to="/dashboard"
+          label="工作台"
+          :collapsed="collapsed"
+          :active="route.path === '/dashboard'"
+        >
+          <template #icon><dashboard-icon /></template>
+        </SidebarItem>
 
         <!-- 应用 -->
-        <div class="sh-nav-group-label">应用</div>
-        <router-link
+        <div class="sh-nav__group" v-show="!collapsed">应用</div>
+        <SidebarItem
           v-for="app in appStore.apps"
           :key="app.id"
           :to="`/apps/${app.id}/overview`"
-          class="sh-nav-item sh-nav-item--sub"
-          :class="{ active: route.path.startsWith(`/apps/${app.id}`) }"
+          :label="app.name"
+          :collapsed="collapsed"
+          :active="route.path.startsWith(`/apps/${app.id}`)"
+          sub
         >
-          <span class="status-dot" :class="app.status" />
-          <span class="sh-nav-sub-text">{{ app.name }}</span>
-        </router-link>
-        <router-link to="/apps/create" class="sh-nav-item sh-nav-item--add">
-          <add-icon class="sh-nav-icon" />
-          <span>新建应用</span>
-        </router-link>
+          <template #icon>
+            <StatusDot :status="app.status" :size="8" :ring="false" />
+          </template>
+        </SidebarItem>
+        <SidebarItem
+          to="/apps/create"
+          label="新建应用"
+          :collapsed="collapsed"
+          add
+        >
+          <template #icon><add-icon /></template>
+        </SidebarItem>
 
         <!-- 服务器 -->
-        <div class="sh-nav-group-label">服务器</div>
+        <div class="sh-nav__group" v-show="!collapsed">服务器</div>
         <template v-for="server in serverStore.servers" :key="server.id">
           <div
-            class="sh-nav-item sh-nav-item--server"
-            :class="{ active: route.path.startsWith(`/servers/${server.id}`) }"
+            class="sh-nav__item sh-nav__item--server"
+            :class="{ 'is-active': route.path.startsWith(`/servers/${server.id}`) }"
             @click="toggleServer(server.id)"
           >
-            <span class="status-dot" :class="server.status" />
-            <span class="sh-nav-sub-text">{{ server.name }}</span>
+            <StatusDot :status="server.status" :size="8" :ring="false" />
+            <span v-show="!collapsed" class="sh-nav__label">{{ server.name }}</span>
             <chevron-right-icon
-              class="sh-nav-chevron"
-              :class="{ expanded: expandedServers.has(server.id) }"
+              v-show="!collapsed"
+              class="sh-nav__chev"
+              :class="{ 'is-open': expandedServers.has(server.id) }"
             />
           </div>
-          <template v-if="expandedServers.has(server.id)">
-            <router-link
-              v-for="item in serverSubItems"
-              :key="item.path"
-              :to="`/servers/${server.id}/${item.path}`"
-              class="sh-nav-item sh-nav-item--subsub"
-              :class="{ active: route.path === `/servers/${server.id}/${item.path}` }"
-            >
-              {{ item.label }}
-            </router-link>
-          </template>
+          <transition name="sh-expand">
+            <div v-if="!collapsed && expandedServers.has(server.id)" class="sh-nav__sub">
+              <router-link
+                v-for="item in serverSubItems"
+                :key="item.path"
+                :to="`/servers/${server.id}/${item.path}`"
+                class="sh-nav__item sh-nav__item--subsub"
+                :class="{ 'is-active': route.path === `/servers/${server.id}/${item.path}` }"
+              >
+                <span class="sh-nav__label">{{ item.label }}</span>
+              </router-link>
+            </div>
+          </transition>
         </template>
+        <SidebarItem
+          to="/servers"
+          label="添加服务器"
+          :collapsed="collapsed"
+          add
+        >
+          <template #icon><add-icon /></template>
+        </SidebarItem>
 
-        <!-- 全局管理 -->
-        <div class="sh-nav-group-label">管理</div>
-        <router-link to="/deploy" class="sh-nav-item" :class="{ active: route.path === '/deploy' }">
-          <swap-icon class="sh-nav-icon" />
-          <span>部署管理</span>
-        </router-link>
-        <router-link to="/database" class="sh-nav-item" :class="{ active: route.path === '/database' }">
-          <server-icon class="sh-nav-icon" />
-          <span>数据库</span>
-        </router-link>
-        <router-link to="/notifications" class="sh-nav-item" :class="{ active: route.path === '/notifications' }">
-          <notification-icon class="sh-nav-icon" />
-          <span>通知</span>
-          <span v-if="unreadCount" class="sh-badge">{{ unreadCount }}</span>
-        </router-link>
-        <router-link to="/settings" class="sh-nav-item" :class="{ active: route.path === '/settings' }">
-          <setting-icon class="sh-nav-icon" />
-          <span>设置</span>
-        </router-link>
+        <!-- 管理 -->
+        <div class="sh-nav__group" v-show="!collapsed">管理</div>
+        <SidebarItem to="/deploy" label="部署管理" :collapsed="collapsed" :active="route.path === '/deploy'">
+          <template #icon><swap-icon /></template>
+        </SidebarItem>
+        <SidebarItem to="/database" label="数据库" :collapsed="collapsed" :active="route.path === '/database'">
+          <template #icon><server-icon /></template>
+        </SidebarItem>
+        <SidebarItem
+          to="/notifications"
+          label="通知"
+          :collapsed="collapsed"
+          :active="route.path === '/notifications'"
+          :badge="unreadCount"
+        >
+          <template #icon><notification-icon /></template>
+        </SidebarItem>
+        <SidebarItem to="/settings" label="设置" :collapsed="collapsed" :active="route.path === '/settings'">
+          <template #icon><setting-icon /></template>
+        </SidebarItem>
       </div>
-    </t-aside>
 
-    <!-- ══════════════ 主体区域 ══════════════ -->
-    <t-layout class="sh-main-layout">
+      <!-- 底部 -->
+      <div class="sh-aside__foot">
+        <UiThemeToggle />
+        <button class="sh-collapse-btn" @click="toggleCollapsed" :title="collapsed ? '展开' : '折叠'">
+          <chevron-left-icon :style="{ transform: collapsed ? 'rotate(180deg)' : 'none' }" />
+        </button>
+      </div>
+    </aside>
 
-      <!-- 顶部 Header -->
-      <t-header class="sh-header">
-        <div class="sh-header-left">
-          <t-breadcrumb v-if="breadcrumbs.length" class="sh-breadcrumb">
+    <!-- ══════════════ 主体 ══════════════ -->
+    <div class="sh-main">
+      <header class="sh-header">
+        <div class="sh-header__left">
+          <t-breadcrumb v-if="breadcrumbs.length" class="sh-bc">
             <t-breadcrumb-item
               v-for="(crumb, i) in breadcrumbs"
               :key="i"
               :to="crumb.path || undefined"
             >{{ crumb.label }}</t-breadcrumb-item>
           </t-breadcrumb>
-          <span v-else class="sh-header-title">工作台</span>
+          <span v-else class="sh-header__title">工作台</span>
         </div>
-        <div class="sh-header-right">
-          <t-tooltip content="命令面板 (⌘K / Ctrl+K)" placement="bottom">
-            <div class="sh-cmd-trigger" @click="cmdPaletteRef?.open()">
-              <span class="sh-cmd-icon">⌘</span>
-              <span class="sh-cmd-text">搜索或执行…</span>
-              <kbd class="sh-cmd-kbd">⌘K</kbd>
-            </div>
-          </t-tooltip>
-          <t-tooltip content="通知" placement="bottom">
-            <div class="sh-header-btn" @click="router.push('/notifications')">
-              <notification-icon />
-              <span v-if="unreadCount" class="sh-header-badge">{{ unreadCount }}</span>
-            </div>
-          </t-tooltip>
+
+        <div class="sh-header__right">
+          <button class="sh-cmd" @click="cmdPaletteRef?.open()" title="命令面板">
+            <search-icon class="sh-cmd__icon" />
+            <span class="sh-cmd__text">搜索或执行…</span>
+            <UiKbd>⌘K</UiKbd>
+          </button>
+
+          <UiIconButton variant="ghost" size="md" @click="router.push('/notifications')" :badge="unreadCount || ''">
+            <notification-icon />
+          </UiIconButton>
+
+          <UiThemeToggle />
+
           <t-dropdown :options="userMenuOptions" @click="onUserMenu" trigger="click" placement="bottom-right">
-            <div class="sh-user-btn">
+            <button class="sh-user">
               <div class="sh-avatar">{{ avatarLetter }}</div>
-              <span class="sh-username">{{ authStore.user?.username }}</span>
-              <chevron-down-icon style="font-size:14px;color:#666" />
-            </div>
+              <span class="sh-user__name">{{ authStore.user?.username }}</span>
+              <chevron-down-icon class="sh-user__chev" />
+            </button>
           </t-dropdown>
         </div>
-      </t-header>
+      </header>
 
-      <!-- 内容区 -->
-      <t-content :class="['sh-content', isFullscreen && 'sh-content--fullscreen']">
-        <router-view />
-      </t-content>
+      <main :class="['sh-content', isFullscreen && 'sh-content--fullscreen']">
+        <router-view v-slot="{ Component, route: r }">
+          <transition name="route-fade" mode="out-in">
+            <component :is="Component" :key="r.fullPath" />
+          </transition>
+        </router-view>
+      </main>
+    </div>
 
-    </t-layout>
-  </t-layout>
-
-  <ChangeProfile v-model:visible="profileDialogVisible" />
-  <CommandPalette ref="cmdPaletteRef" />
+    <ChangeProfile v-model:visible="profileDialogVisible" />
+    <CommandPalette ref="cmdPaletteRef" />
+  </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, ref, watch, onMounted, h } from 'vue'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useServerStore } from '@/stores/server'
 import { useAppStore } from '@/stores/app'
 import {
   DashboardIcon, AddIcon, ServerIcon, NotificationIcon, SettingIcon,
-  SwapIcon, ChevronRightIcon, ChevronDownIcon,
+  SwapIcon, ChevronRightIcon, ChevronDownIcon, ChevronLeftIcon, SearchIcon,
 } from 'tdesign-icons-vue-next'
 import ChangeProfile from '@/views/Profile/ChangeProfile.vue'
 import CommandPalette from '@/components/global/CommandPalette.vue'
+import StatusDot from '@/components/ui/StatusDot.vue'
+import UiIconButton from '@/components/ui/UiIconButton.vue'
+import UiThemeToggle from '@/components/ui/UiThemeToggle.vue'
+import UiKbd from '@/components/ui/UiKbd.vue'
+
+// ─── Sidebar Item 内联组件 ───
+const SidebarItem = (props: {
+  to: string; label: string; collapsed?: boolean; active?: boolean;
+  sub?: boolean; add?: boolean; badge?: number | string;
+}, { slots }: any) => {
+  const classes = [
+    'sh-nav__item',
+    props.sub && 'sh-nav__item--sub',
+    props.add && 'sh-nav__item--add',
+    props.active && 'is-active',
+  ].filter(Boolean)
+  return h(RouterLink, { to: props.to, class: classes, custom: false }, () => [
+    h('span', { class: 'sh-nav__icon' }, slots.icon?.()),
+    !props.collapsed && h('span', { class: 'sh-nav__label' }, props.label),
+    !props.collapsed && props.badge ? h('span', { class: 'sh-nav__badge' }, String(props.badge)) : null,
+  ])
+}
 
 const cmdPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null)
 
@@ -171,6 +228,16 @@ function toggleServer(id: number) {
   const s = new Set(expandedServers.value)
   if (s.has(id)) { s.delete(id) } else { s.add(id) }
   expandedServers.value = s
+}
+
+// ── Collapse state ──
+const COLLAPSE_KEY = 'sh-sidebar-collapsed'
+const collapsed = ref<boolean>((() => {
+  try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
+})())
+function toggleCollapsed() {
+  collapsed.value = !collapsed.value
+  try { localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0') } catch {}
 }
 
 const isFullscreen = computed(() => route.path.endsWith('/terminal'))
@@ -237,7 +304,6 @@ function onUserMenu(item: { value: string }) {
   }
 }
 
-// Auto-expand server nav when navigating to a server route
 watch(() => route.params.serverId, (id) => {
   if (id) {
     const s = new Set(expandedServers.value)
@@ -246,268 +312,316 @@ watch(() => route.params.serverId, (id) => {
   }
 }, { immediate: true })
 
+// ⌘K
+function onGlobalKey(e: KeyboardEvent) {
+  const isMod = e.metaKey || e.ctrlKey
+  if (isMod && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault()
+    cmdPaletteRef.value?.open()
+  }
+}
+
 onMounted(() => {
   serverStore.fetch()
   appStore.fetch()
+  window.addEventListener('keydown', onGlobalKey)
 })
 </script>
 
 <style scoped>
-.sh-layout { height: 100vh; overflow: hidden; }
+/* ══════ Shell ══════ */
+.sh-shell {
+  display: grid;
+  grid-template-columns: var(--ui-sidebar-w) 1fr;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--ui-bg-canvas);
+  transition: grid-template-columns var(--ui-dur-base) var(--ui-ease-standard);
+}
+.sh-shell--collapsed { grid-template-columns: var(--ui-sidebar-w-collapsed) 1fr; }
 
-/* ── Sidebar ── */
+/* ══════ Sidebar ══════ */
 .sh-aside {
-  background: var(--sh-sidebar-bg) !important;
+  background: var(--ui-sidebar-bg);
+  border-right: 1px solid var(--ui-sidebar-border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  flex-shrink: 0;
+  min-width: 0;
 }
 
 .sh-logo {
-  height: var(--sh-header-height);
+  height: var(--ui-header-height);
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
-  padding: 0 var(--sh-space-lg);
-  border-bottom: 1px solid rgba(255,255,255,.06);
+  gap: 10px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--ui-sidebar-border);
   flex-shrink: 0;
 }
 .sh-logo-icon {
-  width: 28px;
-  height: 28px;
-  background: var(--sh-blue);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  font-weight: 700;
+  width: 26px; height: 26px;
+  background: var(--ui-brand-grad);
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
   color: #fff;
   flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(94, 106, 210, .28), inset 0 1px 0 rgba(255,255,255,.2);
+  animation: ui-grad-drift 12s ease-in-out infinite;
+  background-size: 200% 200%;
 }
 .sh-logo-text {
-  font-size: 15px;
+  font-size: 13.5px;
   font-weight: 700;
-  color: #fff;
-  letter-spacing: .5px;
+  color: var(--ui-fg);
+  letter-spacing: .2px;
 }
 
 .sh-nav {
   flex: 1;
   overflow-y: auto;
-  padding: var(--sh-space-sm) 0 var(--sh-space-lg);
+  padding: 8px 8px 16px;
+  display: flex; flex-direction: column;
 }
-.sh-nav::-webkit-scrollbar { width: 0; }
+.sh-nav::-webkit-scrollbar { width: 4px; }
 
-.sh-nav-group-label {
-  font-size: 11px;
-  color: var(--sh-sidebar-group);
-  letter-spacing: .08em;
+.sh-nav__group {
+  font-size: 10.5px;
+  color: var(--ui-sidebar-group);
+  letter-spacing: .1em;
   text-transform: uppercase;
-  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-xs);
-  font-weight: 500;
+  padding: 12px 10px 4px;
+  font-weight: 600;
 }
 
-.sh-nav-item {
+.sh-nav__item {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
-  padding: 0 var(--sh-space-lg);
-  height: 38px;
-  color: var(--sh-sidebar-text);
-  font-size: 13.5px;
+  gap: 10px;
+  padding: 0 10px;
+  height: 30px;
+  border-radius: 6px;
+  color: var(--ui-sidebar-fg);
+  font-size: 12.5px;
   cursor: pointer;
   text-decoration: none;
-  transition: background .12s, color .12s;
+  transition: background var(--ui-dur-fast) var(--ui-ease-standard),
+              color var(--ui-dur-fast) var(--ui-ease-standard),
+              transform var(--ui-dur-fast) var(--ui-ease-standard);
   position: relative;
   user-select: none;
+  margin: 1px 0;
 }
-.sh-nav-item:hover { background: var(--sh-sidebar-hover); color: #fff; }
-.sh-nav-item.active {
-  color: #fff;
-  background: rgba(0, 82, 217, 0.28);
+.sh-nav__item:hover {
+  background: var(--ui-sidebar-hover);
+  color: var(--ui-fg);
 }
-.sh-nav-item.active::before {
+.sh-nav__item.is-active {
+  color: var(--ui-sidebar-fg-active);
+  background: var(--ui-sidebar-active-bg);
+  font-weight: var(--ui-fw-medium);
+}
+.sh-nav__item.is-active::before {
   content: '';
   position: absolute;
-  left: 0;
-  top: 7px;
-  bottom: 7px;
+  left: -8px; top: 6px; bottom: 6px;
   width: 3px;
-  background: var(--sh-blue);
-  border-radius: 0 2px 2px 0;
+  background: var(--ui-sidebar-active-line);
+  border-radius: 0 3px 3px 0;
+  animation: ui-slide-right var(--ui-dur-base) var(--ui-ease-standard);
 }
+.sh-nav__item--sub { padding-left: 14px; }
+.sh-nav__item--subsub { padding-left: 34px; height: 28px; font-size: 12px; }
+.sh-nav__item--server { padding-left: 14px; }
+.sh-nav__item--add { opacity: .6; font-style: normal; }
+.sh-nav__item--add:hover { opacity: 1; }
 
-.sh-nav-icon { font-size: 15px; flex-shrink: 0; }
+.sh-nav__icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; font-size: 14px; flex-shrink: 0;
+  color: var(--ui-fg-3);
+}
+.sh-nav__item.is-active .sh-nav__icon { color: var(--ui-brand); }
 
-.sh-nav-item--sub    { padding-left: var(--sh-space-xl); height: 34px; font-size: 13px; }
-.sh-nav-item--subsub { padding-left: var(--sh-space-xl); height: 32px; font-size: 12.5px; }
-.sh-nav-item--server { cursor: pointer; padding-left: var(--sh-space-xl); height: 34px; font-size: 13px; }
-.sh-nav-item--add {
-  padding-left: var(--sh-space-xl);
-  height: 32px;
-  font-size: 12.5px;
-  opacity: .55;
+.sh-nav__label {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.sh-nav-item--add:hover { opacity: 1; }
-
-.sh-nav-sub-text {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sh-nav-chevron {
-  font-size: 13px;
-  opacity: .45;
-  transition: transform .2s;
-  flex-shrink: 0;
-}
-.sh-nav-chevron.expanded { transform: rotate(90deg); }
-
-.sh-badge {
-  background: var(--sh-red);
-  color: #fff;
-  font-size: 10px;
-  min-width: 16px;
-  height: 16px;
-  border-radius: 8px;
-  padding: 0 var(--sh-space-xs);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-}
-
-/* ── Header ── */
-.sh-main-layout { overflow: hidden; display: flex; flex-direction: column; }
-.sh-header {
-  height: var(--sh-header-height) !important;
-  min-height: var(--sh-header-height) !important;
-  background: var(--sh-header-bg) !important;
-  border-bottom: var(--sh-header-border);
-  display: flex !important;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--sh-space-lg) !important;
-  flex-shrink: 0;
-  box-shadow: 0 1px 4px rgba(0,0,0,.04);
-}
-
-.sh-header-left  { display: flex; align-items: center; }
-.sh-header-right { display: flex; align-items: center; gap: var(--sh-space-xs); }
-
-.sh-cmd-trigger {
-  display: flex;
-  align-items: center;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-sm) var(--sh-space-sm) var(--sh-space-sm) var(--sh-space-md);
-  margin-right: var(--sh-space-sm);
-  border: 1px solid var(--sh-border);
-  border-radius: 8px;
-  background: var(--sh-bg);
-  color: var(--sh-text-secondary);
-  cursor: pointer;
-  transition: all 0.12s;
-  user-select: none;
-}
-.sh-cmd-trigger:hover {
-  border-color: var(--sh-blue);
-  color: var(--sh-text-primary);
-}
-.sh-cmd-icon { font-weight: 600; font-size: 13px; }
-.sh-cmd-text { font-size: 12px; }
-.sh-cmd-kbd {
-  font-size: 10px;
-  padding: 1px 6px;
-  border: 1px solid var(--sh-border);
-  border-radius: 3px;
-  background: var(--sh-card-bg);
-  color: var(--sh-text-secondary);
-}
-@media (max-width: 720px) {
-  .sh-cmd-trigger .sh-cmd-text { display: none; }
-}
-.sh-header-title { font-size: 14px; font-weight: 600; color: var(--sh-text-primary); }
-.sh-breadcrumb :deep(.t-breadcrumb__item) { font-size: 13px; }
-
-.sh-header-btn {
-  position: relative;
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #555;
-  font-size: 18px;
-  transition: background .12s;
-}
-.sh-header-btn:hover { background: #f2f3f5; color: #0d0d0d; }
-
-.sh-header-badge {
-  position: absolute;
-  top: 4px;
-  right: 4px;
-  background: var(--sh-red);
-  color: #fff;
-  font-size: 10px;
-  min-width: 14px;
-  height: 14px;
-  border-radius: 7px;
-  padding: 0 var(--sh-space-xs);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.sh-user-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-xs) var(--sh-space-sm) var(--sh-space-xs) var(--sh-space-sm);
-  border-radius: 20px;
-  cursor: pointer;
-  transition: background .12s;
-  margin-left: var(--sh-space-xs);
-}
-.sh-user-btn:hover { background: #f2f3f5; }
-
-.sh-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #0052d9 0%, #1a66e8 100%);
-  color: #fff;
+.sh-nav__chev {
   font-size: 12px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  opacity: .5;
+  transition: transform var(--ui-dur-base) var(--ui-ease-standard);
   flex-shrink: 0;
 }
-.sh-username {
-  font-size: 13px;
-  color: var(--sh-text-primary);
-  max-width: 90px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.sh-nav__chev.is-open { transform: rotate(90deg); opacity: .9; }
+
+.sh-nav__badge {
+  background: var(--ui-danger);
+  color: #fff;
+  font-size: 10px;
+  min-width: 16px; height: 16px; padding: 0 5px;
+  border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 600;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--ui-sidebar-bg);
 }
+
+.sh-nav__sub { display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
+
+/* 折叠态 —— 图标居中、隐藏文字 */
+.sh-shell--collapsed .sh-nav__item {
+  justify-content: center;
+  padding: 0;
+  width: 40px; margin: 1px auto;
+}
+.sh-shell--collapsed .sh-nav__item.is-active::before { left: -4px; }
+.sh-shell--collapsed .sh-logo { justify-content: center; padding: 0; }
+
+/* Aside foot */
+.sh-aside__foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 10px 12px;
+  border-top: 1px solid var(--ui-sidebar-border);
+  flex-shrink: 0;
+}
+.sh-shell--collapsed .sh-aside__foot { flex-direction: column; }
+.sh-collapse-btn {
+  width: 26px; height: 26px;
+  display: grid; place-items: center;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-bg-surface);
+  color: var(--ui-fg-3);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all var(--ui-dur-fast) var(--ui-ease-standard);
+}
+.sh-collapse-btn:hover {
+  color: var(--ui-brand);
+  border-color: var(--ui-brand);
+  transform: translateY(-1px);
+  box-shadow: var(--ui-shadow-sm);
+}
+
+/* ══════ Main ══════ */
+.sh-main {
+  min-width: 0;
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Header 玻璃态 ── */
+.sh-header {
+  height: var(--ui-header-height);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px;
+  background: var(--ui-header-bg);
+  backdrop-filter: var(--ui-header-blur);
+  -webkit-backdrop-filter: var(--ui-header-blur);
+  border-bottom: 1px solid var(--ui-header-border);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 10;
+}
+
+.sh-header__left { display: flex; align-items: center; min-width: 0; }
+.sh-header__right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.sh-header__title { font-size: 13px; font-weight: var(--ui-fw-semibold); color: var(--ui-fg); }
+
+.sh-bc { font-size: 12.5px; }
+.sh-bc :deep(.t-breadcrumb__item) { font-size: 12.5px; }
+
+.sh-cmd {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 28px; padding: 0 8px 0 10px;
+  margin-right: 4px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-bg-subtle);
+  color: var(--ui-fg-3);
+  cursor: pointer;
+  transition: all var(--ui-dur-fast) var(--ui-ease-standard);
+  min-width: 200px;
+}
+.sh-cmd:hover {
+  border-color: var(--ui-brand);
+  color: var(--ui-fg);
+  background: var(--ui-bg-surface);
+  box-shadow: 0 0 0 3px var(--ui-brand-ring);
+}
+.sh-cmd__icon { font-size: 13px; color: var(--ui-fg-4); }
+.sh-cmd__text { font-size: 12px; flex: 1; text-align: left; }
+@media (max-width: 900px) {
+  .sh-cmd { min-width: 0; }
+  .sh-cmd__text { display: none; }
+}
+
+.sh-user {
+  display: inline-flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 8px 0 4px;
+  border: none; background: transparent;
+  border-radius: var(--ui-radius-pill);
+  cursor: pointer;
+  transition: background var(--ui-dur-fast) var(--ui-ease-standard);
+  margin-left: 4px;
+}
+.sh-user:hover { background: var(--ui-bg-hover); }
+.sh-avatar {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: var(--ui-brand-grad);
+  background-size: 200% 200%;
+  color: #fff;
+  font-size: 11px; font-weight: 700;
+  display: grid; place-items: center;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(94,106,210,.3);
+  animation: ui-grad-drift 14s ease-in-out infinite;
+}
+.sh-user__name {
+  font-size: 12.5px;
+  color: var(--ui-fg-2);
+  max-width: 100px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.sh-user__chev { font-size: 12px; color: var(--ui-fg-4); }
 
 /* ── Content ── */
 .sh-content {
-  background: var(--sh-page-bg) !important;
+  background: var(--ui-bg-canvas);
   overflow-y: auto;
   flex: 1;
+  position: relative;
 }
 .sh-content--fullscreen {
-  overflow: hidden !important;
-  display: flex;
-  flex-direction: column;
+  overflow: hidden;
+  display: flex; flex-direction: column;
 }
+
+/* ── 路由过渡 ── */
+.route-fade-enter-active {
+  animation: ui-slide-up var(--ui-dur-base) var(--ui-ease-standard);
+}
+.route-fade-leave-active {
+  transition: opacity var(--ui-dur-fast) var(--ui-ease-standard);
+}
+.route-fade-leave-to { opacity: 0; }
+
+/* ── 侧栏文字 fade ── */
+.sh-fade-enter-active, .sh-fade-leave-active {
+  transition: opacity var(--ui-dur-fast) var(--ui-ease-standard);
+}
+.sh-fade-enter-from, .sh-fade-leave-to { opacity: 0; }
+
+/* ── 子菜单展开动画 ── */
+.sh-expand-enter-active, .sh-expand-leave-active {
+  transition: max-height var(--ui-dur-base) var(--ui-ease-standard), opacity var(--ui-dur-fast);
+  overflow: hidden;
+  max-height: 400px;
+}
+.sh-expand-enter-from, .sh-expand-leave-to { max-height: 0; opacity: 0; }
 </style>

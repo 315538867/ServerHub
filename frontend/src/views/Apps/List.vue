@@ -1,16 +1,17 @@
 <template>
-  <div class="page-container">
-    <div class="section-block">
-      <div class="section-title">
-        <span class="title-text">应用列表</span>
-        <t-space size="small">
-          <t-button v-if="selected.length" theme="danger" variant="outline" size="small" @click="batchDelete">
-            批量删除 ({{ selected.length }})
-          </t-button>
-          <t-button theme="primary" size="small" @click="$router.push('/apps/create')">新建应用</t-button>
-        </t-space>
-      </div>
+  <div class="page-container apps-list">
+    <UiPageHeader title="应用列表" subtitle="管理所有部署在你服务器上的应用">
+      <template #actions>
+        <UiButton v-if="selected.length" variant="danger" size="sm" @click="batchDelete">
+          删除 {{ selected.length }} 项
+        </UiButton>
+        <UiButton variant="primary" size="sm" @click="$router.push('/apps/create')">
+          新建应用
+        </UiButton>
+      </template>
+    </UiPageHeader>
 
+    <UiSection padding="flush">
       <!-- 搜索 + 过滤工具栏 -->
       <div class="filter-bar">
         <t-input
@@ -47,7 +48,10 @@
           <t-radio-button value="status">按状态</t-radio-button>
         </t-radio-group>
 
-        <span class="filter-summary">{{ filtered.length }} / {{ appStore.apps.length }}</span>
+        <span class="filter-summary">
+          <UiBadge tone="brand" variant="soft">{{ filtered.length }}</UiBadge>
+          / {{ appStore.apps.length }}
+        </span>
       </div>
 
       <!-- 不分组：单表 -->
@@ -66,7 +70,7 @@
         >
           <template #name="{ row }">
             <span class="name-cell">
-              <span :class="['status-dot', row.status]" />
+              <StatusDot :status="row.status" :size="8" />
               <t-link theme="primary" @click="$router.push(`/apps/${row.id}/overview`)">{{ row.name }}</t-link>
             </span>
           </template>
@@ -74,7 +78,7 @@
             <span class="server-cell">{{ serverName(row.server_id) }}</span>
           </template>
           <template #status="{ row }">
-            <t-tag :theme="statusTheme(row.status)" variant="light" size="small">{{ statusText(row.status) }}</t-tag>
+            <UiBadge :tone="statusTone(row.status)" variant="soft">{{ statusText(row.status) }}</UiBadge>
           </template>
           <template #operations="{ row }">
             <t-button size="small" variant="text" theme="primary" @click="$router.push(`/apps/${row.id}/overview`)">查看</t-button>
@@ -85,11 +89,11 @@
 
       <!-- 分组：多表 -->
       <div v-else class="grouped-wrap">
-        <div v-if="filtered.length === 0" class="grouped-empty">{{ emptyText }}</div>
-        <div v-for="g in grouped" :key="g.key" class="group-block">
+        <EmptyBlock v-if="filtered.length === 0" :description="emptyText" />
+        <div v-for="(g, gi) in grouped" :key="g.key" class="group-block" :style="{ animationDelay: `${gi * 60}ms` }">
           <div class="group-head">
             <span class="group-title">{{ g.label }}</span>
-            <span class="group-count">{{ g.items.length }}</span>
+            <UiBadge tone="neutral" variant="soft">{{ g.items.length }}</UiBadge>
           </div>
           <t-table
             :data="g.items"
@@ -100,12 +104,12 @@
           >
             <template #name="{ row }">
               <span class="name-cell">
-                <span :class="['status-dot', row.status]" />
+                <StatusDot :status="row.status" :size="8" />
                 <t-link theme="primary" @click="$router.push(`/apps/${row.id}/overview`)">{{ row.name }}</t-link>
               </span>
             </template>
             <template #status="{ row }">
-              <t-tag :theme="statusTheme(row.status)" variant="light" size="small">{{ statusText(row.status) }}</t-tag>
+              <UiBadge :tone="statusTone(row.status)" variant="soft">{{ statusText(row.status) }}</UiBadge>
             </template>
             <template #operations="{ row }">
               <t-button size="small" variant="text" theme="primary" @click="$router.push(`/apps/${row.id}/overview`)">查看</t-button>
@@ -114,7 +118,7 @@
           </t-table>
         </div>
       </div>
-    </div>
+    </UiSection>
   </div>
 </template>
 
@@ -125,6 +129,12 @@ import { useAppStore } from '@/stores/app'
 import { useServerStore } from '@/stores/server'
 import { deleteApp } from '@/api/application'
 import type { Application } from '@/types/api'
+import UiPageHeader from '@/components/ui/UiPageHeader.vue'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import StatusDot from '@/components/ui/StatusDot.vue'
+import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 
 const appStore = useAppStore()
 const serverStore = useServerStore()
@@ -206,8 +216,8 @@ const groupColumns = [
   { colKey: 'operations', title: '操作', width: 130, fixed: 'right' as const },
 ]
 
-function statusTheme(s: string) {
-  return ({ online: 'success', offline: 'danger', error: 'danger', unknown: 'default' } as Record<string, string>)[s] ?? 'default'
+function statusTone(s: string): any {
+  return ({ online: 'success', offline: 'danger', error: 'danger' } as Record<string, string>)[s] ?? 'neutral'
 }
 function statusText(s: string) {
   return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string, string>)[s] ?? s
@@ -249,60 +259,51 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.apps-list { padding: var(--ui-space-4) var(--ui-space-5); }
+
 .filter-bar {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-sm) var(--sh-space-lg) var(--sh-space-md);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3) var(--ui-space-5);
   flex-wrap: wrap;
-  border-bottom: 1px solid var(--sh-border);
+  border-bottom: 1px solid var(--ui-border-subtle);
+  background: var(--ui-bg-subtle);
 }
 .search-box { width: 280px; max-width: 100%; }
 .filter-sel { width: 160px; }
 .filter-summary {
   margin-left: auto;
-  font-size: 12px;
-  color: var(--sh-text-secondary);
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--ui-fs-xs);
+  color: var(--ui-fg-3);
   font-variant-numeric: tabular-nums;
 }
 .table-wrap {
-  padding: 0 var(--sh-space-lg) var(--sh-space-md);
-  font-size: 13px;
+  padding: 0 var(--ui-space-5) var(--ui-space-3);
+  font-size: var(--ui-fs-sm);
 }
 .grouped-wrap {
-  padding: var(--sh-space-xs) var(--sh-space-lg) var(--sh-space-md);
-  display: flex;
-  flex-direction: column;
-  gap: var(--sh-space-md);
-}
-.grouped-empty {
-  text-align: center;
-  padding: var(--sh-space-xl) 0;
-  color: var(--sh-text-secondary);
-  font-size: 13px;
+  padding: var(--ui-space-3) var(--ui-space-5);
+  display: flex; flex-direction: column;
+  gap: var(--ui-space-3);
 }
 .group-block {
-  border: 1px solid var(--sh-border);
-  border-radius: 8px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
   overflow: hidden;
+  opacity: 0;
+  animation: ui-slide-up var(--ui-dur-base) var(--ui-ease-standard) forwards;
 }
 .group-head {
-  display: flex;
-  align-items: center;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-sm) var(--sh-space-md);
-  background: color-mix(in srgb, var(--sh-text-primary) 4%, transparent);
-  font-size: 13px;
+  display: flex; align-items: center; gap: var(--ui-space-2);
+  padding: var(--ui-space-2) var(--ui-space-4);
+  background: var(--ui-bg-subtle);
+  border-bottom: 1px solid var(--ui-border-subtle);
+  font-size: var(--ui-fs-sm);
 }
-.group-title { font-weight: 600; color: var(--sh-text-primary); }
-.group-count {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--sh-text-secondary);
-  background: var(--sh-card-bg);
-  padding: 1px 8px;
-  border-radius: 10px;
-}
-.name-cell { display: inline-flex; align-items: center; gap: var(--sh-space-sm); }
-.server-cell { font-size: 12px; color: var(--sh-text-secondary); }
+.group-title { font-weight: var(--ui-fw-semibold); color: var(--ui-fg); flex: 1; }
+
+.name-cell { display: inline-flex; align-items: center; gap: var(--ui-space-2); }
+.server-cell { font-size: var(--ui-fs-xs); color: var(--ui-fg-3); }
 </style>

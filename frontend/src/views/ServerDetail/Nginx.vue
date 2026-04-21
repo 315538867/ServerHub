@@ -278,7 +278,7 @@ onBeforeUnmount(() => { closeLogs(); editorView?.destroy() })
   background: #1a2332;
   border-radius: 4px;
   overflow: hidden;
-  margin-top: var(--sh-space-sm);
+  margin-top: var(--ui-space-2);
 }
 
 :deep(.t-table) {

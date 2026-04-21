@@ -296,88 +296,197 @@ onMounted(() => serverStore.fetch())
 </script>
 
 <style scoped>
-.create-page { display: flex; justify-content: center; align-items: flex-start; }
+.create-page {
+  display: flex; justify-content: center; align-items: flex-start;
+  padding: var(--ui-space-5);
+}
 .create-card {
-  width: 100%; max-width: 760px;
-  background: var(--sh-card-bg);
-  border: var(--sh-card-border);
-  border-radius: var(--sh-card-radius);
-  box-shadow: var(--sh-card-shadow);
+  width: 100%; max-width: 820px;
+  background: var(--ui-bg-surface);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-xl);
+  box-shadow: var(--ui-shadow-md);
+  overflow: hidden;
+  opacity: 0;
+  animation: ui-scale-in var(--ui-dur-slow) var(--ui-ease-spring) forwards;
+}
+
+.create-header {
+  padding: var(--ui-space-5) var(--ui-space-6) var(--ui-space-3);
+  border-bottom: 1px solid var(--ui-border);
+  background:
+    radial-gradient(circle at 0% 0%, var(--ui-brand-soft), transparent 40%),
+    var(--ui-bg-surface);
+}
+.create-title {
+  margin: 0 0 var(--ui-space-1);
+  font-size: var(--ui-fs-lg);
+  font-weight: var(--ui-fw-semibold);
+  color: var(--ui-fg);
+  letter-spacing: var(--ui-tracking-tight);
+}
+.create-subtitle {
+  margin: 0 0 var(--ui-space-4);
+  font-size: var(--ui-fs-sm);
+  color: var(--ui-fg-3);
+}
+.create-steps { padding: var(--ui-space-1) 0 var(--ui-space-3); }
+
+.create-body { padding: var(--ui-space-1) 0; min-height: 320px; }
+.step-pane { padding: var(--ui-space-5) var(--ui-space-6) var(--ui-space-4); }
+.step-alert { margin-top: var(--ui-space-4); }
+
+.form-grid { display: flex; flex-direction: column; gap: var(--ui-space-4); }
+.form-field {
+  display: flex; flex-direction: column; gap: var(--ui-space-2);
+  opacity: 0;
+  animation: ui-slide-up var(--ui-dur-base) var(--ui-ease-standard) forwards;
+}
+.form-field:nth-child(1) { animation-delay: 60ms; }
+.form-field:nth-child(2) { animation-delay: 120ms; }
+.form-field:nth-child(3) { animation-delay: 180ms; }
+.form-field:nth-child(4) { animation-delay: 240ms; }
+.form-label {
+  font-size: var(--ui-fs-sm);
+  color: var(--ui-fg);
+  font-weight: var(--ui-fw-medium);
+  line-height: 1;
+}
+.form-required { color: var(--ui-danger); margin-left: var(--ui-space-1); }
+.form-hint { font-size: var(--ui-fs-xs); color: var(--ui-fg-3); line-height: 1.45; }
+
+/* 选择卡（通用） */
+.expose-cards, .deploy-type-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--ui-space-3);
+}
+.deploy-type-cards { margin-bottom: var(--ui-space-4); }
+
+.expose-card, .deploy-type-card {
+  position: relative;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  padding: var(--ui-space-4) var(--ui-space-3);
+  cursor: pointer;
+  text-align: center;
+  background: var(--ui-bg-surface);
+  transition:
+    border-color var(--ui-dur-fast) var(--ui-ease-standard),
+    background var(--ui-dur-fast) var(--ui-ease-standard),
+    box-shadow var(--ui-dur-fast) var(--ui-ease-standard),
+    transform var(--ui-dur-fast) var(--ui-ease-standard);
   overflow: hidden;
 }
-
-.create-header { padding: var(--sh-space-lg) var(--sh-space-xl) var(--sh-space-sm); border-bottom: 1px solid var(--sh-border); }
-.create-title { margin: 0 0 var(--sh-space-xs); font-size: 16px; font-weight: 600; color: var(--sh-text-primary); }
-.create-subtitle { margin: 0 0 var(--sh-space-lg); font-size: 13px; color: var(--sh-text-secondary); }
-.create-steps { padding: var(--sh-space-xs) 0 var(--sh-space-md); }
-
-.create-body { padding: var(--sh-space-xs) 0; min-height: 280px; }
-.step-pane { padding: var(--sh-space-lg) var(--sh-space-xl) var(--sh-space-md); }
-.step-alert { margin-top: var(--sh-space-md); }
-
-.form-grid { display: flex; flex-direction: column; gap: var(--sh-space-md); }
-.form-field { display: flex; flex-direction: column; gap: var(--sh-space-sm); }
-.form-label { font-size: 13px; color: var(--sh-text-primary); font-weight: 500; line-height: 1; }
-.form-required { color: #e34d59; margin-left: var(--sh-space-xs); }
-.form-hint { font-size: 12px; color: var(--sh-text-secondary); line-height: 1.4; }
-
-/* 暴露卡 */
-.expose-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sh-space-sm); }
-.expose-card {
-  border: 1px solid var(--sh-border);
-  border-radius: 8px;
-  padding: var(--sh-space-md);
-  cursor: pointer;
-  text-align: center;
-  transition: border-color .15s, background .15s;
+.expose-card::after, .deploy-type-card::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 0%, var(--ui-brand-soft), transparent 70%);
+  opacity: 0;
+  transition: opacity var(--ui-dur-base) var(--ui-ease-standard);
+  pointer-events: none;
 }
-.expose-card:hover { border-color: var(--sh-blue); background: color-mix(in srgb, var(--sh-blue) 5%, transparent); }
-.expose-card.is-active { border-color: var(--sh-blue); background: color-mix(in srgb, var(--sh-blue) 10%, transparent); }
-.ec-icon { font-size: 20px; margin-bottom: var(--sh-space-sm); }
-.ec-title { font-size: 13px; font-weight: 600; color: var(--sh-text-primary); margin-bottom: var(--sh-space-xs); }
-.ec-desc { font-size: 11px; color: var(--sh-text-secondary); line-height: 1.4; }
-
-/* 部署类型卡 */
-.deploy-type-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sh-space-sm); margin-bottom: var(--sh-space-md); }
-.deploy-type-card {
-  border: 1px solid var(--sh-border);
-  border-radius: 8px;
-  padding: var(--sh-space-md);
-  cursor: pointer;
-  transition: border-color .15s, background .15s;
-  text-align: center;
+.expose-card:hover, .deploy-type-card:hover {
+  border-color: var(--ui-brand);
+  transform: translateY(-2px);
+  box-shadow: var(--ui-shadow-md);
 }
-.deploy-type-card:hover { border-color: var(--sh-blue); background: color-mix(in srgb, var(--sh-blue) 5%, transparent); }
-.deploy-type-card.is-active { border-color: var(--sh-blue); background: color-mix(in srgb, var(--sh-blue) 10%, transparent); }
-.dtc-icon { font-size: 22px; margin-bottom: var(--sh-space-sm); }
-.dtc-title { font-size: 13px; font-weight: 600; color: var(--sh-text-primary); margin-bottom: var(--sh-space-xs); }
-.dtc-desc { font-size: 11px; color: var(--sh-text-secondary); line-height: 1.4; }
-.deploy-type-fields { border-top: 1px dashed var(--sh-border); padding-top: var(--sh-space-md); }
+.expose-card:hover::after, .deploy-type-card:hover::after { opacity: 0.5; }
+
+.expose-card.is-active, .deploy-type-card.is-active {
+  border-color: var(--ui-brand);
+  background: var(--ui-brand-soft);
+  box-shadow: 0 0 0 3px var(--ui-brand-ring);
+}
+.expose-card.is-active::after, .deploy-type-card.is-active::after { opacity: 1; }
+
+.ec-icon, .dtc-icon {
+  font-size: 24px;
+  margin-bottom: var(--ui-space-2);
+  line-height: 1;
+  position: relative;
+  z-index: 1;
+}
+.ec-title, .dtc-title {
+  font-size: var(--ui-fs-sm);
+  font-weight: var(--ui-fw-semibold);
+  color: var(--ui-fg);
+  margin-bottom: var(--ui-space-1);
+  position: relative; z-index: 1;
+}
+.ec-desc, .dtc-desc {
+  font-size: var(--ui-fs-2xs);
+  color: var(--ui-fg-3);
+  line-height: 1.45;
+  position: relative; z-index: 1;
+}
+.deploy-type-fields {
+  border-top: 1px dashed var(--ui-border-subtle);
+  padding-top: var(--ui-space-4);
+}
 
 /* 摘要 */
 .summary-block {
-  margin-top: var(--sh-space-lg);
-  padding: var(--sh-space-md);
-  background: color-mix(in srgb, var(--sh-text-primary) 3%, transparent);
-  border: 1px solid var(--sh-border);
-  border-radius: 8px;
+  margin-top: var(--ui-space-5);
+  padding: var(--ui-space-4);
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border-subtle);
+  border-radius: var(--ui-radius-md);
+  position: relative;
+  overflow: hidden;
 }
-.summary-title { font-size: 12px; font-weight: 600; color: var(--sh-text-secondary); text-transform: uppercase; letter-spacing: .4px; margin-bottom: var(--sh-space-sm); }
-.summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sh-space-sm) var(--sh-space-lg); font-size: 13px; }
-.summary-grid > div { display: flex; gap: var(--sh-space-sm); min-width: 0; }
-.sl { color: var(--sh-text-secondary); flex-shrink: 0; min-width: 60px; }
-.sv { color: var(--sh-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.summary-block::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0; width: 3px;
+  background: linear-gradient(180deg, var(--ui-brand), var(--ui-brand-hover));
+}
+.summary-title {
+  font-size: var(--ui-fs-2xs);
+  font-weight: var(--ui-fw-semibold);
+  color: var(--ui-fg-3);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: var(--ui-space-3);
+}
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--ui-space-2) var(--ui-space-5);
+  font-size: var(--ui-fs-sm);
+}
+.summary-grid > div { display: flex; gap: var(--ui-space-2); min-width: 0; }
+.sl { color: var(--ui-fg-3); flex-shrink: 0; min-width: 64px; font-size: var(--ui-fs-xs); }
+.sv {
+  color: var(--ui-fg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: var(--ui-fw-medium);
+}
 
 /* 底部 */
 .create-footer {
-  display: flex; align-items: center; gap: var(--sh-space-sm);
-  padding: var(--sh-space-md) var(--sh-space-xl); border-top: 1px solid var(--sh-border);
-  background: var(--sh-page-bg);
+  display: flex; align-items: center; gap: var(--ui-space-2);
+  padding: var(--ui-space-3) var(--ui-space-6);
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-bg-subtle);
 }
 .footer-spacer { flex: 1; }
 
-/* 步骤切换动画 */
-.fade-step-enter-active, .fade-step-leave-active { transition: opacity .15s, transform .15s; }
-.fade-step-enter-from { opacity: 0; transform: translateY(6px); }
-.fade-step-leave-to   { opacity: 0; transform: translateY(-6px); }
+/* 步骤切换动画（更强的弹性） */
+.fade-step-enter-active {
+  transition: opacity var(--ui-dur-base) var(--ui-ease-standard),
+              transform var(--ui-dur-base) var(--ui-ease-spring);
+}
+.fade-step-leave-active {
+  transition: opacity var(--ui-dur-fast) var(--ui-ease-standard),
+              transform var(--ui-dur-fast) var(--ui-ease-standard);
+}
+.fade-step-enter-from { opacity: 0; transform: translateX(16px); }
+.fade-step-leave-to   { opacity: 0; transform: translateX(-16px); }
+
+@media (prefers-reduced-motion: reduce) {
+  .create-card, .form-field { animation: none; opacity: 1; }
+  .fade-step-enter-active, .fade-step-leave-active { transition: opacity 0.1s; }
+  .fade-step-enter-from, .fade-step-leave-to { transform: none; }
+}
 </style>

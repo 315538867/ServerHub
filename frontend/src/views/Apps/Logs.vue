@@ -18,7 +18,7 @@
     <!-- 日志终端 -->
     <div class="section-block terminal-block">
       <div v-if="activeSource" ref="logsEl" class="logs-terminal" />
-      <t-empty v-else description="该应用未关联容器或 Nginx 站点，无日志可查看" style="padding: var(--sh-space-xl) 0;" />
+      <t-empty v-else description="该应用未关联容器或 Nginx 站点，无日志可查看" style="padding: var(--ui-space-8) 0;" />
     </div>
   </div>
 </template>
@@ -104,13 +104,13 @@ onBeforeUnmount(() => cleanup())
 
 <style scoped>
 .toolbar-block {
-  margin-bottom: var(--sh-space-md) !important;
+  margin-bottom: var(--ui-space-4) !important;
 }
 .toolbar-inner {
-  padding: var(--sh-space-md) var(--sh-space-lg);
+  padding: var(--ui-space-4) var(--ui-space-6);
   display: flex;
   align-items: center;
-  gap: var(--sh-space-md);
+  gap: var(--ui-space-4);
   flex-wrap: wrap;
 }
 .terminal-block {

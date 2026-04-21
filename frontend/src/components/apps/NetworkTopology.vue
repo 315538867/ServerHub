@@ -130,20 +130,20 @@ const checks = computed<Check[]>(() => {
 
 <style scoped>
 .net-topo {
-  background: var(--sh-card-bg);
-  border: 1px solid var(--sh-border);
+  background: var(--ui-bg-surface);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-md);
-  margin: 0 0 var(--sh-space-md);
+  padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-4);
+  margin: 0 0 var(--ui-space-4);
 }
 .topo-header {
   display: flex;
   align-items: baseline;
-  gap: var(--sh-space-md);
-  margin-bottom: var(--sh-space-md);
+  gap: var(--ui-space-4);
+  margin-bottom: var(--ui-space-4);
 }
-.topo-title { font-size: 14px; font-weight: 600; color: var(--sh-text-primary); }
-.topo-mode  { font-size: 12px; color: var(--sh-text-secondary); }
+.topo-title { font-size: 14px; font-weight: 600; color: var(--ui-fg); }
+.topo-mode  { font-size: 12px; color: var(--ui-fg-3); }
 
 /* 流程 */
 .topo-flow {
@@ -151,29 +151,29 @@ const checks = computed<Check[]>(() => {
   align-items: stretch;
   gap: 0;
   overflow-x: auto;
-  padding: var(--sh-space-sm) var(--sh-space-xs) var(--sh-space-md);
+  padding: var(--ui-space-2) var(--ui-space-1) var(--ui-space-4);
 }
 .topo-flow::-webkit-scrollbar { height: 4px; }
-.topo-flow::-webkit-scrollbar-thumb { background: var(--sh-border); border-radius: 2px; }
+.topo-flow::-webkit-scrollbar-thumb { background: var(--ui-border); border-radius: 2px; }
 
 .topo-node {
   flex: 0 0 auto;
   min-width: 150px;
   max-width: 220px;
-  border: 1px solid var(--sh-border);
+  border: 1px solid var(--ui-border);
   border-radius: 8px;
-  padding: var(--sh-space-sm) var(--sh-space-md);
-  background: color-mix(in srgb, var(--sh-text-primary) 2%, transparent);
+  padding: var(--ui-space-2) var(--ui-space-4);
+  background: color-mix(in srgb, var(--ui-fg) 2%, transparent);
   text-align: center;
   display: flex;
   flex-direction: column;
-  gap: var(--sh-space-xs);
+  gap: var(--ui-space-1);
   transition: border-color .15s, background .15s;
   position: relative;
 }
 .node--client {
-  background: color-mix(in srgb, var(--sh-blue) 4%, transparent);
-  border-color: color-mix(in srgb, var(--sh-blue) 30%, transparent);
+  background: color-mix(in srgb, var(--ui-brand) 4%, transparent);
+  border-color: color-mix(in srgb, var(--ui-brand) 30%, transparent);
 }
 .node--ok      { border-color: color-mix(in srgb, #67c23a 50%, transparent); background: color-mix(in srgb, #67c23a 4%, transparent); }
 .node--warn    { border-color: color-mix(in srgb, #e6a23c 50%, transparent); background: color-mix(in srgb, #e6a23c 4%, transparent); }
@@ -183,14 +183,14 @@ const checks = computed<Check[]>(() => {
 .node-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--sh-text-primary);
-  font-family: var(--sh-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: var(--ui-fg);
+  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
   word-break: break-all;
   line-height: 1.3;
 }
 .node-sub {
   font-size: 11px;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
   word-break: break-all;
   line-height: 1.3;
 }
@@ -203,7 +203,7 @@ const checks = computed<Check[]>(() => {
   align-items: center;
   width: 70px;
   position: relative;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
 }
 .topo-arrow::before {
   content: '';
@@ -211,7 +211,7 @@ const checks = computed<Check[]>(() => {
   top: 50%;
   left: 4px; right: 4px;
   height: 1px;
-  background: var(--sh-border);
+  background: var(--ui-border);
 }
 .topo-arrow::after {
   content: '';
@@ -221,33 +221,33 @@ const checks = computed<Check[]>(() => {
   width: 0; height: 0;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
-  border-left: 6px solid var(--sh-border);
+  border-left: 6px solid var(--ui-border);
   transform: translateY(-50%);
 }
 .arrow-label {
   font-size: 10px;
-  background: var(--sh-card-bg);
+  background: var(--ui-bg-surface);
   padding: 1px 6px;
   border-radius: 3px;
   position: relative;
   z-index: 1;
-  border: 1px solid var(--sh-border);
+  border: 1px solid var(--ui-border);
 }
 
 /* 检查项 */
 .topo-checks {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: var(--sh-space-sm) var(--sh-space-md);
-  padding-top: var(--sh-space-md);
-  border-top: 1px dashed var(--sh-border);
+  gap: var(--ui-space-2) var(--ui-space-4);
+  padding-top: var(--ui-space-4);
+  border-top: 1px dashed var(--ui-border);
 }
 .check-item {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
   font-size: 12px;
-  padding: var(--sh-space-xs) 0;
+  padding: var(--ui-space-1) 0;
   min-width: 0;
 }
 .check-dot {
@@ -260,12 +260,12 @@ const checks = computed<Check[]>(() => {
 .check-item--warn .check-dot    { background: #e6a23c; }
 .check-item--missing .check-dot { background: #e34d59; }
 .check-label {
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
   flex-shrink: 0;
   min-width: 70px;
 }
 .check-value {
-  color: var(--sh-text-primary);
+  color: var(--ui-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

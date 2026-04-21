@@ -59,13 +59,13 @@ function onChange(v: string | number) {
 <style scoped>
 .network-wrap { display: flex; flex-direction: column; height: 100%; }
 .network-topo-wrap {
-  padding: var(--sh-space-md) var(--sh-space-lg) 0;
+  padding: var(--ui-space-4) var(--ui-space-6) 0;
   flex-shrink: 0;
 }
 .sub-tabs {
-  padding: 0 var(--sh-space-lg);
-  background: var(--sh-bg);
-  border-bottom: 1px solid var(--sh-border);
+  padding: 0 var(--ui-space-6);
+  background: var(--ui-bg-canvas);
+  border-bottom: 1px solid var(--ui-border);
   flex-shrink: 0;
 }
 .sub-tabs :deep(.t-tabs__nav) { border-bottom: none; }

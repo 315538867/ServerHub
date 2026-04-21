@@ -100,7 +100,7 @@
           <t-button
             variant="text"
             block
-            style="margin-top: var(--sh-space-sm);color:#666"
+            style="margin-top: var(--ui-space-2);"
             @click="totpStep = false"
           >
             返回登录
@@ -170,122 +170,158 @@ async function handleTotpLogin() {
 .login-page {
   min-height: 100vh;
   display: flex;
+  background: var(--ui-bg-canvas);
 }
 
-/* ── 左侧 ── */
+/* ── 左侧：品牌区 ── */
 .login-left {
   flex: 1;
-  background: linear-gradient(145deg, #001529 0%, #002a5c 60%, #003380 100%);
+  background:
+    radial-gradient(80% 60% at 0% 0%, rgba(94, 106, 210, .35) 0%, transparent 60%),
+    radial-gradient(70% 70% at 100% 100%, rgba(70, 177, 201, .22) 0%, transparent 55%),
+    linear-gradient(135deg, #1a1a2e 0%, #16213e 55%, #0f1628 100%);
+  background-size: 200% 200%;
+  animation: ui-grad-drift 16s ease-in-out infinite;
   display: flex;
   flex-direction: column;
-  padding: var(--sh-space-xl);
+  padding: var(--ui-space-8);
   position: relative;
   overflow: hidden;
+  color: #fff;
+}
+.login-left::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(70% 60% at 30% 40%, #000 20%, transparent 75%);
+  pointer-events: none;
 }
 
 .login-brand {
-  display: flex;
-  align-items: center;
-  gap: var(--sh-space-md);
+  display: flex; align-items: center; gap: var(--ui-space-3);
   margin-bottom: auto;
+  position: relative; z-index: 1;
+  animation: ui-slide-right var(--ui-dur-slow) var(--ui-ease-standard);
 }
 .login-brand-icon {
-  width: 36px;
-  height: 36px;
-  background: #0052d9;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 18px;
-  font-weight: 800;
-  color: #fff;
+  width: 38px; height: 38px;
+  background: var(--ui-brand-grad);
+  background-size: 200% 200%;
+  animation: ui-grad-drift 10s ease-in-out infinite;
+  border-radius: 10px;
+  display: grid; place-items: center;
+  font-size: 18px; font-weight: 800; color: #fff;
+  box-shadow: 0 6px 20px rgba(94,106,210,.5), inset 0 1px 0 rgba(255,255,255,.2);
 }
 .login-brand-name {
-  font-size: 20px;
-  font-weight: 700;
-  color: #fff;
+  font-size: 20px; font-weight: 700; color: #fff;
+  letter-spacing: .3px;
 }
 
 .login-tagline {
-  margin-bottom: var(--sh-space-xl);
+  margin-bottom: var(--ui-space-7);
+  position: relative; z-index: 1;
+  animation: ui-slide-up var(--ui-dur-slow) var(--ui-ease-standard) .1s both;
 }
 .login-tagline h2 {
-  font-size: 32px;
+  font-size: 34px;
   font-weight: 700;
   color: #fff;
-  margin: 0 0 var(--sh-space-md);
-  line-height: 1.3;
+  margin: 0 0 var(--ui-space-3);
+  line-height: 1.2;
+  letter-spacing: var(--ui-tracking-tight);
+  background: linear-gradient(135deg, #fff 0%, #c7cdf3 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 .login-tagline p {
-  font-size: 15px;
-  color: rgba(255,255,255,.6);
-  margin: 0;
+  font-size: 14px; color: rgba(255,255,255,.55); margin: 0;
 }
 
-.login-features { display: flex; flex-direction: column; gap: var(--sh-space-md); }
+.login-features {
+  display: flex; flex-direction: column; gap: var(--ui-space-3);
+  position: relative; z-index: 1;
+}
 .login-feature-item {
-  display: flex;
-  align-items: center;
-  gap: var(--sh-space-md);
-  font-size: 13.5px;
-  color: rgba(255,255,255,.55);
+  display: flex; align-items: center; gap: var(--ui-space-3);
+  font-size: 13px; color: rgba(255,255,255,.6);
+  animation: ui-slide-up var(--ui-dur-slow) var(--ui-ease-standard) both;
 }
+.login-feature-item:nth-child(1) { animation-delay: .25s; }
+.login-feature-item:nth-child(2) { animation-delay: .35s; }
+.login-feature-item:nth-child(3) { animation-delay: .45s; }
 .login-feature-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #0052d9;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--ui-brand);
+  box-shadow: 0 0 0 3px rgba(94,106,210,.25);
   flex-shrink: 0;
+  animation: ui-status-pulse 3s var(--ui-ease-standard) infinite;
 }
 
-/* 几何装饰 */
+/* 浮动装饰 */
 .login-decor {
   position: absolute;
   border-radius: 50%;
-  opacity: .06;
-  background: #fff;
+  opacity: .12;
+  background: radial-gradient(circle, rgba(94,106,210,.8), transparent 70%);
+  animation: ui-float 8s ease-in-out infinite;
 }
-.login-decor-1 { width: 400px; height: 400px; bottom: -120px; right: -80px; }
-.login-decor-2 { width: 200px; height: 200px; bottom: 100px;  right: 160px; }
-.login-decor-3 { width: 120px; height: 120px; top: 200px;    right: 60px; opacity: .04; }
+.login-decor-1 { width: 420px; height: 420px; bottom: -120px; right: -80px; }
+.login-decor-2 { width: 200px; height: 200px; bottom: 140px; right: 180px; animation-delay: -3s; opacity: .08; }
+.login-decor-3 { width: 120px; height: 120px; top: 160px; right: 80px; opacity: .06; animation-delay: -5s; }
 
-/* ── 右侧 ── */
+@keyframes ui-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-16px); }
+}
+
+/* ── 右侧：登录区 ── */
 .login-right {
   width: 480px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #f2f3f5;
-  padding: var(--sh-space-xl);
+  background: var(--ui-bg-subtle);
+  padding: var(--ui-space-8);
 }
 
 .login-box {
   width: 100%;
-  max-width: 380px;
-  background: #fff;
-  border-radius: 8px;
-  border: 1px solid #e7e7e7;
-  box-shadow: 0 2px 12px rgba(0,0,0,.08);
-  padding: var(--sh-space-xl) var(--sh-space-xl) var(--sh-space-xl);
+  max-width: 400px;
+  background: var(--ui-bg-surface);
+  border-radius: var(--ui-radius-xl);
+  border: 1px solid var(--ui-border);
+  box-shadow: var(--ui-shadow-lg);
+  padding: var(--ui-space-7);
+  animation: ui-scale-in var(--ui-dur-base) var(--ui-ease-spring);
 }
 
-.login-box-header { margin-bottom: var(--sh-space-xl); }
+.login-box-header { margin-bottom: var(--ui-space-6); }
 .login-box-title {
-  margin: 0 0 var(--sh-space-sm);
-  font-size: 22px;
-  font-weight: 700;
-  color: #0d0d0d;
+  margin: 0 0 var(--ui-space-2);
+  font-size: var(--ui-fs-3xl);
+  font-weight: var(--ui-fw-semibold);
+  color: var(--ui-fg);
+  letter-spacing: var(--ui-tracking-tight);
 }
 .login-box-sub {
   margin: 0;
-  font-size: 13px;
-  color: #666;
+  font-size: var(--ui-fs-sm);
+  color: var(--ui-fg-3);
 }
 
-.login-submit-btn { margin-top: var(--sh-space-lg); letter-spacing: .05em; }
+.login-submit-btn {
+  margin-top: var(--ui-space-5);
+  letter-spacing: .1em;
+  font-weight: var(--ui-fw-semibold);
+}
 
 .totp-area { display: flex; flex-direction: column; }
-.totp-code-wrap { margin-bottom: var(--sh-space-xs); }
+.totp-code-wrap { margin-bottom: var(--ui-space-2); }
 </style>

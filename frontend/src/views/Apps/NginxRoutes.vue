@@ -1,9 +1,8 @@
 <template>
   <div class="page-container">
     <!-- 模式选择 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span class="title-text">暴露方式</span>
+    <UiSection title="暴露方式" padding="default">
+      <template #extra>
         <t-space size="small">
           <t-button size="small" variant="outline" :loading="loading" @click="load">
             <template #icon><refresh-icon /></template>
@@ -18,75 +17,66 @@
             应用配置
           </t-button>
         </t-space>
-      </div>
+      </template>
 
-      <div class="mode-wrap">
-        <t-radio-group v-model="config.expose_mode" variant="default-filled" @change="onModeChange">
-          <t-radio-button value="none">不暴露</t-radio-button>
-          <t-radio-button value="path">路径转发</t-radio-button>
-          <t-radio-button value="site">独立站点</t-radio-button>
-        </t-radio-group>
+      <t-radio-group v-model="config.expose_mode" variant="default-filled" @change="onModeChange">
+        <t-radio-button value="none">不暴露</t-radio-button>
+        <t-radio-button value="path">路径转发</t-radio-button>
+        <t-radio-button value="site">独立站点</t-radio-button>
+      </t-radio-group>
 
-        <div class="mode-desc">
-          <template v-if="config.expose_mode === 'none'">
-            <t-icon name="info-circle" class="mode-desc-icon" />
-            此应用仅内网访问，不生成任何 Nginx 配置。
-          </template>
-          <template v-else-if="config.expose_mode === 'path'">
-            <t-icon name="info-circle" class="mode-desc-icon" />
-            所有应用共用主域名，通过路径区分（如 <code>server.com/myapp/</code>）。路由规则写入
-            <code>/etc/nginx/app-locations/{{ app?.name }}.conf</code>。
-          </template>
-          <template v-else-if="config.expose_mode === 'site'">
-            <t-icon name="info-circle" class="mode-desc-icon" />
-            应用独占一个域名（<code>{{ app?.domain || '请先在概览中设置域名' }}</code>），生成独立 Nginx 站点配置。
-          </template>
-        </div>
+      <div class="mode-desc">
+        <template v-if="config.expose_mode === 'none'">
+          <t-icon name="info-circle" class="mode-desc-icon" />
+          此应用仅内网访问，不生成任何 Nginx 配置。
+        </template>
+        <template v-else-if="config.expose_mode === 'path'">
+          <t-icon name="info-circle" class="mode-desc-icon" />
+          所有应用共用主域名，通过路径区分（如 <code>server.com/myapp/</code>）。路由规则写入
+          <code>/etc/nginx/app-locations/{{ app?.name }}.conf</code>。
+        </template>
+        <template v-else-if="config.expose_mode === 'site'">
+          <t-icon name="info-circle" class="mode-desc-icon" />
+          应用独占一个域名（<code>{{ app?.domain || '请先在概览中设置域名' }}</code>），生成独立 Nginx 站点配置。
+        </template>
       </div>
-    </div>
+    </UiSection>
 
     <!-- 路由规则（path / site 模式） -->
     <template v-if="config.expose_mode !== 'none'">
-      <div class="section-block">
-        <div class="section-title">
-          <span class="title-text">路由规则</span>
+      <UiTableCard
+        title="路由规则"
+        :data="config.routes"
+        :columns="columns"
+        :loading="loading"
+        row-key="id"
+        :bordered="true"
+        empty="暂无路由规则，点击「添加规则」开始配置"
+      >
+        <template #extra>
           <t-button theme="primary" size="small" @click="openAdd">添加规则</t-button>
-        </div>
-
-        <div class="table-wrap">
-          <t-table
-            :data="config.routes"
-            :columns="columns"
-            :loading="loading"
-            row-key="id"
-            bordered
-            size="small"
-            empty="暂无路由规则，点击「添加规则」开始配置"
-          >
-            <template #upstream="{ row }">
-              <span class="mono">{{ row.upstream }}</span>
-            </template>
-            <template #extra="{ row }">
-              <span v-if="row.extra" class="mono extra-text">{{ row.extra }}</span>
-              <span v-else class="text-placeholder">—</span>
-            </template>
-            <template #operations="{ row }">
-              <t-space size="small">
-                <t-button size="small" variant="text" @click="openEdit(row)">编辑</t-button>
-                <t-popconfirm content="确认删除该规则？" @confirm="delRoute(row)">
-                  <t-button theme="danger" size="small" variant="text">删除</t-button>
-                </t-popconfirm>
-              </t-space>
-            </template>
-          </t-table>
-        </div>
-      </div>
+        </template>
+        <template #upstream="{ row }">
+          <span class="mono">{{ row.upstream }}</span>
+        </template>
+        <template #extra-cell="{ row }">
+          <span v-if="row.extra" class="mono extra-text">{{ row.extra }}</span>
+          <span v-else class="text-placeholder">—</span>
+        </template>
+        <template #operations="{ row }">
+          <t-space size="small">
+            <t-button size="small" variant="text" @click="openEdit(row)">编辑</t-button>
+            <t-popconfirm content="确认删除该规则？" @confirm="delRoute(row)">
+              <t-button theme="danger" size="small" variant="text">删除</t-button>
+            </t-popconfirm>
+          </t-space>
+        </template>
+      </UiTableCard>
 
       <!-- 应用输出 -->
-      <div v-if="applyOutput" class="section-block">
-        <div class="section-title"><span class="title-text">应用输出</span></div>
-        <div class="log-output output-block">{{ applyOutput }}</div>
-      </div>
+      <UiSection v-if="applyOutput" title="应用输出" padding="default">
+        <LogOutput :content="applyOutput" tone="dark" min-height="80px" max-height="320px" />
+      </UiSection>
     </template>
 
     <!-- 添加/编辑规则 Dialog -->
@@ -141,11 +131,12 @@ const applyOutput = ref('')
 
 const config = ref<AppNginxConfig>({ expose_mode: 'none', routes: [] })
 
+// 注意：extra 列使用 cell="extra-cell" 避免与 #extra header slot 冲突
 const columns = [
   { colKey: 'sort', title: '排序', width: 70 },
   { colKey: 'path', title: '路径', width: 160 },
   { colKey: 'upstream', title: '上游地址', minWidth: 200, ellipsis: true },
-  { colKey: 'extra', title: '额外指令', minWidth: 160, ellipsis: true },
+  { colKey: 'extra', title: '额外指令', minWidth: 160, ellipsis: true, cell: 'extra-cell' },
   { colKey: 'operations', title: '操作', width: 120, fixed: 'right' as const },
 ]
 
@@ -178,8 +169,6 @@ async function doApply() {
     showApiError(e, '应用失败')
   } finally { applying.value = false }
 }
-
-// ── route CRUD ────────────────────────────────────────────────────────────────
 
 const routeVisible = ref(false)
 const editRoute = ref<AppNginxRoute | null>(null)
@@ -231,46 +220,21 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.mode-wrap {
-  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
-}
-
 .mode-desc {
   display: flex;
   align-items: flex-start;
-  gap: var(--sh-space-sm);
-  margin-top: var(--sh-space-md);
-  font-size: 13px;
-  color: var(--sh-text-secondary);
-  line-height: 1.6;
+  gap: var(--ui-space-2);
+  margin-top: var(--ui-space-4);
+  font-size: var(--ui-fs-sm);
+  color: var(--ui-fg-3);
+  line-height: var(--ui-lh-relaxed);
 }
-
 .mode-desc-icon {
   flex-shrink: 0;
-  margin-top: var(--sh-space-xs);
-  color: var(--sh-blue);
+  margin-top: var(--ui-space-1);
+  color: var(--ui-brand);
 }
-
-.table-wrap {
-  padding: 0 var(--sh-space-lg) var(--sh-space-md);
-}
-
-.extra-text {
-  font-size: 12px;
-  color: var(--sh-text-secondary);
-}
-
-.output-block {
-  margin: 0 var(--sh-space-lg) var(--sh-space-lg);
-  font-size: 12.5px;
-  min-height: 80px;
-}
-
-.text-placeholder {
-  color: var(--sh-text-placeholder);
-}
-
+.extra-text { font-size: var(--ui-fs-xs); color: var(--ui-fg-3); }
+.text-placeholder { color: var(--ui-fg-placeholder); }
 .full-width { width: 100%; }
-
-:deep(.t-table) { font-size: 13px; }
 </style>

@@ -198,8 +198,8 @@ function searchPrev() {
 .tab-bar {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-xs);
-  padding: var(--sh-space-xs) var(--sh-space-sm);
+  gap: var(--ui-space-1);
+  padding: var(--ui-space-1) var(--ui-space-2);
   background: #152030;
   border-bottom: 1px solid #243447;
   flex-shrink: 0;
@@ -209,8 +209,8 @@ function searchPrev() {
 .tab-item {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-xs) var(--sh-space-sm);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-1) var(--ui-space-2);
   border-radius: 4px;
   cursor: pointer;
   color: #8a94a6;
@@ -229,9 +229,9 @@ function searchPrev() {
   flex-shrink: 0;
 }
 
-.tab-dot.connecting { background: var(--sh-orange); }
-.tab-dot.connected { background: var(--sh-green); }
-.tab-dot.disconnected { background: var(--sh-red); }
+.tab-dot.connecting { background: var(--ui-warning); }
+.tab-dot.connected { background: var(--ui-success); }
+.tab-dot.disconnected { background: var(--ui-danger); }
 
 .tab-close {
   opacity: 0.4;
@@ -243,15 +243,15 @@ function searchPrev() {
 .tab-close:hover { opacity: 1; }
 
 .tab-add {
-  margin-left: var(--sh-space-xs);
+  margin-left: var(--ui-space-1);
   flex-shrink: 0;
 }
 
 .search-bar {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-sm) var(--sh-space-md);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-2) var(--ui-space-4);
   background: #152030;
   border-bottom: 1px solid #243447;
   flex-shrink: 0;
@@ -266,7 +266,7 @@ function searchPrev() {
 .terminal-container {
   width: 100%;
   height: 100%;
-  padding: var(--sh-space-xs);
+  padding: var(--ui-space-1);
 }
 
 .terminal-empty {

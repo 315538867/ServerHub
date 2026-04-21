@@ -28,13 +28,13 @@
             v-if="cpuHistory.length > 1"
             :points="sparkPoints(cpuHistory, 100)"
             fill="none"
-            stroke="var(--sh-blue)"
+            stroke="var(--ui-brand)"
             stroke-width="1.5"
           />
           <polyline
             v-if="cpuHistory.length > 1"
             :points="sparkArea(cpuHistory, 100)"
-            fill="color-mix(in srgb, var(--sh-blue) 14%, transparent)"
+            fill="color-mix(in srgb, var(--ui-brand) 14%, transparent)"
             stroke="none"
           />
         </svg>
@@ -180,40 +180,40 @@ function sparkArea(data: number[], maxVal: number): string {
 
 <style scoped>
 .metrics-card {
-  background: var(--sh-card-bg);
-  border: 1px solid var(--sh-border);
+  background: var(--ui-bg-surface);
+  border: 1px solid var(--ui-border);
   border-radius: 10px;
-  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
+  padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6);
 }
 .mc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: var(--sh-space-md);
+  margin-bottom: var(--ui-space-4);
 }
-.mc-title { font-size: 14px; font-weight: 600; color: var(--sh-text-primary); }
-.mc-actions { display: flex; align-items: center; gap: var(--sh-space-sm); }
-.mc-time { font-size: 11px; color: var(--sh-text-secondary); font-variant-numeric: tabular-nums; }
+.mc-title { font-size: 14px; font-weight: 600; color: var(--ui-fg); }
+.mc-actions { display: flex; align-items: center; gap: var(--ui-space-2); }
+.mc-time { font-size: 11px; color: var(--ui-fg-3); font-variant-numeric: tabular-nums; }
 
 .mc-empty {
-  padding: var(--sh-space-lg) 0;
+  padding: var(--ui-space-6) 0;
   text-align: center;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
   font-size: 13px;
 }
-.mc-empty-icon { font-size: 20px; opacity: 0.5; margin-bottom: var(--sh-space-sm); display: inline-block; }
+.mc-empty-icon { font-size: 20px; opacity: 0.5; margin-bottom: var(--ui-space-2); display: inline-block; }
 
 .mc-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  gap: var(--sh-space-md);
+  gap: var(--ui-space-4);
 }
 .mc-item {
   display: flex;
   flex-direction: column;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-sm) var(--sh-space-md);
-  background: color-mix(in srgb, var(--sh-text-primary) 3%, transparent);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-2) var(--ui-space-4);
+  background: color-mix(in srgb, var(--ui-fg) 3%, transparent);
   border-radius: 8px;
 }
 .mc-item--compact {
@@ -225,30 +225,30 @@ function sparkArea(data: number[], maxVal: number): string {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
 }
 .mc-cap {
   font-size: 11px;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }
 .mc-val {
   font-size: 20px;
   font-weight: 600;
-  color: var(--sh-text-primary);
+  color: var(--ui-fg);
   font-variant-numeric: tabular-nums;
 }
-.mc-val small { font-size: 12px; opacity: 0.6; margin-left: var(--sh-space-xs); }
+.mc-val small { font-size: 12px; opacity: 0.6; margin-left: var(--ui-space-1); }
 .mc-val-text {
   font-size: 13px;
-  color: var(--sh-text-primary);
-  font-family: var(--sh-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: var(--ui-fg);
+  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
 }
 .mc-sub {
   font-size: 11px;
-  color: var(--sh-text-secondary);
-  font-family: var(--sh-font-mono, ui-monospace, SFMono-Regular, monospace);
+  color: var(--ui-fg-3);
+  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
 }
 .mc-spark {
   width: 100%;
@@ -256,11 +256,11 @@ function sparkArea(data: number[], maxVal: number): string {
   display: block;
 }
 .mc-code {
-  font-family: var(--sh-font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-family: var(--ui-font-mono, ui-monospace, SFMono-Regular, monospace);
   font-size: 12px;
-  background: var(--sh-code-bg, rgba(0,0,0,.04));
+  background: var(--ui-bg-subtle, rgba(0,0,0,.04));
   padding: 1px 6px;
   border-radius: 3px;
-  color: var(--sh-text-primary);
+  color: var(--ui-fg);
 }
 </style>

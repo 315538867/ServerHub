@@ -5,7 +5,7 @@
       <div class="section-title">
         <span>部署管理</span>
         <div class="header-actions">
-          <t-select v-model="filterServerId" placeholder="全部服务器" clearable style="width:180px;margin-right: var(--sh-space-sm)">
+          <t-select v-model="filterServerId" placeholder="全部服务器" clearable style="width:180px;margin-right: var(--ui-space-2)">
             <t-option v-for="s in servers" :key="s.id" :label="s.name" :value="s.id" />
           </t-select>
           <t-button theme="primary" @click="openCreate">
@@ -35,11 +35,11 @@
           </div>
           <div class="app-card__header-right">
             <t-tag size="small" :theme="syncStatusTagTheme(app.sync_status)" variant="light">
-              <t-loading v-if="app.sync_status === 'syncing'" size="small" style="display:inline-flex;margin-right: var(--sh-space-xs)" />
+              <t-loading v-if="app.sync_status === 'syncing'" size="small" style="display:inline-flex;margin-right: var(--ui-space-1)" />
               {{ syncStatusText(app.sync_status) }}
             </t-tag>
             <t-dropdown :options="dropdownOptions(app)" trigger="click" @click="(item: any) => handleCommand(item.value, app)">
-              <t-button size="small" variant="text" shape="circle" style="margin-left: var(--sh-space-xs)">
+              <t-button size="small" variant="text" shape="circle" style="margin-left: var(--ui-space-1)">
                 <template #icon><ellipsis-icon /></template>
               </t-button>
             </t-dropdown>
@@ -96,7 +96,7 @@
       <div class="version-dialog__current">
         当前实际版本：<span class="version-value">{{ versionTarget?.actual_version || '未部署' }}</span>
       </div>
-      <t-form :data="versionForm" style="margin-top: var(--sh-space-md)">
+      <t-form :data="versionForm" style="margin-top: var(--ui-space-4)">
         <t-form-item label="期望版本">
           <t-input v-model="versionForm.desired_version" placeholder="v1.0 / latest / 20240101" autofocus />
         </t-form-item>
@@ -248,7 +248,7 @@
                 </t-button>
               </template>
             </t-table>
-            <div style="margin-top: var(--sh-space-md)">
+            <div style="margin-top: var(--ui-space-4)">
               <t-button theme="primary" :loading="envSaving" @click="saveEnv">保存环境变量</t-button>
             </div>
           </div>
@@ -656,7 +656,7 @@ onMounted(loadAll)
 .deploy-page {
   display: flex;
   flex-direction: column;
-  gap: var(--sh-space-md);
+  gap: var(--ui-space-4);
 }
 
 /* 页面标题卡片 */
@@ -665,7 +665,7 @@ onMounted(loadAll)
 }
 .page-header-block .section-title {
   border-bottom: none;
-  padding: var(--sh-space-md) var(--sh-space-lg);
+  padding: var(--ui-space-4) var(--ui-space-6);
 }
 .header-actions {
   display: flex;
@@ -676,12 +676,12 @@ onMounted(loadAll)
 .app-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--sh-space-md);
+  gap: var(--ui-space-4);
 }
 
 .app-card {
-  background: var(--sh-card-bg);
-  border: var(--sh-card-border);
+  background: var(--ui-bg-surface);
+  border: 1px solid var(--ui-border);
   border-left: 4px solid #e7e7e7;
   border-radius: 8px;
   display: flex;
@@ -693,10 +693,10 @@ onMounted(loadAll)
 .app-card:hover {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.10);
 }
-.app-card--synced  { border-left-color: var(--sh-green); }
-.app-card--drifted { border-left-color: var(--sh-orange); }
-.app-card--syncing { border-left-color: var(--sh-blue); }
-.app-card--error   { border-left-color: var(--sh-red); }
+.app-card--synced  { border-left-color: var(--ui-success); }
+.app-card--drifted { border-left-color: var(--ui-warning); }
+.app-card--syncing { border-left-color: var(--ui-brand); }
+.app-card--error   { border-left-color: var(--ui-danger); }
 .app-card--idle    { border-left-color: #d4d4d4; }
 
 /* 卡片头部 */
@@ -704,7 +704,7 @@ onMounted(loadAll)
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--sh-space-md) var(--sh-space-md) var(--sh-space-sm);
+  padding: var(--ui-space-4) var(--ui-space-4) var(--ui-space-2);
   border-bottom: 1px solid #f5f5f5;
 }
 .app-card__name-row {
@@ -716,7 +716,7 @@ onMounted(loadAll)
 .app-card__name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--sh-text-primary);
+  color: var(--ui-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -725,86 +725,86 @@ onMounted(loadAll)
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  margin-left: var(--sh-space-sm);
+  margin-left: var(--ui-space-2);
 }
 
 /* 卡片主体 */
 .app-card__body {
-  padding: var(--sh-space-sm) var(--sh-space-md);
+  padding: var(--ui-space-2) var(--ui-space-4);
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
 }
 .app-card__server {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-xs);
+  gap: var(--ui-space-1);
   font-size: 12px;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
 }
 .app-card__version {
   display: flex;
   align-items: center;
   justify-content: space-around;
-  background: var(--sh-gray-bg);
+  background: var(--ui-muted-soft);
   border-radius: 6px;
-  padding: var(--sh-space-sm);
+  padding: var(--ui-space-2);
 }
 .version-block {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sh-space-xs);
+  gap: var(--ui-space-1);
 }
 .version-label {
   font-size: 11px;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
 }
 .version-value {
   font-family: 'JetBrains Mono', 'Cascadia Code', Menlo, monospace;
   font-size: 12px;
   font-weight: 500;
-  color: var(--sh-text-primary);
+  color: var(--ui-fg);
 }
-.version-value--drifted { color: var(--sh-orange); }
+.version-value--drifted { color: var(--ui-warning); }
 .version-arrow {
   color: #bbb;
   font-size: 16px;
 }
-.version-arrow--drifted { color: var(--sh-orange); }
+.version-arrow--drifted { color: var(--ui-warning); }
 .app-card__drift-hint {
   font-size: 11px;
-  color: var(--sh-orange);
+  color: var(--ui-warning);
 }
 
 /* 卡片底部 */
 .app-card__footer {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-sm) var(--sh-space-md);
-  border-top: 1px solid var(--sh-border);
-  background: var(--sh-gray-bg);
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-2) var(--ui-space-4);
+  border-top: 1px solid var(--ui-border);
+  background: var(--ui-muted-soft);
 }
 
 /* 抽屉内容 */
-.env-toolbar { margin-bottom: var(--sh-space-sm); }
+.env-toolbar { margin-bottom: var(--ui-space-2); }
 .drawer-form { max-width: 480px; }
-.name-tag { margin-left: var(--sh-space-sm); }
-.mt-sm { margin-top: var(--sh-space-sm); }
+.name-tag { margin-left: var(--ui-space-2); }
+.mt-sm { margin-top: var(--ui-space-2); }
 .form-section-label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--sh-text-secondary);
-  padding: var(--sh-space-sm) 0 var(--sh-space-xs);
-  border-bottom: 1px solid var(--sh-border);
-  margin-bottom: var(--sh-space-md);
+  color: var(--ui-fg-3);
+  padding: var(--ui-space-2) 0 var(--ui-space-1);
+  border-bottom: 1px solid var(--ui-border);
+  margin-bottom: var(--ui-space-4);
 }
-.form-hint { margin-left: var(--sh-space-sm); font-size: 12px; color: var(--sh-text-secondary); }
-.tab-content { padding: var(--sh-space-md) 0; }
-.log-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--sh-space-sm); }
-.input-with-btn { display: flex; gap: var(--sh-space-sm); align-items: center; width: 100%; }
+.form-hint { margin-left: var(--ui-space-2); font-size: 12px; color: var(--ui-fg-3); }
+.tab-content { padding: var(--ui-space-4) 0; }
+.log-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--ui-space-2); }
+.input-with-btn { display: flex; gap: var(--ui-space-2); align-items: center; width: 100%; }
 .input-with-btn .t-input { flex: 1; }
 
 .log-output {
@@ -813,7 +813,7 @@ onMounted(loadAll)
   font-family: 'Cascadia Code', 'JetBrains Mono', Menlo, monospace;
   font-size: 13px;
   line-height: 1.6;
-  padding: var(--sh-space-md);
+  padding: var(--ui-space-4);
   border-radius: 6px;
   overflow-y: auto;
   height: calc(100vh - 200px);
@@ -823,18 +823,18 @@ onMounted(loadAll)
 }
 .log-output--static { height: 400px; }
 
-.empty-state { margin-top: var(--sh-space-xl); }
+.empty-state { margin-top: var(--ui-space-8); }
 
 .version-dialog__current {
   font-size: 13px;
-  color: var(--sh-text-secondary);
-  background: var(--sh-gray-bg);
-  padding: var(--sh-space-sm) var(--sh-space-md);
+  color: var(--ui-fg-3);
+  background: var(--ui-muted-soft);
+  padding: var(--ui-space-2) var(--ui-space-4);
   border-radius: 4px;
 }
 .version-dialog__current .version-value {
   font-family: 'JetBrains Mono', monospace;
-  color: var(--sh-text-primary);
-  margin-left: var(--sh-space-xs);
+  color: var(--ui-fg);
+  margin-left: var(--ui-space-1);
 }
 </style>

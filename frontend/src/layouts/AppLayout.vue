@@ -1,25 +1,38 @@
 <template>
-  <div class="al-wrap">
-    <!-- 信息头 + Tab 导航 -->
-    <div class="al-header">
-      <div class="al-info">
-        <div class="al-name-row">
-          <span class="status-dot" :class="app?.status" />
-          <span class="al-name">{{ app?.name }}</span>
-          <t-tag :theme="statusTheme" variant="light" size="small">{{ statusLabel }}</t-tag>
-        </div>
-        <router-link v-if="server" :to="`/servers/${server.id}/overview`" class="al-server-link">
-          <t-tag theme="default" variant="outline" size="small">{{ server.name }}</t-tag>
-        </router-link>
-      </div>
-      <t-tabs class="al-tabs" :value="activeTab" @change="onTabChange">
-        <t-tab-panel v-for="tab in tabs" :key="tab.value" :value="tab.value" :label="tab.label" />
-      </t-tabs>
-    </div>
+  <div class="al">
+    <UiStateBanner
+      :title="app?.name ?? '加载中…'"
+      :status="bannerStatus"
+      :status-label="statusLabel"
+    >
+      <template #subtitle>
+        <span v-if="server" class="al__sub">
+          <server-icon /> {{ server.name }}
+          <span v-if="app?.image" class="al__sep">·</span>
+          <code v-if="app?.image" class="al__code">{{ app.image }}</code>
+        </span>
+      </template>
+      <template #meta v-if="app?.expose_mode && app.expose_mode !== 'none'">
+        <span class="al__meta-pill">{{ exposeModeLabel }}</span>
+      </template>
+      <template #actions>
+        <UiKbd>{{ tabs.length }} Tab</UiKbd>
+      </template>
+    </UiStateBanner>
 
-    <!-- 内容区 -->
-    <div class="al-content" :class="{ 'al-content--terminal': isTerminal, 'al-content--nested': isNested }">
-      <router-view />
+    <UiTabs
+      class="al__tabs"
+      :model-value="activeTab"
+      :items="tabsOptions"
+      @update:model-value="onTabChange"
+    />
+
+    <div class="al__content" :class="{ 'al__content--terminal': isTerminal, 'al__content--nested': isNested }">
+      <router-view v-slot="{ Component, route: r }">
+        <transition name="al-fade" mode="out-in">
+          <component :is="Component" :key="r.fullPath" />
+        </transition>
+      </router-view>
     </div>
   </div>
 </template>
@@ -29,6 +42,10 @@ import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '@/stores/app'
 import { useServerStore } from '@/stores/server'
+import { ServerIcon } from 'tdesign-icons-vue-next'
+import UiStateBanner from '@/components/ui/UiStateBanner.vue'
+import UiTabs from '@/components/ui/UiTabs.vue'
+import UiKbd from '@/components/ui/UiKbd.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -39,10 +56,8 @@ const appId  = computed(() => Number(route.params.appId))
 const app    = computed(() => appStore.getById(appId.value))
 const server = computed(() => app.value ? serverStore.getById(app.value.server_id) : undefined)
 
-// 5-Tab 父级识别：/apps/:id/<tab>/<sub?> → 取第 4 段
 const activeTab = computed(() => {
   const segs = route.path.split('/').filter(Boolean)
-  // ['apps', ':id', 'tab', 'sub?']
   return segs[2] || 'overview'
 })
 const activeSub = computed(() => {
@@ -52,18 +67,24 @@ const activeSub = computed(() => {
 const isNested = computed(() => activeTab.value === 'network' || activeTab.value === 'ops')
 const isTerminal = computed(() => activeTab.value === 'ops' && activeSub.value === 'terminal')
 
-const statusTheme = computed(() => {
+const bannerStatus = computed(() => {
   const s = app.value?.status
-  if (s === 'online') return 'success'
-  if (s === 'offline' || s === 'error') return 'danger'
-  return 'default'
-})
+  if (s === 'online') return 'online'
+  if (s === 'offline') return 'offline'
+  if (s === 'error') return 'error'
+  return 'unknown'
+}) as any
+
 const statusLabel = computed(() => {
   const s = app.value?.status ?? ''
-  return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string,string>)[s] ?? s
+  return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string,string>)[s] ?? '未知'
 })
 
-// 5-Tab 扁平化：总览 / 部署 / 网络 / 运维 / 数据
+const exposeModeLabel = computed(() => {
+  const m = app.value?.expose_mode ?? ''
+  return ({ public: '公网', internal: '内网', custom: '自定义' } as Record<string,string>)[m] ?? m
+})
+
 const tabs = computed(() => {
   const a = app.value
   const hasNetwork = (a?.expose_mode && a.expose_mode !== 'none') || !!a?.site_name
@@ -75,6 +96,7 @@ const tabs = computed(() => {
     ...(a?.db_conn_id ? [{ value: 'data', label: '数据' }] : []),
   ]
 })
+const tabsOptions = computed(() => tabs.value.map(t => ({ value: t.value, label: t.label })))
 
 function onTabChange(val: string | number) {
   router.push(`/apps/${appId.value}/${val}`)
@@ -87,33 +109,56 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.al-wrap { height: 100%; display: flex; flex-direction: column; }
-
-.al-header {
-  background: var(--sh-card-bg);
-  border-bottom: 1px solid var(--sh-border);
-  flex-shrink: 0;
+.al {
+  height: 100%;
+  display: flex; flex-direction: column;
+  padding: var(--ui-space-4) var(--ui-space-5) 0;
+  background: var(--ui-bg-canvas);
+  min-height: 0;
 }
 
-.al-info {
-  display: flex;
-  align-items: center;
-  gap: var(--sh-space-md);
-  padding: var(--sh-space-md) var(--sh-space-lg) 0;
-  flex-wrap: wrap;
+.al__sub {
+  display: inline-flex; align-items: center;
+  gap: var(--ui-space-2);
+  font-size: var(--ui-fs-sm);
+  color: var(--ui-fg-3);
 }
-.al-name-row { display: flex; align-items: center; gap: var(--sh-space-sm); }
-.al-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--sh-text-primary);
+.al__sep { color: var(--ui-fg-4); }
+.al__code {
+  font-family: var(--ui-font-mono);
+  font-size: var(--ui-fs-xs);
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  padding: 1px 6px;
+  color: var(--ui-fg-2);
 }
-.al-server-link { text-decoration: none; }
+.al__meta-pill {
+  font-size: var(--ui-fs-2xs);
+  font-weight: var(--ui-fw-medium);
+  background: var(--ui-brand-soft);
+  color: var(--ui-brand);
+  padding: 2px 8px;
+  border-radius: var(--ui-radius-pill);
+  letter-spacing: .04em;
+}
 
-.al-tabs { margin-top: var(--sh-space-xs); padding: 0 var(--sh-space-lg); }
-.al-tabs :deep(.t-tabs__nav) { border-bottom: none; }
+.al__tabs {
+  margin: 0 0 var(--ui-space-3);
+}
 
-.al-content { flex: 1; overflow-y: auto; min-height: 0; }
-.al-content--nested { overflow: hidden; display: flex; flex-direction: column; }
-.al-content--terminal { overflow: hidden; }
+.al__content {
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+}
+.al__content--nested { overflow: hidden; display: flex; flex-direction: column; }
+.al__content--terminal { overflow: hidden; }
+
+.al-fade-enter-active {
+  animation: ui-slide-up var(--ui-dur-base) var(--ui-ease-standard);
+}
+.al-fade-leave-active {
+  transition: opacity var(--ui-dur-fast) var(--ui-ease-standard);
+}
+.al-fade-leave-to { opacity: 0; }
 </style>

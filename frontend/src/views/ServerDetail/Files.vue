@@ -284,11 +284,11 @@ onBeforeUnmount(() => editorView?.destroy())
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--sh-space-md) var(--sh-space-lg);
-  border-bottom: 1px solid var(--sh-border);
+  padding: var(--ui-space-4) var(--ui-space-6);
+  border-bottom: 1px solid var(--ui-border);
   margin-bottom: 0;
   flex-wrap: wrap;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
 }
 
 .path-breadcrumb {
@@ -299,14 +299,14 @@ onBeforeUnmount(() => editorView?.destroy())
 
 .toolbar-right {
   display: flex;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
   flex-shrink: 0;
 }
 
 .file-name-cell {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
   cursor: pointer;
   user-select: none;
 }
@@ -316,7 +316,7 @@ onBeforeUnmount(() => editorView?.destroy())
   font-size: 16px;
 }
 
-.file-icon.dir { color: var(--sh-blue); }
+.file-icon.dir { color: var(--ui-brand); }
 .file-icon.file { color: #8a94a6; }
 
 .mono-text {
@@ -325,7 +325,7 @@ onBeforeUnmount(() => editorView?.destroy())
 }
 
 .perm {
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
 }
 
 .code-editor {

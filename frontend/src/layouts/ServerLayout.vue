@@ -1,24 +1,32 @@
 <template>
-  <div class="sl-wrap" :class="{ 'sl-wrap--fullscreen': isTerminal }">
-    <!-- 信息头（终端模式下隐藏） -->
-    <div v-if="!isTerminal" class="sl-header">
-      <div class="sl-info">
-        <div class="sl-name-row">
-          <span class="status-dot" :class="server?.status" />
-          <span class="sl-name">{{ server?.name }}</span>
-          <t-tag :theme="statusTheme" variant="light" size="small">{{ statusLabel }}</t-tag>
-        </div>
-        <span class="sl-host">{{ server?.host }}:{{ server?.port }}</span>
-      </div>
-      <!-- Tab 导航 -->
-      <t-tabs class="sl-tabs" :value="activeTab" @change="onTabChange">
-        <t-tab-panel v-for="tab in tabs" :key="tab.value" :value="tab.value" :label="tab.label" />
-      </t-tabs>
-    </div>
+  <div class="sl" :class="{ 'sl--fullscreen': isTerminal }">
+    <template v-if="!isTerminal">
+      <UiStateBanner
+        :title="server?.name ?? '加载中…'"
+        :status="bannerStatus"
+        :status-label="statusLabel"
+      >
+        <template #subtitle>
+          <span class="sl__sub">
+            <code class="sl__code">{{ server?.host }}:{{ server?.port }}</code>
+          </span>
+        </template>
+      </UiStateBanner>
 
-    <!-- 内容区 -->
-    <div class="sl-content" :class="{ 'sl-content--fullscreen': isTerminal }">
-      <router-view />
+      <UiTabs
+        class="sl__tabs"
+        :model-value="activeTab"
+        :items="tabs"
+        @update:model-value="onTabChange"
+      />
+    </template>
+
+    <div class="sl__content" :class="{ 'sl__content--fullscreen': isTerminal }">
+      <router-view v-slot="{ Component, route: r }">
+        <transition name="sl-fade" mode="out-in">
+          <component :is="Component" :key="r.fullPath" />
+        </transition>
+      </router-view>
     </div>
   </div>
 </template>
@@ -27,6 +35,8 @@
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useServerStore } from '@/stores/server'
+import UiStateBanner from '@/components/ui/UiStateBanner.vue'
+import UiTabs from '@/components/ui/UiTabs.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -37,15 +47,15 @@ const server   = computed(() => serverStore.getById(serverId.value))
 const activeTab  = computed(() => route.path.split('/').pop() || 'overview')
 const isTerminal = computed(() => activeTab.value === 'terminal')
 
-const statusTheme = computed(() => {
+const bannerStatus = computed(() => {
   const s = server.value?.status
-  if (s === 'online') return 'success'
-  if (s === 'offline') return 'danger'
-  return 'default'
-})
+  if (s === 'online') return 'online'
+  if (s === 'offline') return 'offline'
+  return 'unknown'
+}) as any
 const statusLabel = computed(() => {
   const s = server.value?.status ?? ''
-  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string,string>)[s] ?? s
+  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string,string>)[s] ?? '未知'
 })
 
 const tabs = [
@@ -67,41 +77,34 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.sl-wrap { height: 100%; display: flex; flex-direction: column; }
-.sl-wrap--fullscreen { overflow: hidden; }
+.sl {
+  height: 100%;
+  display: flex; flex-direction: column;
+  padding: var(--ui-space-4) var(--ui-space-5) 0;
+  background: var(--ui-bg-canvas);
+  min-height: 0;
+}
+.sl--fullscreen { padding: 0; overflow: hidden; }
 
-.sl-header {
-  background: var(--sh-card-bg);
-  border-bottom: 1px solid var(--sh-border);
-  flex-shrink: 0;
+.sl__sub { display: inline-flex; align-items: center; gap: var(--ui-space-2); }
+.sl__code {
+  font-family: var(--ui-font-mono);
+  font-size: var(--ui-fs-xs);
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+  padding: 1px 6px;
+  color: var(--ui-fg-2);
 }
 
-.sl-info {
-  display: flex;
-  align-items: center;
-  gap: var(--sh-space-md);
-  padding: var(--sh-space-md) var(--sh-space-lg) 0;
-}
-.sl-name-row { display: flex; align-items: center; gap: var(--sh-space-sm); }
-.sl-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--sh-text-primary);
-}
-.sl-host { font-size: 13px; color: var(--sh-text-secondary); }
+.sl__tabs { margin: 0 0 var(--ui-space-3); }
 
-.sl-tabs {
-  margin-top: var(--sh-space-xs);
-  padding: 0 var(--sh-space-lg);
-}
-.sl-tabs :deep(.t-tabs__nav) { border-bottom: none; }
+.sl__content { flex: 1; min-height: 0; overflow-y: auto; }
+.sl__content--fullscreen { overflow: hidden; padding: 0; }
 
-.sl-content {
-  flex: 1;
-  overflow-y: auto;
+.sl-fade-enter-active {
+  animation: ui-slide-up var(--ui-dur-base) var(--ui-ease-standard);
 }
-.sl-content--fullscreen {
-  overflow: hidden;
-  padding: 0;
-}
+.sl-fade-leave-active { transition: opacity var(--ui-dur-fast); }
+.sl-fade-leave-to { opacity: 0; }
 </style>

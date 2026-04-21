@@ -1,45 +1,40 @@
 <template>
-  <div class="page-container">
-    <!-- 页面标题 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span>服务器管理</span>
-        <t-button theme="primary" size="small" @click="openCreate">
+  <div class="page-container srv-page">
+    <UiPageHeader title="服务器管理" subtitle="维护所有可被应用调度的物理或虚拟节点">
+      <template #actions>
+        <UiButton variant="primary" size="sm" @click="openCreate">
           <template #icon><add-icon /></template>
           添加服务器
-        </t-button>
-      </div>
-    </div>
+        </UiButton>
+      </template>
+    </UiPageHeader>
 
-    <!-- 服务器列表 -->
-    <div class="section-block">
+    <UiSection padding="flush">
       <t-table
         :data="servers"
         :columns="columns"
         :loading="loading"
         row-key="id"
-        bordered
         size="small"
-        :header-affixed-top="{ offsetTop: 0 }"
-        empty="暂无服务器，点击「添加服务器」开始"
+        :empty="emptyEl"
       >
         <template #name="{ row }">
-          <div class="server-name-cell">
-            <span class="status-dot" :class="row.status" />
-            <span class="server-name">{{ row.name }}</span>
-            <span v-if="row.remark" class="server-remark">{{ row.remark }}</span>
+          <div class="srv-name-cell">
+            <StatusDot :status="row.status" :size="8" pulse />
+            <span class="srv-name">{{ row.name }}</span>
+            <span v-if="row.remark" class="srv-remark">{{ row.remark }}</span>
           </div>
         </template>
         <template #host="{ row }">
-          <span class="mono-text">{{ row.host }}:{{ row.port }}</span>
+          <code class="mono-text">{{ row.host }}:{{ row.port }}</code>
         </template>
         <template #auth_type="{ row }">
-          <t-tag :theme="row.auth_type === 'key' ? 'warning' : 'default'" variant="light" size="small">
+          <UiBadge :tone="row.auth_type === 'key' ? 'warning' : 'neutral'" variant="soft">
             {{ row.auth_type === 'key' ? '密钥' : '密码' }}
-          </t-tag>
+          </UiBadge>
         </template>
         <template #status="{ row }">
-          <t-tag :theme="statusTheme(row.status)" variant="light" size="small">{{ statusText(row.status) }}</t-tag>
+          <UiBadge :tone="statusTone(row.status)" variant="soft">{{ statusText(row.status) }}</UiBadge>
         </template>
         <template #last_check_at="{ row }">
           <span class="time-text">{{ row.last_check_at ? dayjs(row.last_check_at).format('MM-DD HH:mm:ss') : '—' }}</span>
@@ -54,7 +49,7 @@
           </t-space>
         </template>
       </t-table>
-    </div>
+    </UiSection>
 
     <!-- 添加/编辑对话框 -->
     <t-dialog
@@ -99,12 +94,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, h } from 'vue'
 import { MessagePlugin } from 'tdesign-vue-next'
 import { AddIcon } from 'tdesign-icons-vue-next'
 import dayjs from 'dayjs'
 import type { Server, ServerForm } from '@/types/api'
 import { getServers, createServer, updateServer, deleteServer, testServer } from '@/api/servers'
+import UiPageHeader from '@/components/ui/UiPageHeader.vue'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import StatusDot from '@/components/ui/StatusDot.vue'
+import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 
 const servers = ref<Server[]>([])
 const loading = ref(false)
@@ -140,8 +141,10 @@ const columns = [
   { colKey: 'operations', title: '操作', width: 200, fixed: 'right' as const },
 ]
 
-function statusTheme(s: string) {
-  return ({ online: 'success', offline: 'danger', unknown: 'default' } as Record<string, string>)[s] ?? 'default'
+const emptyEl = () => h(EmptyBlock, { title: '暂无服务器', description: '点击「添加服务器」开始' })
+
+function statusTone(s: string): any {
+  return ({ online: 'success', offline: 'danger' } as Record<string, string>)[s] ?? 'neutral'
 }
 function statusText(s: string) {
   return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string, string>)[s] ?? s
@@ -219,31 +222,43 @@ onMounted(loadServers)
 </script>
 
 <style scoped>
+.srv-page { padding: var(--ui-space-4) var(--ui-space-5); }
 .full-width { width: 100%; }
 
-.server-name-cell {
-  display: flex;
+.srv-name-cell {
+  display: inline-flex;
   align-items: center;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
+  min-width: 0;
 }
-.server-name {
-  font-weight: 500;
-  color: var(--sh-text-primary);
+.srv-name {
+  font-weight: var(--ui-fw-medium);
+  color: var(--ui-fg);
+  font-size: var(--ui-fs-sm);
+  white-space: nowrap;
 }
-.server-remark {
-  font-size: 12px;
-  color: var(--sh-text-secondary);
+.srv-remark {
+  font-size: var(--ui-fs-xs);
+  color: var(--ui-fg-3);
+  margin-left: var(--ui-space-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mono-text {
-  font-family: 'JetBrains Mono', 'Cascadia Code', Menlo, monospace;
-  font-size: 12.5px;
+  font-family: var(--ui-font-mono);
+  font-size: var(--ui-fs-xs);
+  color: var(--ui-fg-2);
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border-subtle);
+  padding: 1px 6px;
+  border-radius: var(--ui-radius-sm);
 }
 .time-text {
-  font-size: 12.5px;
-  color: var(--sh-text-secondary);
+  font-size: var(--ui-fs-xs);
+  color: var(--ui-fg-3);
+  font-variant-numeric: tabular-nums;
 }
 
-:deep(.t-table) {
-  font-size: 13px;
-}
+:deep(.t-table) { font-size: var(--ui-fs-sm); }
 </style>

@@ -1,55 +1,55 @@
 <template>
-  <div class="page-container">
-    <!-- 实时指标（仅当绑定容器时） -->
-    <app-metrics-card v-if="app?.container_name" :app-id="appId" class="metrics-wrap" />
+  <div class="page-container ov">
+    <app-metrics-card v-if="app?.container_name" :app-id="appId" class="ov__metrics" />
 
-    <!-- 应用信息 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span class="title-text">应用信息</span>
-        <t-tag :theme="statusTheme" variant="light" size="small">{{ app?.status ?? '—' }}</t-tag>
-      </div>
-      <div class="desc-wrap">
-        <t-descriptions :column="2">
-          <t-descriptions-item label="描述">{{ app?.description || '—' }}</t-descriptions-item>
-          <t-descriptions-item label="域名">{{ app?.domain || '—' }}</t-descriptions-item>
-          <t-descriptions-item label="所属服务器">
-            <router-link v-if="server" :to="`/servers/${server.id}/overview`" class="link">{{ server.name }} ({{ server.host }})</router-link>
-            <span v-else>—</span>
-          </t-descriptions-item>
-          <t-descriptions-item label="Nginx 站点">
-            <router-link v-if="app?.site_name && server" :to="`/servers/${server.id}/nginx`" class="link">{{ app.site_name }}</router-link>
-            <span v-else>{{ app?.site_name || '未关联' }}</span>
-          </t-descriptions-item>
-          <t-descriptions-item label="容器名">
-            <router-link v-if="app?.container_name && server" :to="`/servers/${server.id}/docker`" class="link">{{ app.container_name }}</router-link>
-            <span v-else>{{ app?.container_name || '未关联' }}</span>
-          </t-descriptions-item>
-          <t-descriptions-item label="基础目录">
-            <code v-if="app?.base_dir" class="dir-code">{{ app.base_dir }}</code>
-            <span v-else>—</span>
-          </t-descriptions-item>
-          <t-descriptions-item label="创建时间">{{ app?.created_at }}</t-descriptions-item>
-          <t-descriptions-item label="最后更新">{{ app?.updated_at }}</t-descriptions-item>
-        </t-descriptions>
-      </div>
-    </div>
-
-    <!-- 目录结构 -->
-    <div class="section-block" v-if="app?.base_dir">
-      <div class="section-title">
-        <span class="title-text">目录结构</span>
-        <div class="title-actions">
-          <t-button
-            size="small" variant="outline" :loading="loadingDirs"
-            @click="fetchDirs">刷新</t-button>
-          <t-button
-            size="small" theme="primary" variant="outline" :loading="initializingDirs"
-            @click="handleInitDirs">初始化目录</t-button>
+    <UiSection title="应用信息">
+      <template #extra>
+        <UiBadge :tone="statusTone" variant="soft">
+          <StatusDot :status="app?.status || 'unknown'" :size="6" />
+          {{ statusText }}
+        </UiBadge>
+      </template>
+      <div class="ov__grid">
+        <div class="ov__cell"><span class="ov__lbl">描述</span><span class="ov__val">{{ app?.description || '—' }}</span></div>
+        <div class="ov__cell"><span class="ov__lbl">域名</span><span class="ov__val">{{ app?.domain || '—' }}</span></div>
+        <div class="ov__cell">
+          <span class="ov__lbl">服务器</span>
+          <router-link v-if="server" :to="`/servers/${server.id}/overview`" class="ov__link">
+            {{ server.name }} <code class="ov__code">{{ server.host }}</code>
+          </router-link>
+          <span v-else class="ov__val">—</span>
         </div>
+        <div class="ov__cell">
+          <span class="ov__lbl">Nginx 站点</span>
+          <router-link v-if="app?.site_name && server" :to="`/servers/${server.id}/nginx`" class="ov__link">
+            {{ app.site_name }}
+          </router-link>
+          <span v-else class="ov__val ov__muted">{{ app?.site_name || '未关联' }}</span>
+        </div>
+        <div class="ov__cell">
+          <span class="ov__lbl">容器</span>
+          <router-link v-if="app?.container_name && server" :to="`/servers/${server.id}/docker`" class="ov__link">
+            <code class="ov__code">🐳 {{ app.container_name }}</code>
+          </router-link>
+          <span v-else class="ov__val ov__muted">{{ app?.container_name || '未关联' }}</span>
+        </div>
+        <div class="ov__cell">
+          <span class="ov__lbl">基础目录</span>
+          <code v-if="app?.base_dir" class="ov__code">{{ app.base_dir }}</code>
+          <span v-else class="ov__val">—</span>
+        </div>
+        <div class="ov__cell"><span class="ov__lbl">创建时间</span><span class="ov__val ov__time">{{ app?.created_at || '—' }}</span></div>
+        <div class="ov__cell"><span class="ov__lbl">最后更新</span><span class="ov__val ov__time">{{ app?.updated_at || '—' }}</span></div>
       </div>
-      <div class="dirs-wrap">
-        <div v-if="dirsError" class="dirs-error">{{ dirsError }}</div>
+    </UiSection>
+
+    <UiSection v-if="app?.base_dir" title="目录结构" padding="flush">
+      <template #extra>
+        <UiButton variant="secondary" size="sm" :loading="loadingDirs" @click="fetchDirs">刷新</UiButton>
+        <UiButton variant="primary" size="sm" :loading="initializingDirs" @click="handleInitDirs">初始化</UiButton>
+      </template>
+      <div class="ov__dirs">
+        <UiStateBanner v-if="dirsError" status="danger" :title="dirsError" />
         <t-table
           v-else
           :data="dirs"
@@ -57,41 +57,37 @@
           row-key="name"
           size="small"
           :loading="loadingDirs"
-          empty="暂无数据，请点击「刷新」加载"
+          :empty="emptyEl"
         >
           <template #name="{ row }">
-            <span class="dir-name">{{ row.name }}</span>
+            <span class="ov__dir-name">{{ row.name }}</span>
           </template>
           <template #path="{ row }">
-            <code class="dir-code">{{ row.path }}</code>
+            <code class="ov__code">{{ row.path }}</code>
           </template>
           <template #status="{ row }">
-            <t-tag :theme="row.status === 'ok' ? 'success' : 'danger'" variant="light" size="small">
+            <UiBadge :tone="row.status === 'ok' ? 'success' : 'danger'" variant="soft">
               {{ row.status === 'ok' ? '正常' : '缺失' }}
-            </t-tag>
+            </UiBadge>
           </template>
-          <template #size="{ row }">{{ row.size || '—' }}</template>
-          <template #mtime="{ row }">{{ row.mtime || '—' }}</template>
+          <template #size="{ row }"><span class="ov__time">{{ row.size || '—' }}</span></template>
+          <template #mtime="{ row }"><span class="ov__time">{{ row.mtime || '—' }}</span></template>
         </t-table>
       </div>
-    </div>
+    </UiSection>
 
-    <!-- 快捷操作 -->
-    <div class="section-block">
-      <div class="section-title">
-        <span class="title-text">快捷操作</span>
+    <UiSection title="快捷操作">
+      <div class="ov__actions">
+        <UiButton v-if="server" variant="secondary" size="sm" @click="$router.push(`/apps/${appId}/ops/terminal`)">打开终端</UiButton>
+        <UiButton v-if="server" variant="secondary" size="sm" @click="$router.push(`/servers/${server.id}/files`)">文件管理</UiButton>
+        <UiButton variant="danger" size="sm" @click="handleDelete">删除应用</UiButton>
       </div>
-      <div class="actions-wrap">
-        <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/apps/${appId}/ops/terminal`)">打开终端</t-button>
-        <t-button v-if="server" variant="outline" size="small" @click="$router.push(`/servers/${server.id}/files`)">文件管理</t-button>
-        <t-button theme="danger" variant="outline" size="small" @click="handleDelete">删除应用</t-button>
-      </div>
-    </div>
+    </UiSection>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MessagePlugin, DialogPlugin } from 'tdesign-vue-next'
 import { useAppStore } from '@/stores/app'
@@ -99,6 +95,12 @@ import { useServerStore } from '@/stores/server'
 import { deleteApp, getAppDirs, initAppDirs } from '@/api/application'
 import type { AppDirEntry } from '@/types/api'
 import AppMetricsCard from '@/components/apps/AppMetricsCard.vue'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiStateBanner from '@/components/ui/UiStateBanner.vue'
+import StatusDot from '@/components/ui/StatusDot.vue'
+import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -109,11 +111,15 @@ const appId = computed(() => Number(route.params.appId))
 const app = computed(() => appStore.getById(appId.value))
 const server = computed(() => app.value ? serverStore.getById(app.value.server_id) : undefined)
 
-const statusTheme = computed(() => {
+const statusTone = computed<any>(() => {
   const s = app.value?.status
   if (s === 'online') return 'success'
   if (s === 'offline' || s === 'error') return 'danger'
-  return 'default'
+  return 'neutral'
+})
+const statusText = computed(() => {
+  const s = app.value?.status
+  return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string, string>)[s ?? ''] ?? (s ?? '—')
 })
 
 const dirs = ref<AppDirEntry[]>([])
@@ -122,12 +128,14 @@ const initializingDirs = ref(false)
 const dirsError = ref('')
 
 const dirColumns = [
-  { colKey: 'name', title: '目录', width: 100 },
+  { colKey: 'name', title: '目录', width: 110 },
   { colKey: 'path', title: '路径', minWidth: 200 },
   { colKey: 'status', title: '状态', width: 80 },
   { colKey: 'size', title: '占用', width: 90 },
   { colKey: 'mtime', title: '修改时间', width: 160 },
 ]
+
+const emptyEl = () => h(EmptyBlock, { title: '暂无数据', description: '点击「刷新」加载目录信息' })
 
 async function fetchDirs() {
   if (!app.value?.base_dir) return
@@ -158,7 +166,7 @@ async function handleInitDirs() {
 async function handleDelete() {
   const dialog = DialogPlugin.confirm({
     header: '危险操作',
-    body: `确认删除应用「${app.value?.name}」？`,
+    body: `确认删除应用「${app.value?.name}」？此操作不可恢复。`,
     confirmBtn: { content: '删除', theme: 'danger' },
     onConfirm: async () => {
       dialog.hide()
@@ -180,51 +188,59 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.desc-wrap {
-  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
+.ov { display: flex; flex-direction: column; gap: var(--ui-space-4); padding: var(--ui-space-4) var(--ui-space-5); }
+.ov__metrics { margin: 0; }
+
+.ov__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ui-space-2) var(--ui-space-5);
 }
-:deep(.t-descriptions__label) {
-  color: var(--sh-text-secondary);
-  font-size: 13px;
-  width: 90px;
+@media (max-width: 720px) { .ov__grid { grid-template-columns: 1fr; } }
+
+.ov__cell {
+  display: flex; align-items: center; gap: var(--ui-space-3);
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--ui-border-subtle);
+  min-width: 0;
 }
-:deep(.t-descriptions__content) {
-  font-size: 13px;
+.ov__cell:nth-last-child(-n+2) { border-bottom: none; }
+
+.ov__lbl {
+  flex-shrink: 0;
+  width: 80px;
+  font-size: var(--ui-fs-xs);
+  color: var(--ui-fg-3);
 }
-.title-actions {
-  display: flex;
-  gap: var(--sh-space-sm);
+.ov__val {
+  font-size: var(--ui-fs-sm);
+  color: var(--ui-fg);
+  min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.dirs-wrap {
-  padding: var(--sh-space-xs) var(--sh-space-lg) var(--sh-space-lg);
-}
-.dirs-error {
-  color: var(--sh-danger);
-  font-size: 13px;
-  padding: var(--sh-space-sm) 0;
-}
-.dir-name {
-  font-weight: 500;
-  color: var(--sh-text-primary);
-}
-.dir-code {
-  font-family: var(--sh-font-mono, monospace);
-  font-size: 12px;
-  color: var(--sh-blue);
-  background: var(--sh-code-bg, rgba(0,0,0,.04));
-  padding: 1px 5px;
-  border-radius: 3px;
-}
-.actions-wrap {
-  display: flex;
-  gap: var(--sh-space-sm);
-  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
-  flex-wrap: wrap;
-}
-.link {
-  color: var(--sh-blue);
+.ov__muted { color: var(--ui-fg-placeholder); }
+.ov__time { font-size: var(--ui-fs-xs); color: var(--ui-fg-3); font-variant-numeric: tabular-nums; }
+.ov__link {
+  font-size: var(--ui-fs-sm);
+  color: var(--ui-brand);
   text-decoration: none;
+  display: inline-flex; align-items: center; gap: var(--ui-space-2);
+  transition: color var(--ui-dur-fast);
 }
-.link:hover { text-decoration: underline; }
-.metrics-wrap { margin-bottom: var(--sh-space-sm); }
+.ov__link:hover { color: var(--ui-brand-hover); text-decoration: underline; }
+
+.ov__code {
+  font-family: var(--ui-font-mono);
+  font-size: var(--ui-fs-xs);
+  color: var(--ui-fg-2);
+  background: var(--ui-bg-subtle);
+  border: 1px solid var(--ui-border-subtle);
+  padding: 1px 6px;
+  border-radius: var(--ui-radius-sm);
+}
+
+.ov__dirs { padding: 0 var(--ui-space-5) var(--ui-space-4); }
+.ov__dir-name { font-weight: var(--ui-fw-medium); color: var(--ui-fg); font-size: var(--ui-fs-sm); }
+
+.ov__actions { display: flex; flex-wrap: wrap; gap: var(--ui-space-2); }
 </style>

@@ -255,9 +255,9 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
 }
 
 .inspect-json {
-  background: var(--sh-gray-bg);
+  background: var(--ui-muted-soft);
   border-radius: 4px;
-  padding: var(--sh-space-md);
+  padding: var(--ui-space-4);
   font-size: 12px;
   line-height: 1.6;
   overflow: auto;
@@ -272,12 +272,12 @@ onBeforeUnmount(() => { logsWs?.close(); logsTerm?.dispose(); pullWs?.close() })
   background: #1a2332;
   color: #e0e0e0;
   border-radius: 4px;
-  padding: var(--sh-space-md);
+  padding: var(--ui-space-4);
   font-size: 12px;
   line-height: 1.6;
   overflow: auto;
   max-height: 320px;
-  margin: var(--sh-space-md) 0 0;
+  margin: var(--ui-space-4) 0 0;
   white-space: pre-wrap;
   word-break: break-all;
   font-family: "Cascadia Code", "JetBrains Mono", Menlo, monospace;

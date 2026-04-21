@@ -1,7 +1,7 @@
 <template>
   <span
     class="ui-dot"
-    :class="[`ui-dot--${resolved}`, { 'ui-dot--pulse': pulse }]"
+    :class="[`ui-dot--${resolved}`, { 'ui-dot--pulse': pulse, 'ui-dot--ring': ring }]"
     :style="{ '--dot-size': `${size}px` }"
     :title="title"
   />
@@ -21,11 +21,13 @@ const props = withDefaults(defineProps<{
   status?: UiStatus | string
   size?: number
   pulse?: boolean
+  ring?: boolean
   title?: string
 }>(), {
   status: 'unknown',
   size: 8,
   pulse: false,
+  ring: true,
 })
 
 const resolved = computed(() => {
@@ -48,16 +50,19 @@ const resolved = computed(() => {
   flex-shrink: 0;
   background: var(--ui-muted);
   vertical-align: middle;
+  position: relative;
 }
-.ui-dot--success { background: var(--ui-success); box-shadow: 0 0 0 2px rgba(23,166,115,.18); }
-.ui-dot--danger  { background: var(--ui-danger);  box-shadow: 0 0 0 2px rgba(214,69,69,.18); }
-.ui-dot--warning { background: var(--ui-warning); box-shadow: 0 0 0 2px rgba(233,138,42,.18); }
+.ui-dot--success { background: var(--ui-success); }
+.ui-dot--danger  { background: var(--ui-danger); }
+.ui-dot--warning { background: var(--ui-warning); }
 .ui-dot--muted   { background: var(--ui-muted); }
 .ui-dot--unknown { background: var(--ui-fg-placeholder); }
-.ui-dot--pulse { animation: ui-dot-pulse 1.6s infinite var(--ui-ease-standard); }
 
-@keyframes ui-dot-pulse {
-  0%,100% { opacity: 1; }
-  50%     { opacity: 0.45; }
-}
+.ui-dot--ring.ui-dot--success { box-shadow: 0 0 0 3px rgba(22, 163, 74, .18); }
+.ui-dot--ring.ui-dot--danger  { box-shadow: 0 0 0 3px rgba(220, 38, 38, .18); }
+.ui-dot--ring.ui-dot--warning { box-shadow: 0 0 0 3px rgba(217, 119, 6, .18); }
+
+.ui-dot--pulse.ui-dot--success { animation: ui-status-pulse 2.4s var(--ui-ease-standard) infinite; }
+.ui-dot--pulse.ui-dot--warning { animation: ui-status-pulse 1.6s var(--ui-ease-standard) infinite; }
+.ui-dot--pulse.ui-dot--danger  { animation: ui-status-pulse 1.2s var(--ui-ease-standard) infinite; }
 </style>

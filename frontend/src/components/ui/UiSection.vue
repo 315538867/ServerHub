@@ -31,7 +31,7 @@ defineOptions({ inheritAttrs: false })
 </script>
 
 <style scoped>
-.ui-section__body--default { padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6); }
+.ui-section__body--default { padding: var(--ui-space-4) var(--ui-space-5) var(--ui-space-5); }
 .ui-section__body--compact { padding: var(--ui-space-3) var(--ui-space-4); }
 .ui-section__body--flush   { padding: 0; }
 </style>

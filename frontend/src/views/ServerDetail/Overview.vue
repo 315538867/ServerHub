@@ -40,7 +40,7 @@
       </div>
       <div class="metric-card section-block">
         <div class="metric-label">系统负载</div>
-        <div class="metric-value" style="color: var(--sh-text-primary)">
+        <div class="metric-value" style="color: var(--ui-fg)">
           {{ latestMetric?.load1?.toFixed(2) ?? '—' }}
         </div>
         <div class="metric-sub">运行时间：{{ formatUptime(latestMetric?.uptime) }}</div>
@@ -51,7 +51,7 @@
     <div class="section-block">
       <div class="section-title">
         <span class="info-title">
-          <server-icon style="color: var(--sh-blue); font-size: 16px" />
+          <server-icon style="color: var(--ui-brand); font-size: 16px" />
           服务器信息
         </span>
         <t-space size="small">
@@ -164,66 +164,75 @@ onMounted(async () => {
 .metrics-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: var(--sh-space-md);
-  margin-bottom: var(--sh-space-md);
+  gap: var(--ui-space-4);
+  margin-bottom: var(--ui-space-4);
+  align-items: stretch;
 }
 
 .metric-card {
-  padding: var(--sh-space-md) var(--sh-space-lg);
+  padding: var(--ui-space-4) var(--ui-space-6);
+  display: flex;
+  flex-direction: column;
+  min-height: 112px;
+  margin-bottom: 0 !important;
+}
+
+.metric-card :deep(.t-progress) {
+  margin-top: auto;
 }
 
 .metric-label {
   font-size: 13px;
-  color: var(--sh-text-secondary);
-  margin-bottom: var(--sh-space-sm);
+  color: var(--ui-fg-3);
+  margin-bottom: var(--ui-space-2);
 }
 
 .metric-value {
   font-size: 28px;
   font-weight: 600;
   line-height: 1;
-  margin-bottom: var(--sh-space-sm);
+  margin-bottom: var(--ui-space-2);
 }
 
 .metric-unit {
   font-size: 14px;
   font-weight: 400;
-  margin-left: var(--sh-space-xs);
+  margin-left: var(--ui-space-1);
 }
 
 .metric-sub {
   font-size: 12px;
-  color: var(--sh-text-secondary);
-  margin-top: var(--sh-space-sm);
+  color: var(--ui-fg-3);
+  margin-top: auto;
 }
 
 .info-title {
   display: flex;
   align-items: center;
-  gap: var(--sh-space-sm);
+  gap: var(--ui-space-2);
 }
 
 .info-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: var(--sh-space-md) var(--sh-space-lg);
-  padding: var(--sh-space-md) var(--sh-space-lg) var(--sh-space-lg);
+  gap: var(--ui-space-4) var(--ui-space-6);
+  padding: var(--ui-space-4) var(--ui-space-6) var(--ui-space-6);
 }
 
 .info-item {
   display: flex;
   flex-direction: column;
-  gap: var(--sh-space-xs);
+  gap: var(--ui-space-1);
 }
 
 .info-label {
   font-size: 12px;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
 }
 
 .info-value {
   font-size: 13px;
-  color: var(--sh-text-primary);
+  color: var(--ui-fg);
   font-weight: 500;
 }
 
@@ -234,7 +243,7 @@ onMounted(async () => {
 
 .info-value.time {
   font-size: 12px;
-  color: var(--sh-text-secondary);
+  color: var(--ui-fg-3);
   font-weight: 400;
 }
 </style>
