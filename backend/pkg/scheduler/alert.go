@@ -122,18 +122,7 @@ func sendWebhook(cfg *config.Config, ch model.NotifyChannel, srv model.Server, r
 		).Replace(ch.Template)
 	}
 
-	var payload []byte
-	switch ch.Type {
-	case "webhook_wechat":
-		payload, _ = json.Marshal(map[string]any{"msgtype": "text", "text": map[string]string{"content": text}})
-	case "webhook_dingtalk":
-		payload, _ = json.Marshal(map[string]any{"msgtype": "text", "text": map[string]string{"content": text}})
-	case "webhook_telegram":
-		// Telegram requires chat_id in URL query or separate field; use custom for now
-		payload, _ = json.Marshal(map[string]string{"text": text})
-	default: // custom
-		payload, _ = json.Marshal(map[string]string{"content": text, "message": text})
-	}
+	payload := BuildWebhookPayload(ch.Type, text)
 
 	req, err := http.NewRequest("POST", rawURL, strings.NewReader(string(payload)))
 	if err != nil {
@@ -148,4 +137,22 @@ func sendWebhook(cfg *config.Config, ch model.NotifyChannel, srv model.Server, r
 	if err == nil {
 		resp.Body.Close()
 	}
+}
+
+// BuildWebhookPayload returns a JSON body formatted for the given webhook provider.
+func BuildWebhookPayload(chType, text string) []byte {
+	var payload []byte
+	switch chType {
+	case "webhook_wechat", "webhook_dingtalk":
+		payload, _ = json.Marshal(map[string]any{"msgtype": "text", "text": map[string]string{"content": text}})
+	case "webhook_slack":
+		payload, _ = json.Marshal(map[string]string{"text": text})
+	case "webhook_feishu":
+		payload, _ = json.Marshal(map[string]any{"msg_type": "text", "content": map[string]string{"text": text}})
+	case "webhook_telegram":
+		payload, _ = json.Marshal(map[string]string{"text": text})
+	default: // custom
+		payload, _ = json.Marshal(map[string]string{"content": text, "message": text})
+	}
+	return payload
 }

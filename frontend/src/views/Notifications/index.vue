@@ -166,7 +166,7 @@ function metricLabel(m: string) {
   return ({ cpu: 'CPU', mem: '内存', disk: '磁盘', offline: '离线' } as Record<string, string>)[m] ?? m
 }
 function channelTypeLabel(t: string) {
-  return ({ webhook_wechat: '企业微信', webhook_dingtalk: '钉钉', custom: '自定义' } as Record<string, string>)[t] ?? t
+  return ({ webhook_wechat: '企业微信', webhook_dingtalk: '钉钉', webhook_slack: 'Slack', webhook_feishu: '飞书', custom: '自定义' } as Record<string, string>)[t] ?? t
 }
 function formatTime(t: string) { return dayjs(t).format('MM-DD HH:mm:ss') }
 
@@ -180,6 +180,8 @@ const metricOptions = [
 const channelTypeOptions = [
   { label: '企业微信机器人', value: 'webhook_wechat' },
   { label: '钉钉机器人', value: 'webhook_dingtalk' },
+  { label: 'Slack Incoming Webhook', value: 'webhook_slack' },
+  { label: '飞书自定义机器人', value: 'webhook_feishu' },
   { label: '自定义 Webhook', value: 'custom' },
 ]
 

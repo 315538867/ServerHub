@@ -26,7 +26,7 @@ type AlertEvent struct {
 type NotifyChannel struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	Name      string    `gorm:"not null" json:"name"`
-	Type      string    `gorm:"not null" json:"type"` // webhook_wechat / webhook_dingtalk / webhook_telegram / custom
+	Type      string    `gorm:"not null" json:"type"` // webhook_wechat / webhook_dingtalk / webhook_slack / webhook_feishu / webhook_telegram / custom
 	URL       string    `json:"-"`                    // AES encrypted
 	Template  string    `json:"template"`
 	Enabled   bool      `gorm:"default:true" json:"enabled"`

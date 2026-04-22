@@ -1,7 +1,6 @@
 package alerts
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +12,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/safehttp"
+	"github.com/serverhub/serverhub/pkg/scheduler"
 	"gorm.io/gorm"
 )
 
@@ -284,13 +284,7 @@ func sendWebhookRaw(chType, rawURL, text string) {
 	if err := safehttp.ValidateOutboundURL(rawURL); err != nil {
 		return
 	}
-	var payload []byte
-	switch chType {
-	case "webhook_wechat", "webhook_dingtalk":
-		payload, _ = json.Marshal(map[string]any{"msgtype": "text", "text": map[string]string{"content": text}})
-	default:
-		payload, _ = json.Marshal(map[string]string{"content": text, "message": text})
-	}
+	payload := scheduler.BuildWebhookPayload(chType, text)
 	req, err := http.NewRequest("POST", rawURL, strings.NewReader(string(payload)))
 	if err != nil {
 		return
