@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { getSetupStatus } from '@/api/setup'
 
 const router = createRouter({
   history: createWebHistory('/panel/'),
@@ -8,6 +9,12 @@ const router = createRouter({
       path: '/login',
       name: 'Login',
       component: () => import('@/views/Login/index.vue'),
+      meta: { public: true },
+    },
+    {
+      path: '/setup',
+      name: 'Setup',
+      component: () => import('@/views/Setup/Wizard.vue'),
       meta: { public: true },
     },
     {
@@ -91,14 +98,62 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to) => {
-  const auth = useAuthStore()
-  if (!to.meta.public && !auth.token) {
-    return { name: 'Login', query: { redirect: to.fullPath } }
+// Cache the setup-status probe for the session so the guard doesn't hammer
+// the endpoint on every navigation. Cleared on logout via the auth store.
+let setupChecked = false
+let setupPending = false
+let setupNeeded = false
+
+async function checkSetup(): Promise<boolean> {
+  if (setupChecked) return setupNeeded
+  if (setupPending) return false
+  setupPending = true
+  try {
+    const st = await getSetupStatus()
+    setupNeeded = st.needs_admin || st.needs_local_server
+    setupChecked = true
+    return setupNeeded
+  } catch {
+    return false
+  } finally {
+    setupPending = false
   }
+}
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+
+  // Let the wizard page load freely; it fetches status on its own.
+  if (to.name === 'Setup') return
+
+  // Before login, a fresh install should route visitors to the wizard
+  // instead of the login page.
+  if (!auth.token) {
+    if (await checkSetup()) {
+      return { name: 'Setup' }
+    }
+    if (!to.meta.public) {
+      return { name: 'Login', query: { redirect: to.fullPath } }
+    }
+    return
+  }
+
+  // Logged in: if backend still reports wizard steps pending (e.g. admin
+  // created but local-server step abandoned), push user back to the wizard.
+  if (await checkSetup()) {
+    return { name: 'Setup' }
+  }
+
   if (to.name === 'Login' && auth.token) {
     return { name: 'Dashboard' }
   }
 })
+
+// Exposed so the wizard can invalidate the cache once it finishes,
+// forcing the next navigation to re-check the backend.
+export function invalidateSetupCache() {
+  setupChecked = false
+  setupNeeded = false
+}
 
 export default router

@@ -189,6 +189,6 @@ cat <<EOF
  Data:    $DATA_DIR           (SQLite + ssh_keys + deploy-logs)
  Service: systemctl {status,restart,stop} serverhub
  Logs:    journalctl -u serverhub -f
- Login:   admin / admin   (change immediately)
+ Login:   首次访问面板进入初始化向导，自行设定管理员账号
 ──────────────────────────────────────────────────────────────
 EOF

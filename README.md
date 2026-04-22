@@ -60,7 +60,7 @@ make dev-frontend       # cd frontend && bun run dev      → :5173
 
 ### 访问
 
-默认账号 `admin / admin`，登录后立即修改。面板地址：`http://<host>:9999/panel/`。
+首次访问 `http://<host>:9999/panel/` 会进入初始化向导：填写管理员账号 → 容器部署还会引导一键纳管宿主机（生成 SSH 密钥，宿主上粘贴一行命令即可）。完成后跳到面板首页。
 
 ## 文档
 

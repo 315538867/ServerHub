@@ -29,6 +29,7 @@ import (
 	apilogsearch "github.com/serverhub/serverhub/api/logsearch"
 	apinginx "github.com/serverhub/serverhub/api/nginx"
 	apiservers "github.com/serverhub/serverhub/api/servers"
+	apisetup "github.com/serverhub/serverhub/api/setup"
 	apissl "github.com/serverhub/serverhub/api/ssl"
 	apisystem "github.com/serverhub/serverhub/api/system"
 	apiterminal "github.com/serverhub/serverhub/api/terminal"
@@ -155,6 +156,12 @@ func main() {
 	authGroup := base.Group("/auth")
 	authGroup.Use(middleware.RateLimit(cfg))
 	apiauth.RegisterRoutes(authGroup, db, cfg)
+
+	// First-run wizard (intentionally public — user table is empty on first
+	// boot, so JWT auth isn't available yet. Each endpoint enforces its own
+	// safety gate server-side: /admin requires user_count==0, /local/* requires
+	// containerized runtime + admin already created.)
+	apisetup.RegisterRoutes(base.Group("/setup"), db, cfg)
 
 	// ── protected routes ───────────────────────────────────────────
 	protected := base.Group("/")

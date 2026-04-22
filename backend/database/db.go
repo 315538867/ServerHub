@@ -1,8 +1,6 @@
 package database
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -10,6 +8,7 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
+	"github.com/serverhub/serverhub/pkg/sysinfo"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -56,6 +55,7 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.NotifyChannel{},
 		&model.Application{},
 		&model.AppNginxRoute{},
+		&model.SetupState{},
 	); err != nil {
 		panic(fmt.Sprintf("migration failed: %v", err))
 	}
@@ -103,21 +103,22 @@ func seedSettings(db *gorm.DB) {
 	}
 }
 
+// seedAdminUser ensures dev mode always has a working admin/admin123 login.
+// In production, the user table is left empty on first boot — the setup
+// wizard (POST /panel/api/v1/setup/admin) creates the first admin from
+// user-supplied credentials. The wizard's safety gate is "user count == 0",
+// so this function must NOT seed anything in production.
 func seedAdminUser(db *gorm.DB, cfg *config.Config) {
+	if !cfg.DevMode {
+		return
+	}
 	var count int64
 	db.Model(&model.User{}).Count(&count)
 	if count > 0 {
 		return
 	}
 
-	password := "admin123"
-	if !cfg.DevMode {
-		// production: require serverhub init to set password
-		password = generateRandomPassword()
-		fmt.Printf("⚠️  Default admin password: %s  (change this immediately)\n", password)
-	}
-
-	hash, err := crypto.BcryptHash(password)
+	hash, err := crypto.BcryptHash("admin123")
 	if err != nil {
 		panic(fmt.Sprintf("failed to hash password: %v", err))
 	}
@@ -132,24 +133,20 @@ func seedAdminUser(db *gorm.DB, cfg *config.Config) {
 	if err := db.Create(&user).Error; err != nil {
 		panic(fmt.Sprintf("failed to create admin user: %v", err))
 	}
-
-	if cfg.DevMode {
-		fmt.Println("✓ Dev admin user created: admin / admin123")
-	}
+	fmt.Println("✓ Dev admin user created: admin / admin123")
 }
 
-func generateRandomPassword() string {
-	b := make([]byte, 12)
-	if _, err := rand.Read(b); err != nil {
-		return "changeme123!"
-	}
-	return hex.EncodeToString(b)[:16]
-}
-
-// seedLocalServer inserts a single "local" server record representing the host
-// machine ServerHub itself runs on. It is created only if no local-type server
-// exists. The record lets handlers manage the local host without SSH.
+// seedLocalServer inserts a single Type="local" server record representing
+// the host the binary itself runs on. Skipped under containerized runtimes:
+// the local runner (`bash -lc <cmd>`) only sees the container's namespace,
+// not the host, so an in-container "local" entry can't manage host nginx /
+// systemd / docker. Container deployments instead get a wizard-driven
+// SSH-self-loopback record (Type="ssh", Host=<gateway>) created via the
+// setup wizard.
 func seedLocalServer(db *gorm.DB) {
+	if sysinfo.IsContainerized() {
+		return
+	}
 	var count int64
 	db.Model(&model.Server{}).Where("type = ?", "local").Count(&count)
 	if count > 0 {
