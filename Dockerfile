@@ -72,9 +72,8 @@ RUN set -eux; \
 # 版本 20.10.24（API 1.41）对现代 daemon（API ≥1.44）太旧，调 docker.sock 会被
 # "client version is too old" 拒绝。只下载 CLI 二进制（~30MB），daemon 走宿主。
 ARG BASE_RUNTIME=debian:bookworm-slim
-ARG DOCKER_CLI_VERSION=27.3.1
 FROM ${BASE_RUNTIME}
-ARG DOCKER_CLI_VERSION
+ARG DOCKER_CLI_VERSION=27.3.1
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       bash ca-certificates tini curl && \
