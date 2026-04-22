@@ -5,7 +5,7 @@
 | 方式 | 适合 | 特点 |
 |---|---|---|
 | [1. install.sh](#1-installsh-裸机单机) | 裸机 / VPS 单机 | 幂等脚本，systemd 托管，加固沙箱 |
-| [2. Docker / Compose](#2-docker--compose) | 已有容器化环境 | distroless 镜像，nonroot，单容器 |
+| [2. Docker / Compose](#2-docker--compose) | 已有容器化环境 | debian-slim 镜像（含 bash + docker-cli），nonroot uid 65532，单容器 |
 | [3. 手动构建](#3-手动构建) | 离线 / 定制 | 自编译 + 自写 systemd |
 
 > **aes_key 警告**：`security.aes_key` 用于加密服务器密码 / 私钥 / 部署环境变量。**丢失后 DB 中所有加密字段不可恢复**。任何方式部署都必须妥善保存 `config.yaml`。
@@ -95,15 +95,17 @@ bash scripts/build.sh docker        # 一键脚本：自动检测 buildx，打 s
 docker build -t serverhub:local .
 ```
 
-Dockerfile 为多阶段构建：`node:20` 构前端 → `golang:1.25` 构后端（CGO=1，支持 amd64/arm64 交叉编译） → `gcr.io/distroless/base-debian12:nonroot` 运行。
+Dockerfile 为多阶段构建：`node:20` 构前端 → `golang:1.25` 构后端（CGO=1，支持 amd64/arm64 交叉编译） → `debian:bookworm-slim` 运行（预装 bash、ca-certificates、tini、docker.io CLI、curl，serverhub uid 65532）。
 
-> **gcr.io 拉不到？** Dockerfile 暴露 `BASE_RUNTIME` 构建参数，允许换 distroless 基础镜像源（例如指向你内网或国内 mirror）：
+> **为什么不用 distroless？** 面板"本机服务器"模式需要在容器里通过 `bash -lc` 调 `docker ps` / `systemctl ...` / `nginx -t` 等命令，distroless 里既没 shell 也没这些 CLI，会直接 5xx。改用 debian-slim 体积涨到 ~180MB，但本机面板才能用。
+>
+> **想换 mirror？** Dockerfile 暴露 `BASE_RUNTIME` 构建参数：
 > ```bash
-> BASE_RUNTIME=<your-mirror>/distroless/base-debian12:nonroot bash scripts/build.sh docker
+> BASE_RUNTIME=<your-mirror>/debian:bookworm-slim bash scripts/build.sh docker
 > # 或手动：
-> docker buildx build --build-arg BASE_RUNTIME=<your-mirror>/... -t serverhub:local --load .
+> docker buildx build --build-arg BASE_RUNTIME=<your-mirror>/debian:bookworm-slim -t serverhub:local --load .
 > ```
-> CI 默认仍走 `gcr.io`，本地覆盖不影响 release 产物。
+> 注意覆盖的镜像须自带 apt 与可解析的源，构建过程会 `apt-get install bash docker.io ...`。
 
 ### 2.2 使用 GitHub Release 的 OCI tar（离线）
 
@@ -131,14 +133,17 @@ docker compose exec serverhub /serverhub --help      # 容器内无 shell
 docker compose restart serverhub
 ```
 
-容器暴露 `/healthz`，`HEALTHCHECK` 走二进制自带的 `--healthcheck` 子命令（distroless 无 shell，无法用 curl）。
+容器暴露 `/healthz`，`HEALTHCHECK` 走二进制自带的 `--healthcheck` 子命令。
 
 ### 2.4 运行（docker run）
 
 ```bash
+# 自定义网络，避开 docker0 默认段与 WireGuard/k8s 常用的 10.0.0.0/8
+docker network create --subnet 172.30.0.0/24 shubnet 2>/dev/null || true
 docker volume create serverhub-data
 docker run -d \
   --name serverhub \
+  --network shubnet \
   --restart unless-stopped \
   -p 9999:9999 \
   -v serverhub-data:/data \
@@ -146,6 +151,8 @@ docker run -d \
   -e SERVERHUB_CONFIG=/data/config.yaml \
   serverhub:local
 ```
+
+> **路由冲突排雷**：若宿主存在 WireGuard / Tailscale / k8s overlay，docker0 默认 `172.17.0.0/16` 或 daemon 自动分配的 `10.x` 段可能被它们抢走路由（症状：`docker-proxy` LISTEN 正常，但 `curl 127.0.0.1:9999` 立刻 `Connection reset by peer`）。建议用上面这种自定义 bridge 子网；或排查 `ip route` 看哪个 dev 抢了容器 IP。
 
 ### 2.5 环境变量
 

@@ -3,16 +3,16 @@
 # Multi-stage build for ServerHub.
 #   1. frontend  — bun build Vue assets (Vite outputs to ../backend/web/dist)
 #   2. backend   — go build with CGO=1 (mattn/go-sqlite3 needs libc)
-#   3. runtime   — distroless/base-debian12:nonroot (~25MB, no shell)
+#   3. runtime   — debian:bookworm-slim + bash + docker-cli (~180MB)
+#
+# 历史版本曾用 distroless/nonroot；但本机模式的 runner 通过 `bash -lc` 调用
+# `docker ps`/`systemctl ...`，distroless 既无 shell 也无 docker CLI，导致
+# "本机服务器" 类型的 Docker / systemd 面板全部 5xx。改用 debian-slim
+# 并预装 bash + docker.io CLI（仅 client，daemon 走宿主 socket）。
 #
 # Vite's config writes the bundle into the sibling backend/web/dist folder,
 # so both `frontend/` and `backend/` must be laid out at the same level
 # inside the builder for `bun run build` to succeed.
-
-# Global ARG — must precede any FROM that references it. Lets users swap the
-# runtime base (e.g. through a mirror) when gcr.io is unreachable:
-#   docker buildx build --build-arg BASE_RUNTIME=<mirror>/distroless/base-debian12:nonroot ...
-ARG BASE_RUNTIME=gcr.io/distroless/base-debian12:nonroot
 
 # ── stage 1: frontend ─────────────────────────────────────────
 # Pin to BUILDPLATFORM: bun/node under QEMU emulation is slow and occasionally
@@ -58,11 +58,18 @@ RUN set -eux; \
       -o /out/serverhub .
 
 # ── stage 3: runtime ──────────────────────────────────────────
-# BASE_RUNTIME lets users swap the runtime base (e.g. through a mirror) when
-# gcr.io is unreachable:
-#   docker buildx build --build-arg BASE_RUNTIME=<mirror>/distroless/base-debian12:nonroot ...
-ARG BASE_RUNTIME=gcr.io/distroless/base-debian12:nonroot
+# BASE_RUNTIME 默认 debian:bookworm-slim；可通过 mirror 镜像替换：
+#   docker buildx build --build-arg BASE_RUNTIME=<mirror>/debian:bookworm-slim ...
+# 已包含：bash, ca-certificates, tini, docker-cli (docker.io), curl
+# 用户：serverhub (uid 65532)，与旧 distroless nonroot 兼容
+ARG BASE_RUNTIME=debian:bookworm-slim
 FROM ${BASE_RUNTIME}
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      bash ca-certificates tini curl docker.io && \
+    rm -rf /var/lib/apt/lists/* && \
+    groupadd -g 65532 serverhub && \
+    useradd -u 65532 -g 65532 -m -s /bin/bash serverhub
 COPY --from=backend /out/serverhub /serverhub
 COPY backend/config.example.yaml /etc/serverhub/config.example.yaml
 ENV SERVERHUB_DATA_DIR=/data \
@@ -70,7 +77,7 @@ ENV SERVERHUB_DATA_DIR=/data \
     SERVERHUB_PORT=9999
 VOLUME ["/data"]
 EXPOSE 9999
-USER nonroot:nonroot
+USER serverhub:serverhub
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["/serverhub", "--healthcheck"]
-ENTRYPOINT ["/serverhub"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/serverhub"]

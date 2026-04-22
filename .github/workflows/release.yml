@@ -143,7 +143,7 @@ jobs:
           LOADED=$(awk -F': ' '/Loaded image(| ID):/{print $2}' /tmp/load.out | tail -n1)
           docker tag "${LOADED}" "${IMG}"
           # Extract binary to inspect arch + version without running it
-          # (distroless has no shell, and arm64 ELFs need QEMU on amd64).
+          # (avoid QEMU dependency for arm64 on amd64 runners).
           CID=$(docker create "${IMG}")
           docker cp "${CID}:/serverhub" /tmp/serverhub.bin
           docker rm "${CID}"

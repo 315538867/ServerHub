@@ -39,7 +39,7 @@ docker build -t serverhub:local .
 docker compose up -d
 ```
 
-distroless 镜像、nonroot 运行；或从 GitHub Release 下载 `serverhub_linux_<arch>.image.tar` 离线 `docker load`。
+debian-slim 镜像（含 bash + docker-cli），nonroot uid 65532；或从 GitHub Release 下载 `serverhub_linux_<arch>.image.tar` 离线 `docker load`。
 
 **③ 手动构建**
 

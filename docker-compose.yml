@@ -11,6 +11,8 @@ services:
     image: serverhub:local
     container_name: serverhub
     restart: unless-stopped
+    networks:
+      - shubnet
     ports:
       - "9999:9999"
     volumes:
@@ -25,6 +27,16 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+
+# Custom subnet避开 docker0 默认 172.17/16 与 WireGuard / k8s overlay 常用的 10.0.0.0/8。
+# 若 172.30.0.0/24 与你环境冲突，改成任意未占用的私有段即可。
+networks:
+  shubnet:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+          gateway: 172.30.0.1
 
 volumes:
   serverhub-data:

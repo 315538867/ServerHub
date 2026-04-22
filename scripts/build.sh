@@ -9,7 +9,7 @@
 #
 # Image tags applied: serverhub:local + serverhub:<git-describe>
 # Env:
-#   BASE_RUNTIME=<image>   override distroless base (useful when gcr.io is unreachable)
+#   BASE_RUNTIME=<image>   override runtime base (default debian:bookworm-slim)
 
 set -euo pipefail
 
