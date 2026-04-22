@@ -62,6 +62,7 @@ func init() {
 				e := v.(*entry)
 				if e.lastUsed.Before(cutoff) {
 					clientToID.Delete(e.client)
+					sessSem.Delete(e.client)
 					e.client.Close()
 					mu.Delete(k)
 				}
@@ -152,6 +153,7 @@ func Connect(id uint, host string, port int, user, authType, cred string) (*goss
 			return e.client, nil
 		}
 		clientToID.Delete(e.client)
+		sessSem.Delete(e.client)
 		e.client.Close()
 		mu.Delete(id)
 	}
@@ -176,6 +178,7 @@ func Remove(id uint) {
 	if v, ok := mu.Load(id); ok {
 		e := v.(*entry)
 		clientToID.Delete(e.client)
+		sessSem.Delete(e.client)
 		e.client.Close()
 		mu.Delete(id)
 	}
@@ -202,9 +205,34 @@ func evictByClient(client *gossh.Client) {
 	if v, ok := clientToID.Load(client); ok {
 		Remove(v.(uint))
 	}
+	sessSem.Delete(client)
+}
+
+// maxConcurrentSessions caps how many sessions Run will open against a single
+// pooled client at once. OpenSSH's default MaxSessions is 10; staying below it
+// avoids the "open failed: administratively prohibited" race where many
+// goroutines call NewSession concurrently and exhaust the budget — even
+// though each session is short-lived.
+const maxConcurrentSessions = 8
+
+// sessSem maps *gossh.Client → chan struct{} (a counting semaphore).
+// Lazily allocated on first Run for each client; cleared on eviction.
+var sessSem sync.Map
+
+func acquireSession(client *gossh.Client) chan struct{} {
+	if v, ok := sessSem.Load(client); ok {
+		return v.(chan struct{})
+	}
+	ch := make(chan struct{}, maxConcurrentSessions)
+	actual, _ := sessSem.LoadOrStore(client, ch)
+	return actual.(chan struct{})
 }
 
 func Run(client *gossh.Client, cmd string) (string, error) {
+	sem := acquireSession(client)
+	sem <- struct{}{}
+	defer func() { <-sem }()
+
 	sess, err := client.NewSession()
 	if err != nil {
 		// Self-heal: evict pool entry so next Connect() opens a fresh TCP
