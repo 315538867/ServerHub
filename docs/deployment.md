@@ -90,6 +90,8 @@ sudo bash scripts/uninstall.sh --purge   # 连同 /etc/serverhub 和 /var/lib/se
 ### 2.1 本地构建
 
 ```bash
+bash scripts/build.sh docker        # 一键脚本：自动检测 buildx，打 serverhub:local + 版本 tag
+# 或手动：
 docker build -t serverhub:local .
 ```
 
