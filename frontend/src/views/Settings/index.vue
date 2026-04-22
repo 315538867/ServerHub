@@ -86,6 +86,9 @@
         <NInput v-model:value="auditFilter.username" placeholder="用户名" size="small" clearable class="filter-sm" @blur="loadAudit" />
         <NInput v-model:value="auditFilter.path" placeholder="路径" size="small" clearable class="filter-md" @blur="loadAudit" />
         <NSelect v-model:value="auditFilter.status" placeholder="状态" size="small" clearable :options="statusOptions" class="filter-sm" @update:value="loadAudit" />
+        <UiButton :variant="secOnly ? 'primary' : 'secondary'" size="sm" @click="toggleSecOnly">
+          仅安全
+        </UiButton>
         <UiButton variant="secondary" size="sm" @click="loadAudit">
           <template #icon><RefreshCw :size="14" /></template>
           刷新
@@ -203,6 +206,13 @@ const auditTotal = ref(0)
 const auditPage = ref(1)
 const auditLoading = ref(false)
 const auditFilter = reactive({ username: '', path: '', status: '' })
+const secOnly = ref(false)
+function toggleSecOnly() {
+  secOnly.value = !secOnly.value
+  auditFilter.path = secOnly.value ? 'security:' : ''
+  auditPage.value = 1
+  loadAudit()
+}
 
 const statusOptions = [
   { label: '成功 2xx', value: '2' },
