@@ -10,7 +10,12 @@ import (
 	"gorm.io/gorm"
 )
 
-var startTime = time.Now()
+var (
+	startTime = time.Now()
+	// Version can be set at process startup (typically from main.Version)
+	// to surface the build tag in the wrapped /api/v1/health payload.
+	Version = "dev"
+)
 
 type healthData struct {
 	Version  string `json:"version"`
@@ -29,7 +34,7 @@ func Handler(cfg *config.Config, db *gorm.DB) gin.HandlerFunc {
 		}
 
 		resp.OK(c, healthData{
-			Version:  "dev",
+			Version:  Version,
 			Uptime:   int64(time.Since(startTime).Seconds()),
 			DBStatus: dbStatus,
 			OS:       runtime.GOOS,
