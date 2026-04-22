@@ -97,6 +97,14 @@ docker build -t serverhub:local .
 
 Dockerfile 为多阶段构建：`node:20` 构前端 → `golang:1.25` 构后端（CGO=1，支持 amd64/arm64 交叉编译） → `gcr.io/distroless/base-debian12:nonroot` 运行。
 
+> **gcr.io 拉不到？** Dockerfile 暴露 `BASE_RUNTIME` 构建参数，允许换 distroless 基础镜像源（例如指向你内网或国内 mirror）：
+> ```bash
+> BASE_RUNTIME=<your-mirror>/distroless/base-debian12:nonroot bash scripts/build.sh docker
+> # 或手动：
+> docker buildx build --build-arg BASE_RUNTIME=<your-mirror>/... -t serverhub:local --load .
+> ```
+> CI 默认仍走 `gcr.io`，本地覆盖不影响 release 产物。
+
 ### 2.2 使用 GitHub Release 的 OCI tar（离线）
 
 每个 release 附带 `serverhub_linux_<arch>.image.tar`：

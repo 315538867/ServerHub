@@ -8,6 +8,8 @@
 #   bash scripts/build.sh all            # binary + docker
 #
 # Image tags applied: serverhub:local + serverhub:<git-describe>
+# Env:
+#   BASE_RUNTIME=<image>   override distroless base (useful when gcr.io is unreachable)
 
 set -euo pipefail
 
@@ -37,9 +39,15 @@ Legacy \`docker build\` no longer works in Docker >= 23 without buildx."
   fi
   local tag_local="serverhub:local"
   local tag_ver="serverhub:${VERSION}"
+  local -a extra=()
+  if [[ -n "${BASE_RUNTIME:-}" ]]; then
+    extra+=(--build-arg "BASE_RUNTIME=${BASE_RUNTIME}")
+    log "base runtime override → ${BASE_RUNTIME}"
+  fi
   log "docker buildx → $tag_local + $tag_ver"
   docker buildx build \
     --build-arg "VERSION=$VERSION" \
+    "${extra[@]}" \
     -t "$tag_local" -t "$tag_ver" \
     --load .
   log "✓ images: $tag_local, $tag_ver"

@@ -46,7 +46,11 @@ RUN set -eux; \
       -o /out/serverhub .
 
 # ── stage 3: runtime ──────────────────────────────────────────
-FROM gcr.io/distroless/base-debian12:nonroot
+# BASE_RUNTIME lets users swap the runtime base (e.g. through a mirror) when
+# gcr.io is unreachable:
+#   docker buildx build --build-arg BASE_RUNTIME=<mirror>/distroless/base-debian12:nonroot ...
+ARG BASE_RUNTIME=gcr.io/distroless/base-debian12:nonroot
+FROM ${BASE_RUNTIME}
 COPY --from=backend /out/serverhub /serverhub
 COPY backend/config.example.yaml /etc/serverhub/config.example.yaml
 ENV SERVERHUB_DATA_DIR=/data \
