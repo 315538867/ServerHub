@@ -182,10 +182,15 @@
           </NRadioGroup>
         </NFormItem>
         <NFormItem label="Host">
-          <NInput v-model:value="connForm.host" placeholder="127.0.0.1" />
+          <NInput v-model:value="connForm.host" placeholder="127.0.0.1 / localhost" />
+          <template #feedback>
+            <span style="font-size: var(--fs-xs); color: var(--ui-fg-3)">
+              填 <code>localhost</code> 走 Unix socket（适合只允许 <code>'user'@'localhost'</code> 的库）；填 <code>127.0.0.1</code> 走 TCP。
+            </span>
+          </template>
         </NFormItem>
         <NFormItem label="端口">
-          <NInputNumber v-model:value="connForm.port" :min="1" :max="65535" style="width:100%" />
+          <NInputNumber v-model:value="connForm.port" :min="1" :max="65535" :disabled="connForm.host?.toLowerCase() === 'localhost'" style="width:100%" />
         </NFormItem>
         <NFormItem v-if="connForm.type === 'mysql'" label="用户名">
           <NInput v-model:value="connForm.username" placeholder="root" />

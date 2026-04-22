@@ -1,1 +1,0 @@
-import{$ as n,v as a}from"./index-D4QMVksg.js";function d(s,e="操作失败"){var t,r;const o=((r=(t=s==null?void 0:s.response)==null?void 0:t.data)==null?void 0:r.msg)??(s==null?void 0:s.message)??e;/\n|sudo|权限|NOPASSWD|sudoers/i.test(o)?n().error({title:"需要管理员权限",content:o,duration:15e3,closable:!0}):a().error(o)}export{d as s};

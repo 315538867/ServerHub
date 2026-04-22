@@ -100,8 +100,16 @@ func getConnCtx(c *gin.Context, db *gorm.DB, cfg *config.Config) (*connCtx, bool
 }
 
 func (cx *connCtx) mysqlArgs() string {
-	args := fmt.Sprintf("-u%s -h%s -P%d", shellQuote(cx.conn.Username), shellQuote(cx.conn.Host), cx.conn.Port)
-	return args
+	// Host == "localhost" (or empty) → let mysql client pick the default unix
+	// socket. That's the only way to satisfy `'user'@'localhost'` grants, which
+	// are *not* matched by TCP to 127.0.0.1. Passing `-h localhost -P 3306`
+	// would force a TCP attempt and break this case.
+	host := strings.ToLower(strings.TrimSpace(cx.conn.Host))
+	if host == "" || host == "localhost" {
+		return fmt.Sprintf("-u%s", shellQuote(cx.conn.Username))
+	}
+	return fmt.Sprintf("-u%s -h%s -P%d",
+		shellQuote(cx.conn.Username), shellQuote(cx.conn.Host), cx.conn.Port)
 }
 
 func (cx *connCtx) mysqlEnv() string {
