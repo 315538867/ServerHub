@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-REPO="serverhub/serverhub"
+REPO="315538867/ServerHub"
 BIN_PATH="/usr/local/bin/serverhub"
 CONFIG_DIR="/etc/serverhub"
 DATA_DIR="/var/lib/serverhub"

@@ -18,11 +18,11 @@
 
 ```bash
 # 最新版本
-curl -fsSL https://raw.githubusercontent.com/serverhub/serverhub/main/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/315538867/ServerHub/main/scripts/install.sh \
   | sudo bash
 
 # 指定版本
-curl -fsSL https://raw.githubusercontent.com/serverhub/serverhub/main/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/315538867/ServerHub/main/scripts/install.sh \
   | sudo bash -s -- v1.2.3
 
 # 自定义下载源（内网镜像、离线包）
@@ -54,7 +54,7 @@ journalctl -u serverhub -f
 ### 升级
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/serverhub/serverhub/main/scripts/upgrade.sh \
+curl -fsSL https://raw.githubusercontent.com/315538867/ServerHub/main/scripts/upgrade.sh \
   | sudo bash                            # 最新版
 # 或 sudo bash upgrade.sh v1.2.3
 ```
@@ -102,7 +102,7 @@ Dockerfile 为多阶段构建：`node:20` 构前端 → `golang:1.25` 构后端�
 每个 release 附带 `serverhub_linux_<arch>.image.tar`：
 
 ```bash
-curl -fLO https://github.com/serverhub/serverhub/releases/download/v1.2.3/serverhub_linux_amd64.image.tar
+curl -fLO https://github.com/315538867/ServerHub/releases/download/v1.2.3/serverhub_linux_amd64.image.tar
 docker load -i serverhub_linux_amd64.image.tar
 # 自行 tag / push 到你的 registry
 ```

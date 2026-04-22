@@ -26,7 +26,7 @@
 **① install.sh — 裸机 / VPS**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/serverhub/serverhub/main/scripts/install.sh \
+curl -fsSL https://raw.githubusercontent.com/315538867/ServerHub/main/scripts/install.sh \
   | sudo bash
 ```
 
