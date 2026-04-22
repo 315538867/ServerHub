@@ -21,26 +21,46 @@
 
 ## 快速开始
 
-需要 Go 1.25+、Node 18+、CGO（SQLite）。
+### 生产部署（三选一）
+
+**① install.sh — 裸机 / VPS**
 
 ```bash
-# 开发
+curl -fsSL https://raw.githubusercontent.com/serverhub/serverhub/main/scripts/install.sh \
+  | sudo bash
+```
+
+幂等脚本：下载对应架构二进制 → 创建 `serverhub` 系统用户 → 写加固版 systemd unit → 首装生成随机 `jwt_secret` / `aes_key`。再次运行即原地升级；配套 `scripts/upgrade.sh`（失败自动回滚）与 `scripts/uninstall.sh --purge`。
+
+**② Docker / Compose**
+
+```bash
+docker build -t serverhub:local .
+docker compose up -d
+```
+
+distroless 镜像、nonroot 运行；或从 GitHub Release 下载 `serverhub_linux_<arch>.image.tar` 离线 `docker load`。
+
+**③ 手动构建**
+
+```bash
+make build              # → backend/serverhub（单文件，前端已 embed）
+```
+
+要求 Go 1.25+、Node 18+（或 Bun 1.2+）、CGO 工具链（SQLite 需要）。
+
+> **重要**：`security.aes_key` 用于加密服务器密码 / 私钥 / 部署 env —— **丢失后 DB 中所有加密字段不可恢复**，务必保存 `/etc/serverhub/config.yaml`（或容器卷里的 `config.yaml`）。
+
+### 开发
+
+```bash
 make dev-backend        # cd backend && go run . --dev    → :9999
-make dev-frontend       # cd frontend && npm run dev       → :5173
-
-# 生产构建（前端静态文件嵌入后端二进制）
-make build              # 输出 backend/serverhub
+make dev-frontend       # cd frontend && bun run dev      → :5173
 ```
 
-首次启动会在 `/opt/serverhub/` 写入 `config.yaml` 与 SQLite 数据库。可通过 flag 覆盖：
+### 访问
 
-```
-serverhub --config ./config.yaml --data ./data --port 9999
-```
-
-默认账号 `admin / admin`，登录后立即修改；生产务必自定义 `security.jwt_secret` 与 `security.aes_key`（启动时会检测默认值并告警）。
-
-面板地址：`http://<host>:9999/panel/`。
+默认账号 `admin / admin`，登录后立即修改。面板地址：`http://<host>:9999/panel/`。
 
 ## 文档
 
@@ -50,7 +70,7 @@ serverhub --config ./config.yaml --data ./data --port 9999
 - [数据模型](docs/database-design.md) — GORM 模型与索引
 - [API 参考](docs/api-design.md) — 路由分组、请求/响应约定
 - [前端设计](docs/frontend-design.md) — 路由、状态、UI 组件约定
-- [部署](docs/deployment.md) — 生产部署、systemd、升级
+- [部署](docs/deployment.md) — install.sh / Docker / 手动三种方式、systemd 加固、升级与备份
 - [功能清单](docs/features.md) — 按模块枚举
 
 ## 协议
