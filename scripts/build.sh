@@ -28,20 +28,20 @@ build_binary() {
 
 build_docker() {
   command -v docker >/dev/null || die "docker not installed"
+  if ! docker buildx version >/dev/null 2>&1; then
+    die "docker buildx not found. Install it:
+  macOS:  brew install docker-buildx && mkdir -p ~/.docker/cli-plugins && \\
+          ln -sfn \$(brew --prefix)/opt/docker-buildx/bin/docker-buildx ~/.docker/cli-plugins/docker-buildx
+  linux:  apt-get install docker-buildx-plugin   (or see https://docs.docker.com/go/buildx/)
+Legacy \`docker build\` no longer works in Docker >= 23 without buildx."
+  fi
   local tag_local="serverhub:local"
   local tag_ver="serverhub:${VERSION}"
-  if docker buildx version >/dev/null 2>&1; then
-    log "docker buildx → $tag_local + $tag_ver"
-    docker buildx build \
-      --build-arg "VERSION=$VERSION" \
-      -t "$tag_local" -t "$tag_ver" \
-      --load .
-  else
-    log "buildx not found, using legacy builder"
-    DOCKER_BUILDKIT=1 docker build \
-      --build-arg "VERSION=$VERSION" \
-      -t "$tag_local" -t "$tag_ver" .
-  fi
+  log "docker buildx → $tag_local + $tag_ver"
+  docker buildx build \
+    --build-arg "VERSION=$VERSION" \
+    -t "$tag_local" -t "$tag_ver" \
+    --load .
   log "✓ images: $tag_local, $tag_ver"
 }
 
