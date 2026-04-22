@@ -14,6 +14,11 @@
 # so both `frontend/` and `backend/` must be laid out at the same level
 # inside the builder for `bun run build` to succeed.
 
+# Global ARG —— 必须在任何 FROM 之前声明，否则下面 stage3 的 FROM ${BASE_RUNTIME}
+# 拿不到值会报 "base name should not be blank"。stage3 内还会再 ARG 一次以
+# 把变量带进该 stage 作用域。
+ARG BASE_RUNTIME=debian:bookworm-slim
+
 # ── stage 1: frontend ─────────────────────────────────────────
 # Pin to BUILDPLATFORM: bun/node under QEMU emulation is slow and occasionally
 # crashes; the produced web/dist is arch-independent so native build is fine.
