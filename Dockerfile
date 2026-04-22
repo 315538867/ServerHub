@@ -37,7 +37,8 @@ ARG TARGETARCH
 ARG VERSION=dev
 WORKDIR /src
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc gcc-aarch64-linux-gnu && \
+    apt-get install -y --no-install-recommends \
+      gcc gcc-aarch64-linux-gnu libc6-dev-arm64-cross && \
     rm -rf /var/lib/apt/lists/*
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
