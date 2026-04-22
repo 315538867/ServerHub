@@ -33,12 +33,23 @@ func putSettings(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "请求体格式错误")
 			return
 		}
-		for k, v := range body {
-			s := model.Setting{Key: k, Value: v}
-			db.Clauses(clause.OnConflict{
-				Columns:   []clause.Column{{Name: "key"}},
-				DoUpdates: clause.AssignmentColumns([]string{"value"}),
-			}).Create(&s)
+		// Atomic upsert — without a transaction a mid-flight failure would
+		// leave settings in a half-applied state.
+		err := db.Transaction(func(tx *gorm.DB) error {
+			for k, v := range body {
+				s := model.Setting{Key: k, Value: v}
+				if err := tx.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "key"}},
+					DoUpdates: clause.AssignmentColumns([]string{"value"}),
+				}).Create(&s).Error; err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			resp.InternalError(c, "保存失败")
+			return
 		}
 		resp.OK(c, nil)
 	}
