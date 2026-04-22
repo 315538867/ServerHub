@@ -9,6 +9,11 @@
 # so both `frontend/` and `backend/` must be laid out at the same level
 # inside the builder for `bun run build` to succeed.
 
+# Global ARG — must precede any FROM that references it. Lets users swap the
+# runtime base (e.g. through a mirror) when gcr.io is unreachable:
+#   docker buildx build --build-arg BASE_RUNTIME=<mirror>/distroless/base-debian12:nonroot ...
+ARG BASE_RUNTIME=gcr.io/distroless/base-debian12:nonroot
+
 # ── stage 1: frontend ─────────────────────────────────────────
 FROM node:20-bookworm-slim AS frontend
 WORKDIR /src
