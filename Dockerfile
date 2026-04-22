@@ -12,7 +12,7 @@
 # ── stage 1: frontend ─────────────────────────────────────────
 FROM node:20-bookworm-slim AS frontend
 WORKDIR /src
-RUN npm install -g bun@1.2.18
+RUN npm install -g bun@1.3.10
 # Mirror the repo layout so Vite's ../backend/web/dist outDir resolves.
 COPY frontend/package.json frontend/bun.lock frontend/
 RUN cd frontend && bun install --frozen-lockfile
