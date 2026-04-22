@@ -140,7 +140,7 @@ function openLogs(row: ContainerItem) {
     })
     const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
     logsWs?.close()
-    logsWs = new WebSocket(containerLogsWsUrl(serverId.value, row.id, auth.token))
+    logsWs = new WebSocket(containerLogsWsUrl(serverId.value, row.id), ['bearer', auth.token ?? ''])
     logsWs.onmessage = (e) => {
       try { const msg = JSON.parse(e.data); if (msg.type === 'output') logsTerm?.writeln(msg.data) } catch { /* ignore */ }
     }

@@ -25,8 +25,10 @@ func Auth(cfg *config.Config) gin.HandlerFunc {
 		if strings.HasPrefix(header, "Bearer ") {
 			tokenStr = strings.TrimPrefix(header, "Bearer ")
 		} else {
-			// Fallback: accept ?token= for WebSocket upgrades and file downloads.
-			tokenStr = c.Query("token")
+			// Fallback for WebSocket upgrades and file downloads. Subprotocol
+			// form is preferred — it stays out of proxy logs and browser
+			// history; the ?token= form is kept for back-compat.
+			tokenStr, _ = ExtractWSToken(c.Request)
 		}
 		if tokenStr == "" {
 			resp.Unauthorized(c, "missing token")

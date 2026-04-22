@@ -271,8 +271,8 @@ function startLogsStream(type: string) {
   })
   const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
   logsWs?.close()
-  const url = type === 'access' ? accessLogsWsUrl(serverId.value, auth.token) : errorLogsWsUrl(serverId.value, auth.token)
-  logsWs = new WebSocket(url)
+  const url = type === 'access' ? accessLogsWsUrl(serverId.value) : errorLogsWsUrl(serverId.value)
+  logsWs = new WebSocket(url, ['bearer', auth.token ?? ''])
   logsWs.onmessage = (e) => {
     try { const msg = JSON.parse(e.data); if (msg.type === 'output') logsTerm?.writeln(msg.data) } catch { /* ignore */ }
   }

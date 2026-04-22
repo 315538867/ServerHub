@@ -219,7 +219,7 @@ function openLogs(row: ContainerItem) {
     logsTerm = new Terminal({ theme: { background: '#0A0A0A', foreground: '#E4E4E7' }, convertEol: true, fontSize: 12 })
     const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
     logsWs?.close()
-    logsWs = new WebSocket(containerLogsWsUrl(serverId.value, row.id, auth.token))
+    logsWs = new WebSocket(containerLogsWsUrl(serverId.value, row.id), ['bearer', auth.token ?? ''])
     logsWs.onmessage = (e) => {
       try { const msg = JSON.parse(e.data); if (msg.type === 'output') logsTerm?.writeln(msg.data) } catch { /* ignore */ }
     }
@@ -248,7 +248,7 @@ function startPull() {
   if (!image) return
   pulling.value = true; pullOutput.value = ''
   pullWs?.close()
-  pullWs = new WebSocket(pullImageWsUrl(serverId.value, image, auth.token))
+  pullWs = new WebSocket(pullImageWsUrl(serverId.value, image), ['bearer', auth.token ?? ''])
   pullWs.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data)

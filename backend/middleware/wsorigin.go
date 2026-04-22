@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
 )
@@ -63,4 +64,16 @@ func ExtractWSToken(r *http.Request) (token string, viaSubprotocol bool) {
 		}
 	}
 	return r.URL.Query().Get("token"), false
+}
+
+// WSUpgrade upgrades the connection while honouring the subprotocol auth
+// scheme: when the client offers `Sec-WebSocket-Protocol: bearer, <jwt>`,
+// the server MUST echo "bearer" or browsers abort the handshake. Using
+// this helper keeps every WS handler from re-implementing that detail.
+func WSUpgrade(up websocket.Upgrader, c *gin.Context) (*websocket.Conn, error) {
+	var respHeader http.Header
+	if _, viaSubproto := ExtractWSToken(c.Request); viaSubproto {
+		respHeader = http.Header{"Sec-WebSocket-Protocol": []string{"bearer"}}
+	}
+	return up.Upgrade(c.Writer, c.Request, respHeader)
 }

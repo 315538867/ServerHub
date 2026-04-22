@@ -159,7 +159,7 @@ func requestCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if email == "" {
 			email = "admin@" + domain
 		}
-		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		ws, err := middleware.WSUpgrade(upgrader, c)
 		if err != nil {
 			return
 		}
@@ -259,7 +259,7 @@ func renewCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.NotFound(c, "证书不存在")
 			return
 		}
-		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		ws, err := middleware.WSUpgrade(upgrader, c)
 		if err != nil {
 			return
 		}

@@ -71,11 +71,11 @@ async function startStream() {
     const containers = await getContainers(serverId.value)
     const c = containers.find(c => c.names.includes(app.value!.container_name))
     if (!c) { term.writeln('\x1b[31m[找不到容器]\x1b[0m'); return }
-    ws = new WebSocket(containerLogsWsUrl(serverId.value, c.id, auth.token))
+    ws = new WebSocket(containerLogsWsUrl(serverId.value, c.id), ['bearer', auth.token ?? ''])
   } else if (activeSource.value === 'nginx_access') {
-    ws = new WebSocket(accessLogsWsUrl(serverId.value, auth.token))
+    ws = new WebSocket(accessLogsWsUrl(serverId.value), ['bearer', auth.token ?? ''])
   } else if (activeSource.value === 'nginx_error') {
-    ws = new WebSocket(errorLogsWsUrl(serverId.value, auth.token))
+    ws = new WebSocket(errorLogsWsUrl(serverId.value), ['bearer', auth.token ?? ''])
   }
 
   if (!ws) return

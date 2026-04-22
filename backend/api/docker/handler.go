@@ -183,7 +183,7 @@ func containerLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		defer rn.Close()
-		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		ws, err := middleware.WSUpgrade(upgrader, c)
 		if err != nil {
 			return
 		}
@@ -265,7 +265,7 @@ func pullImageHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "镜像名称不能为空")
 			return
 		}
-		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		ws, err := middleware.WSUpgrade(upgrader, c)
 		if err != nil {
 			return
 		}

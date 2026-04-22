@@ -419,7 +419,7 @@ func accessLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		defer client.Close()
-		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		ws, err := middleware.WSUpgrade(upgrader, c)
 		if err != nil {
 			return
 		}
@@ -440,7 +440,7 @@ func errorLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		defer client.Close()
-		ws, err := upgrader.Upgrade(c.Writer, c.Request, nil)
+		ws, err := middleware.WSUpgrade(upgrader, c)
 		if err != nil {
 			return
 		}

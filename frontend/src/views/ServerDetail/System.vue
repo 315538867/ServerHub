@@ -390,7 +390,7 @@ function initSvcLogs(unit: string) {
   const fit = new FitAddon()
   svcLogsTerm.loadAddon(fit); svcLogsTerm.open(svcLogsEl.value); fit.fit()
   svcLogsWs?.close()
-  svcLogsWs = new WebSocket(serviceLogsWsUrl(serverId.value, unit, auth.token))
+  svcLogsWs = new WebSocket(serviceLogsWsUrl(serverId.value, unit), ['bearer', auth.token ?? ''])
   svcLogsWs.onmessage = (e) => {
     try { const msg = JSON.parse(e.data); if (msg.type === 'output') svcLogsTerm?.writeln(msg.data) } catch { /* ignore */ }
   }

@@ -38,10 +38,10 @@ export function deleteImage(serverId: number, iid: string) {
   return request.delete<never, { output: string }>(`/servers/${serverId}/docker/images/${iid}`)
 }
 
-export function containerLogsWsUrl(serverId: number, cid: string, token: string) {
-  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${serverId}/docker/containers/${cid}/logs?token=${token}`
+export function containerLogsWsUrl(serverId: number, cid: string) {
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${serverId}/docker/containers/${cid}/logs`
 }
 
-export function pullImageWsUrl(serverId: number, image: string, token: string) {
-  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${serverId}/docker/images/pull?image=${encodeURIComponent(image)}&token=${token}`
+export function pullImageWsUrl(serverId: number, image: string) {
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${serverId}/docker/images/pull?image=${encodeURIComponent(image)}`
 }

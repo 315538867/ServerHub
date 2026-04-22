@@ -359,8 +359,8 @@ function startLogsStream(type: string) {
   })
   const fit = new FitAddon(); logsTerm.loadAddon(fit); logsTerm.open(logsEl.value); fit.fit()
   logsWs?.close()
-  const url = type === 'access' ? accessLogsWsUrl(serverId.value, auth.token) : errorLogsWsUrl(serverId.value, auth.token)
-  logsWs = new WebSocket(url)
+  const url = type === 'access' ? accessLogsWsUrl(serverId.value) : errorLogsWsUrl(serverId.value)
+  logsWs = new WebSocket(url, ['bearer', auth.token ?? ''])
   logsWs.onmessage = (e) => {
     try { const msg = JSON.parse(e.data); if (msg.type === 'output') logsTerm?.writeln(msg.data) } catch { /* ignore */ }
   }
@@ -397,7 +397,7 @@ function startRequestCert() {
   if (!domain) return
   certRequesting.value = true; certOutput.value = ''
   certWs?.close()
-  certWs = new WebSocket(requestCertWsUrl(serverId.value, { domain, email, webroot }, auth.token))
+  certWs = new WebSocket(requestCertWsUrl(serverId.value, { domain, email, webroot }), ['bearer', auth.token ?? ''])
   certWs.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data)
@@ -412,7 +412,7 @@ function startRequestCert() {
 function openRenew(row: SSLCert) {
   certOutput.value = ''; certReqVisible.value = true; certRequesting.value = true
   certWs?.close()
-  certWs = new WebSocket(renewCertWsUrl(serverId.value, row.id, auth.token))
+  certWs = new WebSocket(renewCertWsUrl(serverId.value, row.id), ['bearer', auth.token ?? ''])
   certWs.onmessage = (e) => {
     try {
       const msg = JSON.parse(e.data)

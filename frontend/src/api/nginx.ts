@@ -45,10 +45,10 @@ export function nginxRestart(sid: number) {
   return request.post(`/servers/${sid}/nginx/restart`)
 }
 
-export function accessLogsWsUrl(sid: number, token: string) {
-  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${sid}/nginx/logs/access?token=${token}`
+export function accessLogsWsUrl(sid: number) {
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${sid}/nginx/logs/access`
 }
 
-export function errorLogsWsUrl(sid: number, token: string) {
-  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${sid}/nginx/logs/error?token=${token}`
+export function errorLogsWsUrl(sid: number) {
+  return `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/panel/api/v1/servers/${sid}/nginx/logs/error`
 }
