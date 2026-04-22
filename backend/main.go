@@ -210,6 +210,8 @@ func main() {
 						if ctype := mime.TypeByExtension(filepath.Ext(rel)); ctype != "" {
 							c.Writer.Header().Set("Content-Type", ctype)
 						}
+						// NoRoute presets status=404; set 200 explicitly.
+						c.Writer.WriteHeader(http.StatusOK)
 						_, _ = io.Copy(c.Writer, f)
 						return
 					}
