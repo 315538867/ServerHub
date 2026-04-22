@@ -129,8 +129,11 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
           outputs: type=docker,dest=/tmp/serverhub_linux_${{ matrix.arch }}.image.tar
-          cache-from: type=gha,scope=docker-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
+          # scope bumped to v2 — earlier cache contained a stale /serverhub
+          # binary (wrong runtime.GOOS/GOARCH and missing routes) that kept
+          # getting replayed across retags. New scope → clean rebuild.
+          cache-from: type=gha,scope=docker-v2-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-v2-${{ matrix.arch }}
 
       - name: Compute sha256
         run: |
