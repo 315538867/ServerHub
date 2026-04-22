@@ -51,9 +51,14 @@ func main() {
 		port        = flag.Int("port", envInt("SERVERHUB_PORT", 0), "port override (env: SERVERHUB_PORT)")
 		devMode     = flag.Bool("dev", false, "development mode (CORS, debug logging)")
 		healthcheck = flag.Bool("healthcheck", false, "probe local /healthz and exit 0/1 (for container HEALTHCHECK)")
+		showVersion = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
 
+	if *showVersion {
+		fmt.Println(Version)
+		os.Exit(0)
+	}
 	if *healthcheck {
 		os.Exit(runHealthcheck(*configPath, *port))
 	}
