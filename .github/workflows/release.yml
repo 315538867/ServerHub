@@ -99,3 +99,49 @@ jobs:
             dist/*.tar.gz
             dist/*.tar.gz.sha256
           generate_release_notes: true
+
+  # Build OCI image tarballs (one per linux arch) and attach them to the release.
+  # No registry push: users `docker load -i serverhub_linux_<arch>.image.tar`
+  # and tag/run as they wish. Distribution channel is the user's choice.
+  docker_image:
+    name: Docker image ${{ matrix.arch }}
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build image to local tar
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f # v7.1.0
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          outputs: type=docker,dest=/tmp/serverhub_linux_${{ matrix.arch }}.image.tar
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
+
+      - name: Compute sha256
+        run: |
+          cd /tmp
+          sha256sum serverhub_linux_${{ matrix.arch }}.image.tar \
+            > serverhub_linux_${{ matrix.arch }}.image.tar.sha256
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          files: |
+            /tmp/serverhub_linux_${{ matrix.arch }}.image.tar
+            /tmp/serverhub_linux_${{ matrix.arch }}.image.tar.sha256
+          generate_release_notes: false
