@@ -1,0 +1,39 @@
+[Unit]
+Description=ServerHub Panel
+Documentation=https://github.com/serverhub/serverhub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=serverhub
+Group=serverhub
+ExecStart=/usr/local/bin/serverhub --config /etc/serverhub/config.yaml
+Restart=on-failure
+RestartSec=5
+
+# Persistent state (DB, ssh_keys, deploy-logs).
+# StateDirectory creates /var/lib/serverhub with the right ownership on first
+# start; combined with ReadWritePaths it's the only place the unit can write.
+StateDirectory=serverhub
+StateDirectoryMode=0750
+
+# --- hardening ----------------------------------------------------------------
+# Strict filesystem isolation: read-only system dirs, no /home access, private
+# /tmp. ReadWritePaths whitelists everything the panel legitimately needs to
+# touch. Adjust if you point nginx.conf_dir / certbot.webroot elsewhere.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ReadWritePaths=/var/lib/serverhub /etc/serverhub
+
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
