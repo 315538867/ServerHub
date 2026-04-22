@@ -117,7 +117,7 @@ function toneOf(kind: string): 'success' | 'warning' | 'neutral' {
 async function scan() {
   scanning.value = true
   try {
-    const { data } = await scanServer(serverId.value)
+    const data = await scanServer(serverId.value)
     result.docker = data.docker ?? []
     result.compose = data.compose ?? []
     result.systemd = data.systemd ?? []
@@ -147,7 +147,7 @@ async function doImport() {
       compose: pick(result.compose, selectedKeys.compose),
       systemd: pick(result.systemd, selectedKeys.systemd),
     }
-    const { data } = await importCandidates(serverId.value, payload)
+    const data = await importCandidates(serverId.value, payload)
     const parts = [`导入 ${data.imported}`, `跳过 ${data.skipped}`]
     if (data.errors?.length) parts.push(`错误 ${data.errors.length}`)
     message.success(parts.join(' · '))
