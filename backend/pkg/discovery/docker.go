@@ -16,6 +16,40 @@ type dockerPS struct {
 	Status string `json:"Status"`
 }
 
+// dockerEnvSkip — env vars docker / OCI runtimes inject by default. Filtering
+// them keeps the imported deploy clean: the user only sees what their image or
+// `docker run -e` actually set.
+var dockerEnvSkip = map[string]bool{
+	"PATH": true, "HOSTNAME": true, "HOME": true, "TERM": true,
+	"PWD": true, "SHLVL": true, "LANG": true,
+}
+
+// inspectContainerEnv reads `.Config.Env` from `docker inspect` and returns a
+// filtered list. Errors (container vanished, docker hiccup) silently return
+// nil — discovery should not abort over one missing container.
+func inspectContainerEnv(rn runner.Runner, id string) []EnvKV {
+	if id == "" {
+		return nil
+	}
+	out, err := rn.Run(`docker inspect --format '{{json .Config.Env}}' ` + shellQuote(id) + ` 2>/dev/null`)
+	if err != nil || strings.TrimSpace(out) == "" {
+		return nil
+	}
+	var raw []string
+	if e := json.Unmarshal([]byte(strings.TrimSpace(out)), &raw); e != nil {
+		return nil
+	}
+	pairs := parseKVPairs(raw)
+	filtered := pairs[:0]
+	for _, kv := range pairs {
+		if dockerEnvSkip[kv.Key] {
+			continue
+		}
+		filtered = append(filtered, kv)
+	}
+	return filtered
+}
+
 // ScanDocker lists running containers and splits them into standalone docker
 // candidates and docker-compose project candidates (grouped by the
 // com.docker.compose.project label).
@@ -31,6 +65,7 @@ func ScanDocker(rn runner.Runner) (docker, compose []Candidate, err error) {
 		file       string
 		images     []string
 		services   []string
+		env        []EnvKV
 	}
 	groups := map[string]*composeGroup{}
 
@@ -44,6 +79,7 @@ func ScanDocker(rn runner.Runner) (docker, compose []Candidate, err error) {
 			continue
 		}
 		labels := parseLabels(row.Labels)
+		env := inspectContainerEnv(rn, row.ID)
 		if project := labels["com.docker.compose.project"]; project != "" {
 			g, ok := groups[project]
 			if !ok {
@@ -58,6 +94,7 @@ func ScanDocker(rn runner.Runner) (docker, compose []Candidate, err error) {
 			if svc := labels["com.docker.compose.service"]; svc != "" {
 				g.services = append(g.services, svc)
 			}
+			g.env = mergeEnv(g.env, env)
 			continue
 		}
 		docker = append(docker, Candidate{
@@ -68,6 +105,7 @@ func ScanDocker(rn runner.Runner) (docker, compose []Candidate, err error) {
 			Suggested: SuggestedDeploy{
 				Type:      "docker",
 				ImageName: row.Image,
+				Env:       env,
 			},
 		})
 	}
@@ -89,6 +127,7 @@ func ScanDocker(rn runner.Runner) (docker, compose []Candidate, err error) {
 				Type:        "docker-compose",
 				WorkDir:     g.workingDir,
 				ComposeFile: cf,
+				Env:         g.env,
 			},
 		})
 	}

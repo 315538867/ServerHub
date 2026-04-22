@@ -23,12 +23,22 @@ type Candidate struct {
 
 // SuggestedDeploy is the subset of Deploy fields the importer fills in.
 type SuggestedDeploy struct {
-	Type        string `json:"type"`
-	WorkDir     string `json:"work_dir"`
-	ComposeFile string `json:"compose_file,omitempty"`
-	StartCmd    string `json:"start_cmd,omitempty"`
-	ImageName   string `json:"image_name,omitempty"`
-	Runtime     string `json:"runtime,omitempty"`
+	Type        string  `json:"type"`
+	WorkDir     string  `json:"work_dir"`
+	ComposeFile string  `json:"compose_file,omitempty"`
+	StartCmd    string  `json:"start_cmd,omitempty"`
+	ImageName   string  `json:"image_name,omitempty"`
+	Runtime     string  `json:"runtime,omitempty"`
+	Env         []EnvKV `json:"env,omitempty"`
+}
+
+// EnvKV is a single discovered environment variable. Secret is set by the
+// scanner when the key name suggests the value is sensitive (password, token,
+// secret, key, jdbc, dsn, etc.), so the UI can mask it by default.
+type EnvKV struct {
+	Key    string `json:"key"`
+	Value  string `json:"value"`
+	Secret bool   `json:"secret,omitempty"`
 }
 
 // Result bundles scan output across all detectors.

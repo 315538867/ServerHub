@@ -106,6 +106,7 @@ const columns = computed<DataTableColumns<Candidate>>(() => [
       if (s.compose_file) parts.push(`file=${s.compose_file}`)
       if (s.image_name) parts.push(`image=${s.image_name}`)
       if (s.runtime) parts.push(`runtime=${s.runtime}`)
+      if (s.env && s.env.length) parts.push(`env=${s.env.length}`)
       return h('span', { class: 'dc-sug' }, parts.join('  '))
     },
   },

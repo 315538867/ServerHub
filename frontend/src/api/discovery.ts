@@ -1,5 +1,11 @@
 import request from './request'
 
+export interface EnvKV {
+  key: string
+  value: string
+  secret?: boolean
+}
+
 export interface SuggestedDeploy {
   type: string
   work_dir: string
@@ -7,6 +13,7 @@ export interface SuggestedDeploy {
   start_cmd?: string
   image_name?: string
   runtime?: string
+  env?: EnvKV[]
 }
 
 export interface Candidate {

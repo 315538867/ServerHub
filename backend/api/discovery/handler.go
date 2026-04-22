@@ -18,7 +18,7 @@ import (
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.GET(":id/discover", scanHandler(db, cfg))
-	r.POST(":id/discover/import", importHandler(db))
+	r.POST(":id/discover/import", importHandler(db, cfg))
 }
 
 func scanHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
@@ -47,7 +47,7 @@ type importReq struct {
 	Systemd []discovery.Candidate `json:"systemd"`
 }
 
-func importHandler(db *gorm.DB) gin.HandlerFunc {
+func importHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -62,7 +62,7 @@ func importHandler(db *gorm.DB) gin.HandlerFunc {
 		all = append(all, req.Docker...)
 		all = append(all, req.Compose...)
 		all = append(all, req.Systemd...)
-		out := discovery.Import(db, s.ID, all)
+		out := discovery.Import(db, s.ID, all, cfg.Security.AESKey)
 		resp.OK(c, out)
 	}
 }

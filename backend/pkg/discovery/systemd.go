@@ -32,9 +32,15 @@ func ScanSystemd(rn runner.Runner) ([]Candidate, error) {
 		if derr != nil || detail == "" {
 			continue
 		}
-		workDir, execStart := parseUnit(detail)
+		workDir, execStart, envInline, envFiles := parseUnit(detail)
 		if execStart == "" {
 			continue
+		}
+		// Merge inline `Environment=` first, then any `EnvironmentFile=`.
+		// Inline takes precedence per systemd's own semantics.
+		env := envInline
+		for _, p := range envFiles {
+			env = mergeEnv(env, readEnvFile(rn, p))
 		}
 		out = append(out, Candidate{
 			Kind:     KindSystemd,
@@ -45,6 +51,7 @@ func ScanSystemd(rn runner.Runner) ([]Candidate, error) {
 				Type:     "native",
 				WorkDir:  workDir,
 				StartCmd: execStart,
+				Env:      env,
 			},
 		})
 	}
@@ -60,9 +67,14 @@ func shouldSkipUnit(u string) bool {
 	return false
 }
 
-// parseUnit extracts WorkingDirectory= and ExecStart= from `systemctl cat` output.
-// ExecStart may have a leading `-` or `@`; those prefixes are stripped.
-func parseUnit(body string) (workDir, execStart string) {
+// parseUnit extracts the fields we care about from `systemctl cat` output:
+//   - WorkingDirectory=
+//   - first ExecStart= (leading `-@+:!` prefixes are stripped)
+//   - all Environment= entries (each line may contain multiple K=V pairs,
+//     possibly quoted)
+//   - all EnvironmentFile= entries (leading `-` marks optional files; we
+//     accept either form and let the reader silently ignore missing files)
+func parseUnit(body string) (workDir, execStart string, envInline []EnvKV, envFiles []string) {
 	for _, raw := range strings.Split(body, "\n") {
 		line := strings.TrimSpace(raw)
 		switch {
@@ -72,9 +84,52 @@ func parseUnit(body string) (workDir, execStart string) {
 			v := strings.TrimPrefix(line, "ExecStart=")
 			v = strings.TrimLeft(v, "-@+:!")
 			execStart = strings.TrimSpace(v)
+		case strings.HasPrefix(line, "Environment="):
+			v := strings.TrimSpace(strings.TrimPrefix(line, "Environment="))
+			envInline = mergeEnv(envInline, parseKVPairs(splitEnvLine(v)))
+		case strings.HasPrefix(line, "EnvironmentFile="):
+			v := strings.TrimSpace(strings.TrimPrefix(line, "EnvironmentFile="))
+			v = strings.TrimPrefix(v, "-") // optional-file marker
+			v = strings.TrimSpace(v)
+			if v != "" {
+				envFiles = append(envFiles, v)
+			}
 		}
 	}
 	return
+}
+
+// splitEnvLine splits a systemd Environment= value into individual K=V tokens.
+// Per systemd semantics, multiple pairs on one line are space-separated and
+// quoted values may contain spaces, e.g. `FOO=1 BAR="hello world" BAZ=qux`.
+func splitEnvLine(s string) []string {
+	var out []string
+	var cur strings.Builder
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			} else {
+				cur.WriteByte(c)
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == ' ' || c == '\t':
+			if cur.Len() > 0 {
+				out = append(out, cur.String())
+				cur.Reset()
+			}
+		default:
+			cur.WriteByte(c)
+		}
+	}
+	if cur.Len() > 0 {
+		out = append(out, cur.String())
+	}
+	return out
 }
 
 func shellQuote(s string) string {
