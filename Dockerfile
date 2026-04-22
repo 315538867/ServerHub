@@ -15,7 +15,9 @@
 ARG BASE_RUNTIME=gcr.io/distroless/base-debian12:nonroot
 
 # ── stage 1: frontend ─────────────────────────────────────────
-FROM node:20-bookworm-slim AS frontend
+# Pin to BUILDPLATFORM: bun/node under QEMU emulation is slow and occasionally
+# crashes; the produced web/dist is arch-independent so native build is fine.
+FROM --platform=$BUILDPLATFORM node:20-bookworm-slim AS frontend
 WORKDIR /src
 RUN npm install -g bun@1.3.10
 # Mirror the repo layout so Vite's ../backend/web/dist outDir resolves.
@@ -26,12 +28,16 @@ RUN cd frontend && bun run build
 # Result: /src/backend/web/dist/<assets>
 
 # ── stage 2: backend ──────────────────────────────────────────
-FROM golang:1.25-bookworm AS backend
+# Run natively on BUILDPLATFORM and cross-compile to TARGETARCH via Go's
+# toolchain + a matching CC. This mirrors the tar.gz release path exactly
+# and avoids QEMU emulation bugs that previously produced broken multi-arch
+# Docker binaries while the tar.gz build worked.
+FROM --platform=$BUILDPLATFORM golang:1.25-bookworm AS backend
 ARG TARGETARCH
 ARG VERSION=dev
 WORKDIR /src
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends gcc-aarch64-linux-gnu && \
+    apt-get install -y --no-install-recommends gcc gcc-aarch64-linux-gnu && \
     rm -rf /var/lib/apt/lists/*
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download

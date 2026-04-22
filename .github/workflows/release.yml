@@ -129,11 +129,34 @@ jobs:
           build-args: |
             VERSION=${{ github.ref_name }}
           outputs: type=docker,dest=/tmp/serverhub_linux_${{ matrix.arch }}.image.tar
-          # scope bumped to v2 — earlier cache contained a stale /serverhub
-          # binary (wrong runtime.GOOS/GOARCH and missing routes) that kept
-          # getting replayed across retags. New scope → clean rebuild.
-          cache-from: type=gha,scope=docker-v2-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=docker-v2-${{ matrix.arch }}
+          # scope bumped to v3 — Dockerfile now cross-compiles on
+          # BUILDPLATFORM (matches tar.gz path). Dropping old scope to
+          # discard any lingering QEMU-emulated bad layers from v1/v2.
+          cache-from: type=gha,scope=docker-v3-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-v3-${{ matrix.arch }}
+
+      - name: Smoke-test built image
+        run: |
+          set -eux
+          IMG=serverhub:smoke
+          docker load -i /tmp/serverhub_linux_${{ matrix.arch }}.image.tar | tee /tmp/load.out
+          LOADED=$(awk -F': ' '/Loaded image(| ID):/{print $2}' /tmp/load.out | tail -n1)
+          docker tag "${LOADED}" "${IMG}"
+          # Extract binary to inspect arch + version without running it
+          # (distroless has no shell, and arm64 ELFs need QEMU on amd64).
+          CID=$(docker create "${IMG}")
+          docker cp "${CID}:/serverhub" /tmp/serverhub.bin
+          docker rm "${CID}"
+          file /tmp/serverhub.bin
+          case "${{ matrix.arch }}" in
+            amd64) file /tmp/serverhub.bin | grep -q "ELF 64-bit LSB .* x86-64" ;;
+            arm64) file /tmp/serverhub.bin | grep -q "ELF 64-bit LSB .* aarch64" ;;
+          esac
+          if [ "${{ matrix.arch }}" = "amd64" ]; then
+            OUT=$(/tmp/serverhub.bin -version)
+            echo "version: ${OUT}"
+            test "${OUT}" = "${{ github.ref_name }}"
+          fi
 
       - name: Compute sha256
         run: |
