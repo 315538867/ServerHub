@@ -65,14 +65,24 @@ RUN set -eux; \
 # ── stage 3: runtime ──────────────────────────────────────────
 # BASE_RUNTIME 默认 debian:bookworm-slim；可通过 mirror 镜像替换：
 #   docker buildx build --build-arg BASE_RUNTIME=<mirror>/debian:bookworm-slim ...
-# 已包含：bash, ca-certificates, tini, docker-cli (docker.io), curl
+# 已包含：bash, ca-certificates, tini, docker CLI (官方静态版), curl
 # 用户：serverhub (uid 65532)，与旧 distroless nonroot 兼容
+#
+# docker CLI 走官方 static release 而非 apt 的 docker.io：debian bookworm 仓库
+# 版本 20.10.24（API 1.41）对现代 daemon（API ≥1.44）太旧，调 docker.sock 会被
+# "client version is too old" 拒绝。只下载 CLI 二进制（~30MB），daemon 走宿主。
 ARG BASE_RUNTIME=debian:bookworm-slim
+ARG DOCKER_CLI_VERSION=27.3.1
 FROM ${BASE_RUNTIME}
+ARG DOCKER_CLI_VERSION
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      bash ca-certificates tini curl docker.io && \
+      bash ca-certificates tini curl && \
     rm -rf /var/lib/apt/lists/* && \
+    ARCH="$(uname -m)" && \
+    curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_CLI_VERSION}.tgz" \
+      | tar -xzf - --strip-components=1 -C /usr/local/bin docker/docker && \
+    chmod +x /usr/local/bin/docker && \
     groupadd -g 65532 serverhub && \
     useradd -u 65532 -g 65532 -m -s /bin/bash serverhub
 COPY --from=backend /out/serverhub /serverhub
