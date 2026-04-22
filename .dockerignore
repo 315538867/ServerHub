@@ -1,0 +1,30 @@
+# Local artifacts that should never enter the build context
+.git
+.github
+.zcf
+.claude
+.gitignore
+.dockerignore
+README.md
+LICENSE
+docs
+
+# Frontend
+frontend/node_modules
+frontend/dist
+frontend/.vite
+
+# Backend
+backend/node_modules
+backend/serverhub
+backend/web/dist
+backend/data
+**/*.log
+**/*.db
+**/*.db-shm
+**/*.db-wal
+
+# IDE / OS
+.idea
+.vscode
+.DS_Store
