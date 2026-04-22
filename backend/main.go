@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -187,13 +188,34 @@ func main() {
 	// ── static files (production only) ─────────────────────────
 	if !cfg.DevMode {
 		dist, _ := fs.Sub(staticFiles, "web/dist")
+		// Pre-read index.html so we can serve it via c.Data and avoid
+		// http.FileServer's canonical-path redirect on "/index.html".
+		indexData, err := fs.ReadFile(dist, "index.html")
+		if err != nil {
+			indexData = []byte("<!doctype html><title>ServerHub</title><body>missing embedded frontend</body>")
+		}
 		r.NoRoute(func(c *gin.Context) {
 			p := c.Request.URL.Path
 			if strings.HasPrefix(p, "/panel/api") || strings.HasPrefix(p, "/panel/webhooks") {
 				c.JSON(404, gin.H{"code": 404, "msg": "not found"})
 				return
 			}
-			c.FileFromFS("index.html", http.FS(dist))
+			// Serve real assets from the embedded dist (Vite base = /panel/).
+			rel := strings.TrimPrefix(p, "/panel/")
+			rel = strings.TrimPrefix(rel, "/")
+			if rel != "" && rel != "index.html" {
+				if f, err := dist.Open(rel); err == nil {
+					defer f.Close()
+					if stat, _ := f.Stat(); stat != nil && !stat.IsDir() {
+						if ctype := mime.TypeByExtension(filepath.Ext(rel)); ctype != "" {
+							c.Writer.Header().Set("Content-Type", ctype)
+						}
+						_, _ = io.Copy(c.Writer, f)
+						return
+					}
+				}
+			}
+			c.Data(http.StatusOK, "text/html; charset=utf-8", indexData)
 		})
 	}
 
