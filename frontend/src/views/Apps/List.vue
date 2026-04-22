@@ -229,8 +229,8 @@ function batchDelete() {
 
 onMounted(async () => {
   await Promise.all([
-    appStore.fetch(),
-    serverStore.servers.length ? Promise.resolve() : serverStore.fetch(),
+    appStore.ensure(),
+    serverStore.ensure(),
   ])
 })
 </script>

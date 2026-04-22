@@ -142,11 +142,13 @@ const size = computed(() => {
 .ui-btn__icon { display: inline-flex; align-items: center; flex-shrink: 0; }
 
 .ui-btn__spinner {
-  width: 12px; height: 12px;
-  border: 1.5px solid currentColor;
+  width: 14px; height: 14px;
+  border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
   animation: ui-btn-spin 0.6s linear infinite;
 }
+.ui-btn--lg .ui-btn__spinner { width: 18px; height: 18px; border-width: 2.5px; }
+.ui-btn--sm .ui-btn__spinner { width: 12px; height: 12px; border-width: 1.5px; }
 @keyframes ui-btn-spin { to { transform: rotate(360deg); } }
 </style>

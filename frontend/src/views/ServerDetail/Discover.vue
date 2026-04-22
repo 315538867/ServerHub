@@ -51,19 +51,22 @@
 
 <script setup lang="ts">
 import { ref, computed, reactive, h } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { NDataTable, useMessage } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { RefreshCw, Download } from 'lucide-vue-next'
 import { scanServer, importCandidates } from '@/api/discovery'
 import type { Candidate, ScanResult } from '@/api/discovery'
+import { useAppStore } from '@/stores/app'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiTabs from '@/components/ui/UiTabs.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
 
 const route = useRoute()
+const router = useRouter()
 const message = useMessage()
+const appStore = useAppStore()
 const serverId = computed(() => Number(route.params.serverId))
 
 const scanning = ref(false)
@@ -157,6 +160,11 @@ async function doImport() {
     selectedKeys.docker = []
     selectedKeys.compose = []
     selectedKeys.systemd = []
+    // 新导入的应用需要立刻反映在侧边栏 / 应用列表里
+    await appStore.fetch()
+    if (data.imported > 0 && !data.errors?.length) {
+      router.push('/apps')
+    }
   } catch (e: unknown) {
     const err = e as { message?: string }
     message.error('导入失败：' + (err.message ?? String(e)))

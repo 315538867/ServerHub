@@ -252,9 +252,9 @@ watch(chartMetrics, () => { if (chart) renderChart() })
 watch(() => theme.isDark, () => { if (chart) renderChart() })
 
 onMounted(async () => {
-  await Promise.all([loadOverview(), appStore.fetch(), loadSelf()])
+  await Promise.all([loadOverview(), appStore.ensure(), loadSelf()])
   timer = setInterval(loadOverview, refreshInterval)
-  selfTimer = setInterval(loadSelf, 5000)
+  selfTimer = setInterval(loadSelf, 15000)
 })
 onBeforeUnmount(() => {
   if (timer) clearInterval(timer)

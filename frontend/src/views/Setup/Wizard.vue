@@ -192,7 +192,11 @@ async function handleActivate() {
   loading.value = true
   try {
     await activateLocal()
+    message.success('本机纳管成功')
     finish()
+  } catch (e: unknown) {
+    const err = e as { msg?: string; message?: string }
+    message.error('连接本机失败：' + (err.msg ?? err.message ?? '请检查宿主侧命令是否已执行'))
   } finally {
     loading.value = false
   }

@@ -284,8 +284,8 @@ function onGlobalKey(e: KeyboardEvent) {
 }
 
 onMounted(() => {
-  serverStore.fetch()
-  appStore.fetch()
+  serverStore.ensure()
+  appStore.ensure()
   window.addEventListener('keydown', onGlobalKey)
 })
 </script>
