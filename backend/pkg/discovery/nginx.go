@@ -2,6 +2,7 @@ package discovery
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/serverhub/serverhub/pkg/runner"
@@ -38,35 +39,48 @@ func ScanNginx(rn runner.Runner) ([]Candidate, error) {
 		sites := parseNginxSites(body)
 		name := nginxBaseName(path)
 		for i, s := range sites {
-			if s.Root == "" || s.HasProxy {
+			// Need at least one filesystem-backed location to qualify as a
+			// static-site candidate. A pure reverse proxy (no root, no alias)
+			// is uninteresting here — it shows up via docker / systemd.
+			roots := s.Roots()
+			if len(roots) == 0 {
 				continue
 			}
 			sid := name
 			if len(sites) > 1 {
-				sid = name + "#" + itoa(i)
+				sid = name + "#" + strconv.Itoa(i)
 			}
 			if seen[sid] {
 				continue
 			}
 			seen[sid] = true
+			primary := roots[0]
 			sum := strings.TrimSpace(s.ServerName)
 			if sum == "" {
 				sum = "static site"
 			}
-			sum += "  root=" + s.Root
+			sum += "  root=" + primary
+			if len(roots) > 1 {
+				sum += "  (+" + strconv.Itoa(len(roots)-1) + " path)"
+			}
+			if s.HasProxy {
+				sum += "  +reverse-proxy"
+			}
 			out = append(out, Candidate{
 				Kind:     KindNginx,
 				SourceID: sid,
 				Name:     fallbackStr(s.ServerName, name),
-				Summary:  truncate(sum, 160),
+				Summary:  truncate(sum, 200),
 				Suggested: SuggestedDeploy{
 					Type:    "static",
-					WorkDir: s.Root,
+					WorkDir: primary,
 				},
 				ExtraLabels: map[string]string{
 					"config_file": path,
 					"server_name": s.ServerName,
 					"listen":      s.Listen,
+					"all_roots":   strings.Join(roots, ","),
+					"has_proxy":   boolStr(s.HasProxy),
 				},
 			})
 		}
@@ -77,17 +91,49 @@ func ScanNginx(rn runner.Runner) ([]Candidate, error) {
 type nginxSite struct {
 	ServerName string
 	Listen     string
-	Root       string
+	RootDir    string   // top-level `root` directive
+	Aliases    []string // per-location `alias` paths (each is a static path)
+	NestedRoot []string // per-location `root` overrides (also static)
 	HasProxy   bool
+}
+
+// Roots returns all filesystem paths this server block serves files from,
+// ordered: top-level root first, then per-location roots, then aliases.
+// Duplicates removed.
+func (s nginxSite) Roots() []string {
+	seen := map[string]bool{}
+	var out []string
+	push := func(p string) {
+		p = strings.TrimSpace(p)
+		if p == "" || seen[p] {
+			return
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	push(s.RootDir)
+	for _, p := range s.NestedRoot {
+		push(p)
+	}
+	for _, p := range s.Aliases {
+		push(p)
+	}
+	return out
 }
 
 var (
 	nginxServerBlockRe = regexp.MustCompile(`(?s)server\s*\{`)
 	nginxServerNameRe  = regexp.MustCompile(`(?m)^\s*server_name\s+([^;]+);`)
 	nginxListenRe      = regexp.MustCompile(`(?m)^\s*listen\s+([^;]+);`)
-	nginxRootRe        = regexp.MustCompile(`(?m)^\s*root\s+([^;]+);`)
 	nginxProxyPassRe   = regexp.MustCompile(`(?m)^\s*proxy_pass\s+[^;]+;`)
 )
+
+func boolStr(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
+}
 
 // parseNginxSites splits the conf into server {} blocks by brace-depth
 // tracking (regex cannot match nested braces) and extracts the fields we
@@ -148,13 +194,65 @@ func extractSite(block string) nginxSite {
 	if m := nginxListenRe.FindStringSubmatch(block); m != nil {
 		s.Listen = strings.TrimSpace(firstField(m[1]))
 	}
-	if m := nginxRootRe.FindStringSubmatch(block); m != nil {
-		s.Root = strings.Trim(strings.TrimSpace(m[1]), `"'`)
-	}
 	if nginxProxyPassRe.MatchString(block) {
 		s.HasProxy = true
 	}
+	// Walk the block line-by-line, tracking brace depth so we can tell a
+	// top-level `root` from one scoped inside a location {}. Both are real
+	// static-site paths, but only the top-level one is the default doc root.
+	depth := 0
+	for _, line := range strings.Split(block, "\n") {
+		trimmed := strings.TrimSpace(line)
+		// Directive parsing must happen BEFORE depth adjustment for `{` on
+		// the same line (e.g. `location / { root /foo; }` on one line) so we
+		// don't misclassify. Nginx conf rarely does that, but handle it
+		// anyway: we check directive matches, then adjust depth for the line.
+		if depth == 0 {
+			if m := nginxDirectiveRe("root", trimmed); m != "" {
+				s.RootDir = unquoteNginx(m)
+			}
+		} else {
+			if m := nginxDirectiveRe("root", trimmed); m != "" {
+				s.NestedRoot = append(s.NestedRoot, unquoteNginx(m))
+			}
+			if m := nginxDirectiveRe("alias", trimmed); m != "" {
+				s.Aliases = append(s.Aliases, unquoteNginx(m))
+			}
+		}
+		for _, c := range line {
+			switch c {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+		}
+	}
 	return s
+}
+
+// nginxDirectiveRe returns the single-argument value of `name arg;` on this
+// line, or "" if not matched. Handles leading whitespace. Does not support
+// multi-line directives (nginx conventions rarely require it for our uses).
+func nginxDirectiveRe(name, line string) string {
+	rest := strings.TrimPrefix(line, name)
+	if rest == line {
+		return ""
+	}
+	if len(rest) == 0 || (rest[0] != ' ' && rest[0] != '\t') {
+		return ""
+	}
+	rest = strings.TrimSpace(rest)
+	semi := strings.IndexByte(rest, ';')
+	if semi < 0 {
+		return ""
+	}
+	val := strings.TrimSpace(rest[:semi])
+	return firstField(val)
+}
+
+func unquoteNginx(s string) string {
+	return strings.Trim(strings.TrimSpace(s), `"'`)
 }
 
 func firstField(s string) string {
@@ -178,26 +276,4 @@ func fallbackStr(a, b string) string {
 		return a
 	}
 	return b
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	var b [20]byte
-	i := len(b)
-	neg := n < 0
-	if neg {
-		n = -n
-	}
-	for n > 0 {
-		i--
-		b[i] = byte('0' + n%10)
-		n /= 10
-	}
-	if neg {
-		i--
-		b[i] = '-'
-	}
-	return string(b[i:])
 }
