@@ -13,12 +13,14 @@ import (
 	"github.com/serverhub/serverhub/pkg/discovery"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
+	"github.com/serverhub/serverhub/pkg/takeover"
 	"gorm.io/gorm"
 )
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.GET(":id/discover", scanHandler(db, cfg))
 	r.POST(":id/discover/import", importHandler(db, cfg))
+	r.POST(":id/discover/takeover", takeoverHandler(db, cfg))
 }
 
 func scanHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
@@ -66,6 +68,30 @@ func importHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		all = append(all, req.Systemd...)
 		all = append(all, req.Nginx...)
 		out := discovery.Import(db, s.ID, all, cfg.Security.AESKey)
+		resp.OK(c, out)
+	}
+}
+
+type takeoverReq struct {
+	Candidate  discovery.Candidate `json:"candidate" binding:"required"`
+	TargetName string              `json:"target_name" binding:"required"`
+}
+
+func takeoverHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		s, ok := findServer(c, db)
+		if !ok {
+			return
+		}
+		var req takeoverReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
+		out := takeover.Run(db, cfg, s, takeover.Request{
+			Candidate:  req.Candidate,
+			TargetName: req.TargetName,
+		})
 		resp.OK(c, out)
 	}
 }

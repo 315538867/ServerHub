@@ -50,3 +50,18 @@ export function importCandidates(
 ) {
   return request.post<ImportResult>(`/servers/${id}/discover/import`, payload)
 }
+
+export interface TakeoverResult {
+  deploy_id?: number
+  success: boolean
+  rolled_back: boolean
+  output: string
+  error?: string
+}
+
+export function takeoverCandidate(
+  serverId: number,
+  payload: { candidate: Candidate; target_name: string },
+) {
+  return request.post<TakeoverResult>(`/servers/${serverId}/discover/takeover`, payload)
+}
