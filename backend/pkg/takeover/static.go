@@ -142,8 +142,9 @@ func runStatic(db *gorm.DB, rn runner.Runner, log *Log, server model.Server,
 				if _, err := MustRun(rn, log, cmd); err != nil {
 					return err
 				}
-				// Reload to actually un-do the change in the running nginx.
-				_, _ = MustRun(rn, log, "sudo -n nginx -s reload")
+				// Reload (or start, if nginx is stopped) to actually un-do the
+				// change in the running nginx.
+				_ = nginxReloadOrStart(rn, log)
 				return nil
 			},
 		},
@@ -155,15 +156,13 @@ func runStatic(db *gorm.DB, rn runner.Runner, log *Log, server model.Server,
 			},
 		},
 		{
-			Name: "nginx -s reload",
+			Name: "nginx reload (停机则 systemctl start)",
 			Do: func() error {
-				_, err := MustRun(rn, log, "sudo -n nginx -s reload")
-				return err
+				return nginxReloadOrStart(rn, log)
 			},
 			Undo: func() error {
 				// Conf already restored by the rewrite step's undo; just reload.
-				_, err := MustRun(rn, log, "sudo -n nginx -s reload")
-				return err
+				return nginxReloadOrStart(rn, log)
 			},
 		},
 		{
@@ -253,4 +252,19 @@ func parseListenPort(listen string) int {
 		return 443
 	}
 	return 80
+}
+
+// nginxReloadOrStart reloads nginx when it's running, otherwise boots it via
+// systemctl. Covers the case where the host's nginx is currently stopped —
+// `nginx -s reload` fails with "invalid PID number" because there's no master
+// process to signal; starting is the right move then.
+func nginxReloadOrStart(rn runner.Runner, log *Log) error {
+	out, _ := rn.Run("pgrep -x nginx || true")
+	if strings.TrimSpace(out) != "" {
+		_, err := MustRun(rn, log, "sudo -n nginx -s reload")
+		return err
+	}
+	log.Printf("nginx 未在运行，改用 systemctl start nginx\n")
+	_, err := MustRun(rn, log, "sudo -n systemctl start nginx")
+	return err
 }
