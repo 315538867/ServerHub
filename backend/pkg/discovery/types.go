@@ -20,6 +20,11 @@ type Candidate struct {
 	Summary     string            `json:"summary"` // short one-line human blurb
 	Suggested   SuggestedDeploy   `json:"suggested"`
 	ExtraLabels map[string]string `json:"extra_labels,omitempty"`
+
+	// 由 discovery.Fingerprint(c) 填充；发现接口会查已有 Service.SourceFingerprint
+	// 判断候选是否已被接管，标记到 AlreadyManaged。前端据此灰化"接管"按钮。
+	Fingerprint    string `json:"fingerprint,omitempty"`
+	AlreadyManaged bool   `json:"already_managed,omitempty"`
 }
 
 // SuggestedDeploy is the subset of Deploy fields the importer fills in.

@@ -193,7 +193,7 @@ func runDocker(db *gorm.DB, rn runner.Runner, log *Log, server model.Server,
 	}
 
 	now := time.Now()
-	d := model.Deploy{
+	d := model.Service{
 		Name:           req.TargetName,
 		ServerID:       server.ID,
 		Type:           "docker-compose",
@@ -208,9 +208,16 @@ func runDocker(db *gorm.DB, rn runner.Runner, log *Log, server model.Server,
 		LastStatus:     "success",
 		LastRunAt:      &now,
 	}
+	if _, err := attachToApplication(db, &d, c, req.TargetName); err != nil {
+		log.Printf("⚠ Application 绑定失败: %v\n", err)
+		return fmt.Errorf("application 绑定失败: %w", err)
+	}
 	if err := db.Create(&d).Error; err != nil {
 		log.Printf("⚠ Deploy 写入失败（主机已迁移完成）: %v\n", err)
 		return fmt.Errorf("DB 写入失败: %w", err)
+	}
+	if d.ApplicationID != nil {
+		finalizeApplicationLink(db, *d.ApplicationID, d.ID)
 	}
 	log.Printf("Deploy 已创建: id=%d name=%s\n", d.ID, d.Name)
 	res.DeployID = d.ID

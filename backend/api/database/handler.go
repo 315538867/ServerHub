@@ -146,25 +146,31 @@ func shellQuote(s string) string {
 func listConnsHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		serverID := c.Query("server_id")
+		appID := c.Query("application_id")
 		var conns []model.DBConn
 		q := db.Model(&model.DBConn{})
 		if serverID != "" {
 			q = q.Where("server_id = ?", serverID)
 		}
+		if appID != "" {
+			q = q.Where("application_id = ?", appID)
+		}
 		q.Find(&conns)
 		type item struct {
-			ID       uint   `json:"id"`
-			ServerID uint   `json:"server_id"`
-			Name     string `json:"name"`
-			Type     string `json:"type"`
-			Host     string `json:"host"`
-			Port     int    `json:"port"`
-			Username string `json:"username"`
-			Database string `json:"database"`
+			ID            uint   `json:"id"`
+			ServerID      uint   `json:"server_id"`
+			ApplicationID *uint  `json:"application_id"`
+			Name          string `json:"name"`
+			Type          string `json:"type"`
+			Host          string `json:"host"`
+			Port          int    `json:"port"`
+			Username      string `json:"username"`
+			Database      string `json:"database"`
 		}
 		result := make([]item, len(conns))
 		for i, c := range conns {
-			result[i] = item{ID: c.ID, ServerID: c.ServerID, Name: c.Name, Type: c.Type,
+			result[i] = item{ID: c.ID, ServerID: c.ServerID, ApplicationID: c.ApplicationID,
+				Name: c.Name, Type: c.Type,
 				Host: c.Host, Port: c.Port, Username: c.Username, Database: c.Database}
 		}
 		resp.OK(c, result)

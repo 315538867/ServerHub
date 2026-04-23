@@ -29,14 +29,14 @@ func Import(db *gorm.DB, serverID uint, cands []Candidate, aesKey string) Import
 			res.Errors = append(res.Errors, "candidate missing kind/source_id: "+c.Name)
 			continue
 		}
-		var existing model.Deploy
+		var existing model.Service
 		q := db.Where("server_id = ? AND source_kind = ? AND source_id = ?",
 			serverID, c.Kind, c.SourceID).First(&existing)
 		if q.Error == nil {
 			res.Skipped++
 			continue
 		}
-		d := model.Deploy{
+		d := model.Service{
 			Name:        fallback(c.Name, c.Kind+"-"+c.SourceID),
 			ServerID:    serverID,
 			Type:        fallback(c.Suggested.Type, "native"),

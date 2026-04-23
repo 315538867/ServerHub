@@ -39,8 +39,35 @@ func scanHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			kinds = strings.Split(raw, ",")
 		}
 		result := discovery.Scan(rn, kinds)
+		markAlreadyManaged(db, s.ID, &result)
 		resp.OK(c, result)
 	}
+}
+
+// markAlreadyManaged 对扫描结果计算 fingerprint 并查本机已存在的 Service，
+// 命中则把 AlreadyManaged 置 true，让前端灰化"接管"按钮。
+func markAlreadyManaged(db *gorm.DB, serverID uint, res *discovery.Result) {
+	var fps []string
+	db.Model(&model.Service{}).
+		Where("server_id = ? AND source_fingerprint != ''", serverID).
+		Pluck("source_fingerprint", &fps)
+	known := make(map[string]struct{}, len(fps))
+	for _, fp := range fps {
+		known[fp] = struct{}{}
+	}
+	mark := func(list []discovery.Candidate) {
+		for i := range list {
+			fp := discovery.Fingerprint(list[i])
+			list[i].Fingerprint = fp
+			if _, hit := known[fp]; hit {
+				list[i].AlreadyManaged = true
+			}
+		}
+	}
+	mark(res.Docker)
+	mark(res.Compose)
+	mark(res.Systemd)
+	mark(res.Nginx)
 }
 
 type importReq struct {

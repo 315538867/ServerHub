@@ -48,3 +48,26 @@ export function getAppMetrics(id: number) {
   return request.get<never, AppMetrics>(`/apps/${id}/metrics`)
 }
 
+// 应用下挂的 Service 列表（Phase C：1:N 关系）
+export interface AppService {
+  id: number
+  name: string
+  type: string
+  work_dir: string
+  last_status: string
+  actual_version: string
+  source_kind: string
+}
+
+export function listAppServices(id: number) {
+  return request.get<never, AppService[]>(`/apps/${id}/services`)
+}
+
+export function attachServiceToApp(appId: number, serviceId: number) {
+  return request.post<never, { message: string }>(`/apps/${appId}/services/${serviceId}/attach`, {})
+}
+
+export function detachServiceFromApp(appId: number, serviceId: number) {
+  return request.delete(`/apps/${appId}/services/${serviceId}/attach`)
+}
+

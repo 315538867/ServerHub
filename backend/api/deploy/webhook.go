@@ -32,7 +32,7 @@ func RegisterWebhookRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) 
 func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.Param("token")
-		var d model.Deploy
+		var d model.Service
 		if err := db.Where("webhook_secret = ?", token).First(&d).Error; err != nil {
 			resp.NotFound(c, "资源不存在")
 			return

@@ -28,6 +28,9 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.GET("/:id/dirs", dirsHandler(db, cfg))
 	r.POST("/:id/init-dirs", initDirsHandler(db, cfg))
 	r.GET("/:id/metrics", metricsHandler(db, cfg))
+	r.GET("/:id/services", listServicesHandler(db))
+	r.POST("/:id/services/:sid/attach", attachServiceHandler(db))
+	r.DELETE("/:id/services/:sid/attach", detachServiceHandler(db))
 }
 
 type appReq struct {
@@ -124,7 +127,149 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 			q = q.Where("server_id = ?", sid)
 		}
 		q.Find(&apps)
+		// 聚合下属 Service 状态到 Application.Status：
+		//   任一 failed → error；任一 syncing → syncing；
+		//   全 success → running；否则保持原值
+		if len(apps) > 0 {
+			ids := make([]uint, 0, len(apps))
+			for _, a := range apps {
+				ids = append(ids, a.ID)
+			}
+			type stRow struct {
+				ApplicationID uint
+				LastStatus    string
+			}
+			var rows []stRow
+			db.Model(&model.Service{}).
+				Select("application_id, last_status").
+				Where("application_id IN ?", ids).
+				Scan(&rows)
+			grouped := map[uint][]string{}
+			for _, r := range rows {
+				grouped[r.ApplicationID] = append(grouped[r.ApplicationID], r.LastStatus)
+			}
+			for i := range apps {
+				statuses, ok := grouped[apps[i].ID]
+				if !ok || len(statuses) == 0 {
+					continue
+				}
+				hasFailed, hasSyncing, allSuccess := false, false, true
+				for _, s := range statuses {
+					switch s {
+					case "failed":
+						hasFailed = true
+						allSuccess = false
+					case "syncing", "running":
+						hasSyncing = hasSyncing || s == "syncing"
+						if s != "success" {
+							allSuccess = false
+						}
+					case "success":
+						// keep
+					default:
+						allSuccess = false
+					}
+				}
+				switch {
+				case hasFailed:
+					apps[i].Status = "error"
+				case hasSyncing:
+					apps[i].Status = "syncing"
+				case allSuccess:
+					apps[i].Status = "running"
+				}
+			}
+		}
 		resp.OK(c, apps)
+	}
+}
+
+// ── services 子路由 ───────────────────────────────────────────────────────────
+
+func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			resp.BadRequest(c, "无效 ID")
+			return
+		}
+		var services []model.Service
+		db.Where("application_id = ?", id).Order("id asc").Find(&services)
+		resp.OK(c, services)
+	}
+}
+
+func attachServiceHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		appID, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			resp.BadRequest(c, "无效应用 ID")
+			return
+		}
+		sid, err := strconv.Atoi(c.Param("sid"))
+		if err != nil {
+			resp.BadRequest(c, "无效服务 ID")
+			return
+		}
+		var app model.Application
+		if err := db.First(&app, appID).Error; err != nil {
+			resp.NotFound(c, "应用不存在")
+			return
+		}
+		var svc model.Service
+		if err := db.First(&svc, sid).Error; err != nil {
+			resp.NotFound(c, "服务不存在")
+			return
+		}
+		if svc.ServerID != app.ServerID {
+			resp.BadRequest(c, "服务与应用不在同一服务器，不可挂载")
+			return
+		}
+		appIDu := uint(appID)
+		svc.ApplicationID = &appIDu
+		if err := db.Save(&svc).Error; err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
+		if app.PrimaryServiceID == nil {
+			svcID := svc.ID
+			db.Model(&app).Update("primary_service_id", svcID)
+		}
+		resp.OK(c, svc)
+	}
+}
+
+func detachServiceHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		appID, err := strconv.Atoi(c.Param("id"))
+		if err != nil {
+			resp.BadRequest(c, "无效应用 ID")
+			return
+		}
+		sid, err := strconv.Atoi(c.Param("sid"))
+		if err != nil {
+			resp.BadRequest(c, "无效服务 ID")
+			return
+		}
+		var svc model.Service
+		if err := db.First(&svc, sid).Error; err != nil {
+			resp.NotFound(c, "服务不存在")
+			return
+		}
+		if svc.ApplicationID == nil || *svc.ApplicationID != uint(appID) {
+			resp.BadRequest(c, "该服务未挂在此应用下")
+			return
+		}
+		svc.ApplicationID = nil
+		if err := db.Save(&svc).Error; err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
+		// 若主服务被卸下，清掉 PrimaryServiceID
+		db.Model(&model.Application{}).
+			Where("id = ? AND primary_service_id = ?", appID, sid).
+			Update("primary_service_id", nil)
+		resp.OK(c, nil)
 	}
 }
 

@@ -26,7 +26,7 @@ type Result struct {
 // Run executes a deployment via the appropriate Runner (SSH or local exec).
 // triggerSource: "manual" | "webhook" | "schedule" | "api"
 // onLine is called for each stdout line (pass nil for background runs).
-func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string, onLine func(string)) Result {
+func Run(db *gorm.DB, cfg *config.Config, app model.Service, triggerSource string, onLine func(string)) Result {
 	var s model.Server
 	if err := db.First(&s, app.ServerID).Error; err != nil {
 		return Result{Output: "server not found", Success: false}
@@ -119,7 +119,7 @@ func Run(db *gorm.DB, cfg *config.Config, app model.Deploy, triggerSource string
 }
 
 // BuildCmd constructs the shell command for the given app type.
-func BuildCmd(app model.Deploy, aesKey string) string {
+func BuildCmd(app model.Service, aesKey string) string {
 	envPrefix := buildEnvPrefix(app.EnvVars, aesKey)
 
 	var parts []string

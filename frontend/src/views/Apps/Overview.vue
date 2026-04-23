@@ -69,6 +69,25 @@
       </UiCard>
     </UiSection>
 
+    <UiSection title="关联服务">
+      <template #extra>
+        <UiButton variant="secondary" size="sm" :loading="loadingServices" @click="fetchServices">
+          <template #icon><RefreshCw :size="14" /></template>
+          刷新
+        </UiButton>
+      </template>
+      <UiCard padding="none">
+        <NDataTable
+          :columns="serviceColumns"
+          :data="services"
+          :loading="loadingServices"
+          :row-key="(row: AppService) => row.id"
+          size="small"
+          :bordered="false"
+        />
+      </UiCard>
+    </UiSection>
+
     <UiSection title="快捷操作">
       <UiCard padding="md">
         <div class="ov__actions">
@@ -89,8 +108,9 @@ import type { DataTableColumns } from 'naive-ui'
 import { RefreshCw } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useServerStore } from '@/stores/server'
-import { deleteApp, getAppDirs, initAppDirs } from '@/api/application'
+import { deleteApp, getAppDirs, initAppDirs, listAppServices, detachServiceFromApp } from '@/api/application'
 import type { AppDirEntry } from '@/types/api'
+import type { AppService } from '@/api/application'
 import AppMetricsCard from '@/components/apps/AppMetricsCard.vue'
 import UiSection from '@/components/ui/UiSection.vue'
 import UiCard from '@/components/ui/UiCard.vue'
@@ -160,6 +180,51 @@ async function fetchDirs() {
   finally { loadingDirs.value = false }
 }
 
+const services = ref<AppService[]>([])
+const loadingServices = ref(false)
+
+const serviceColumns = computed<DataTableColumns<AppService>>(() => [
+  { title: '名称', key: 'name', minWidth: 140, render: (row) => h('code', { class: 'ov__code' }, row.name) },
+  { title: '类型', key: 'type', width: 130 },
+  {
+    title: '状态', key: 'last_status', width: 90,
+    render: (row) => h(UiBadge,
+      { tone: row.last_status === 'success' ? 'success' : row.last_status === 'failed' ? 'danger' : 'neutral' },
+      () => row.last_status || '—'),
+  },
+  { title: '版本', key: 'actual_version', width: 140, render: (row) => h('span', { class: 'ov__time' }, row.actual_version || '—') },
+  { title: '来源', key: 'source_kind', width: 100, render: (row) => row.source_kind || '—' },
+  { title: '目录', key: 'work_dir', minWidth: 200, render: (row) => h('code', { class: 'ov__code' }, row.work_dir || '—') },
+  {
+    title: '操作', key: 'actions', width: 80,
+    render: (row) => h(UiButton,
+      { size: 'sm', variant: 'ghost', onClick: () => confirmDetach(row) },
+      () => h('span', { class: 'text-danger' }, '卸下')),
+  },
+])
+
+async function fetchServices() {
+  loadingServices.value = true
+  try { services.value = await listAppServices(appId.value) }
+  catch (e: any) { message.error(e.message || '加载服务失败') }
+  finally { loadingServices.value = false }
+}
+
+function confirmDetach(row: AppService) {
+  dialog.warning({
+    title: '卸下服务',
+    content: `将服务「${row.name}」从当前应用卸下？服务本身不会被删除，仅解除关联。`,
+    positiveText: '卸下', negativeText: '取消',
+    onPositiveClick: async () => {
+      try {
+        await detachServiceFromApp(appId.value, row.id)
+        message.success('已卸下')
+        await fetchServices()
+      } catch (e: any) { message.error(e.message || '操作失败') }
+    },
+  })
+}
+
 async function handleInitDirs() {
   initializingDirs.value = true
   try {
@@ -190,6 +255,7 @@ onMounted(async () => {
   if (!appStore.apps.length) await appStore.fetch()
   if (!serverStore.servers.length) await serverStore.fetch()
   if (app.value?.base_dir) fetchDirs()
+  fetchServices()
 })
 </script>
 

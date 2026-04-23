@@ -711,7 +711,7 @@ async function doRun(endpoint: 'run' | 'rollback') {
   running.value = true; runStatus.value = ''; outputLines.value = []
   runAbort = new AbortController()
   try {
-    const res = await fetch(`/panel/api/v1/deploys/${deploy.value.id}/${endpoint}`, {
+    const res = await fetch(`/panel/api/v1/services/${deploy.value.id}/${endpoint}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${authStore.token}` },
       signal: runAbort.signal,
@@ -789,7 +789,7 @@ async function doUpload() {
   const formData = new FormData()
   formData.append('file', uploadFile.value)
   try {
-    const res = await fetch(`/panel/api/v1/deploys/${deploy.value.id}/upload`, {
+    const res = await fetch(`/panel/api/v1/services/${deploy.value.id}/upload`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${authStore.token}` },
       body: formData,

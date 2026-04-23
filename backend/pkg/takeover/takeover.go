@@ -68,7 +68,7 @@ func Run(db *gorm.DB, cfg *config.Config, server model.Server, req Request) Resu
 
 	// Existing Deploy with same (server, kind, source_id) means the candidate
 	// was already imported via the passive flow — refuse to double-take-over.
-	var existing model.Deploy
+	var existing model.Service
 	q := db.Where("server_id = ? AND source_kind = ? AND source_id = ?",
 		server.ID, req.Candidate.Kind, req.Candidate.SourceID).First(&existing)
 	if q.Error == nil {

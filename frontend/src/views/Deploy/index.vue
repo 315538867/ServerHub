@@ -505,7 +505,7 @@ async function runWithSSE(app: Deploy, endpoint: 'run' | 'rollback') {
 
   abortCtrl = new AbortController()
   try {
-    const res = await fetch(`/panel/api/v1/deploys/${app.id}/${endpoint}`, {
+    const res = await fetch(`/panel/api/v1/services/${app.id}/${endpoint}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${authStore.token}` },
       signal: abortCtrl.signal,
@@ -700,7 +700,7 @@ async function runWithSSEPath(app: Deploy, path: string) {
   logDrawerVisible.value = true
   abortCtrl = new AbortController()
   try {
-    const res = await fetch(`/panel/api/v1/deploys/${app.id}/${path}`, {
+    const res = await fetch(`/panel/api/v1/services/${app.id}/${path}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${authStore.token}` },
       signal: abortCtrl.signal,
@@ -762,7 +762,7 @@ async function doUpload() {
   try {
     const fd = new FormData()
     fd.append('file', file)
-    const res = await fetch(`/panel/api/v1/deploys/${detailApp.value.id}/upload`, {
+    const res = await fetch(`/panel/api/v1/services/${detailApp.value.id}/upload`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${authStore.token}` },
       body: fd,

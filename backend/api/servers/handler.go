@@ -79,6 +79,11 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
+		switch req.Host {
+		case "127.0.0.1", "localhost", "::1", "0.0.0.0":
+			resp.Fail(c, http.StatusForbidden, 4030, "请使用已自动创建的本机记录，不可重复添加 localhost")
+			return
+		}
 		if req.Port == 0 {
 			req.Port = 22
 		}
@@ -176,7 +181,7 @@ func deleteHandler(db *gorm.DB) gin.HandlerFunc {
 		db.Delete(&s)
 		sid := s.ID
 		db.Where("server_id = ?", sid).Delete(&model.Metric{})
-		db.Where("server_id = ?", sid).Delete(&model.Deploy{})
+		db.Where("server_id = ?", sid).Delete(&model.Service{})
 		db.Where("server_id = ?", sid).Delete(&model.DBConn{})
 		db.Where("server_id = ?", sid).Delete(&model.AlertRule{})
 		db.Where("server_id = ?", sid).Delete(&model.AlertEvent{})

@@ -23,6 +23,8 @@ export interface Candidate {
   summary: string
   suggested: SuggestedDeploy
   extra_labels?: Record<string, string>
+  fingerprint?: string
+  already_managed?: boolean
 }
 
 export interface ScanResult {

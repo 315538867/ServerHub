@@ -121,7 +121,11 @@ func listCertsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		var certs []model.SSLCert
-		db.Where("server_id = ?", id).Find(&certs)
+		q := db.Where("server_id = ?", id)
+		if appID := c.Query("application_id"); appID != "" {
+			q = q.Where("application_id = ?", appID)
+		}
+		q.Find(&certs)
 		result := make([]certResp, len(certs))
 		for i, cert := range certs {
 			days := int(time.Until(cert.ExpiresAt).Hours() / 24)

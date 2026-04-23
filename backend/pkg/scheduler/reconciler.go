@@ -27,14 +27,14 @@ func StartReconciler(db *gorm.DB, cfg *config.Config) {
 }
 
 func reconcileAll(db *gorm.DB, cfg *config.Config) {
-	var apps []model.Deploy
+	var apps []model.Service
 	db.Where("auto_sync = ? AND desired_version != ''", true).Find(&apps)
 	for _, app := range apps {
 		go reconcileOne(db, cfg, app)
 	}
 }
 
-func reconcileOne(db *gorm.DB, cfg *config.Config, app model.Deploy) {
+func reconcileOne(db *gorm.DB, cfg *config.Config, app model.Service) {
 	// Already in sync
 	if app.DesiredVersion == app.ActualVersion {
 		if app.SyncStatus != "synced" {

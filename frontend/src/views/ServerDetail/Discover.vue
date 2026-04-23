@@ -164,7 +164,7 @@ const totalSelected = computed(() =>
 )
 
 const columns = computed<DataTableColumns<Candidate>>(() => [
-  { type: 'selection' },
+  { type: 'selection', disabled: (row: Candidate) => !!row.already_managed },
   { title: '名称', key: 'name', minWidth: 180, render: (row) => h('code', { class: 'dc-name' }, row.name) },
   {
     title: '类型', key: 'kind', width: 110,
@@ -187,6 +187,9 @@ const columns = computed<DataTableColumns<Candidate>>(() => [
   {
     title: '操作', key: 'actions', width: 120,
     render: (row) => {
+      if (row.already_managed) {
+        return h(UiBadge, { tone: 'neutral' }, { default: () => '已接管' })
+      }
       return h(UiButton, {
         size: 'sm',
         variant: 'secondary',

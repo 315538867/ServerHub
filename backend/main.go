@@ -180,7 +180,7 @@ func main() {
 	apilogsearch.RegisterRoutes(serversGroup, db, cfg)
 	apidatabase.RegisterRoutes(protected, db, cfg)
 	apialerts.RegisterRoutes(protected.Group("/alerts"), db, cfg)
-	apideploy.RegisterRoutes(protected.Group("/deploys"), db, cfg)
+	apideploy.RegisterRoutes(protected.Group("/services"), db, cfg)
 	apideploy.RegisterWebhookRoutes(base.Group("/webhooks"), db, cfg)
 	apimetrics.RegisterRoutes(protected.Group("/metrics"), db)
 	apisettings.RegisterRoutes(protected.Group("/settings"), db, cfg)

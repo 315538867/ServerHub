@@ -59,7 +59,7 @@ type deployReq struct {
 
 func listHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var deploys []model.Deploy
+		var deploys []model.Service
 		db.Order("id asc").Find(&deploys)
 		resp.OK(c, deploys)
 	}
@@ -77,7 +77,7 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		applyDefaults(&req)
-		d := model.Deploy{
+		d := model.Service{
 			Name: req.Name, ServerID: req.ServerID, Type: req.Type,
 			WorkDir: req.WorkDir, ComposeFile: req.ComposeFile,
 			StartCmd: req.StartCmd, ImageName: req.ImageName,
@@ -277,7 +277,7 @@ func getVersionHandler(db *gorm.DB) gin.HandlerFunc {
 
 // pickPreviousVersion returns the most recent DeployVersion whose version
 // label differs from the deploy's current actual_version.
-func pickPreviousVersion(db *gorm.DB, d model.Deploy) (model.DeployVersion, error) {
+func pickPreviousVersion(db *gorm.DB, d model.Service) (model.DeployVersion, error) {
 	var versions []model.DeployVersion
 	db.Where("deploy_id = ?", d.ID).Order("created_at DESC").
 		Limit(deployer.MaxVersionsPerDeploy).Find(&versions)
@@ -291,7 +291,7 @@ func pickPreviousVersion(db *gorm.DB, d model.Deploy) (model.DeployVersion, erro
 
 // streamRollback applies a version snapshot to the deploy and triggers a
 // redeploy, streaming output as SSE.
-func streamRollback(c *gin.Context, db *gorm.DB, cfg *config.Config, d model.Deploy, v model.DeployVersion) {
+func streamRollback(c *gin.Context, db *gorm.DB, cfg *config.Config, d model.Service, v model.DeployVersion) {
 	// Snapshot the pre-rollback state first. If the rollback target turns out
 	// to be broken too, the operator can re-rollback to where we started —
 	// otherwise that state is lost the moment we overwrite the row below.
@@ -552,16 +552,16 @@ func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-func findDeploy(c *gin.Context, db *gorm.DB) (model.Deploy, bool) {
+func findDeploy(c *gin.Context, db *gorm.DB) (model.Service, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "ID 格式错误")
-		return model.Deploy{}, false
+		return model.Service{}, false
 	}
-	var d model.Deploy
+	var d model.Service
 	if err := db.First(&d, id).Error; err != nil {
 		resp.NotFound(c, "应用不存在")
-		return model.Deploy{}, false
+		return model.Service{}, false
 	}
 	return d, true
 }

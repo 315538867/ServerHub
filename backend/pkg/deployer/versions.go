@@ -10,7 +10,7 @@ const MaxVersionsPerDeploy = 7
 
 // SnapshotDeploy persists a DeployVersion row from the given Deploy + log id.
 // Returns the created version's ID (0 on error).
-func SnapshotDeploy(db *gorm.DB, d model.Deploy, logID uint, triggerSource, note string) uint {
+func SnapshotDeploy(db *gorm.DB, d model.Service, logID uint, triggerSource, note string) uint {
 	v := model.DeployVersion{
 		DeployID:      d.ID,
 		Version:       versionLabel(d),
@@ -63,7 +63,7 @@ func PruneAllVersions(db *gorm.DB, keep int) {
 	}
 }
 
-func versionLabel(d model.Deploy) string {
+func versionLabel(d model.Service) string {
 	if d.ActualVersion != "" {
 		return d.ActualVersion
 	}
