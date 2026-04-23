@@ -243,26 +243,47 @@ func extractSite(block string) nginxSite {
 	if nginxProxyPassRe.MatchString(block) {
 		s.HasProxy = true
 	}
-	// Walk the block line-by-line, tracking brace depth so we can tell a
-	// top-level `root` from one scoped inside a location {}. Both are real
-	// static-site paths, but only the top-level one is the default doc root.
+	// Walk the block line-by-line, tracking brace depth and a stack of the
+	// enclosing `location` URIs. nginx semantics:
+	//   - top-level `root X`         → serves files from X/<url>
+	//   - `location /p/ { root X; }` → serves files from X/p/<rest>  (the
+	//                                   location prefix is *prepended* to root)
+	//   - `location /p/ { alias X; }`→ serves files from X/<rest>    (alias
+	//                                   replaces the location prefix entirely)
+	// So nested-root effective dir = root + location-prefix, while alias
+	// effective dir = alias as-is. We can only resolve prefix-style locations
+	// (no modifier, `=`, or `^~`); regex locations (`~` / `~*`) we skip.
+	type frame struct{ prefix string } // empty for non-prefix or non-location frames
+	var stack []frame
 	depth := 0
 	for _, line := range strings.Split(block, "\n") {
 		trimmed := strings.TrimSpace(line)
-		// Directive parsing must happen BEFORE depth adjustment for `{` on
-		// the same line (e.g. `location / { root /foo; }` on one line) so we
-		// don't misclassify. Nginx conf rarely does that, but handle it
-		// anyway: we check directive matches, then adjust depth for the line.
 		if depth == 0 {
 			if m := nginxDirectiveRe("root", trimmed); m != "" {
 				s.RootDir = unquoteNginx(m)
 			}
 		} else {
+			prefix := ""
+			if len(stack) > 0 {
+				prefix = stack[len(stack)-1].prefix
+			}
 			if m := nginxDirectiveRe("root", trimmed); m != "" {
-				s.NestedRoot = append(s.NestedRoot, unquoteNginx(m))
+				dir := unquoteNginx(m)
+				if prefix != "" {
+					dir = joinNginxPath(dir, prefix)
+				}
+				s.NestedRoot = append(s.NestedRoot, dir)
 			}
 			if m := nginxDirectiveRe("alias", trimmed); m != "" {
 				s.Aliases = append(s.Aliases, unquoteNginx(m))
+			}
+		}
+		// Update the location stack BEFORE depth-tracking, so a `{` on this
+		// line opens a frame whose prefix is the URI we just parsed. We only
+		// react to `{` here; `}` pops the matching frame below alongside depth.
+		if open := strings.Count(line, "{"); open > 0 {
+			for i := 0; i < open; i++ {
+				stack = append(stack, frame{prefix: parseLocationPrefix(trimmed)})
 			}
 		}
 		for _, c := range line {
@@ -271,10 +292,64 @@ func extractSite(block string) nginxSite {
 				depth++
 			case '}':
 				depth--
+				if len(stack) > 0 {
+					stack = stack[:len(stack)-1]
+				}
 			}
 		}
 	}
 	return s
+}
+
+// parseLocationPrefix returns the URI of a `location` directive on this line
+// if it's a prefix-style match we can use to compose paths (no modifier, `=`,
+// or `^~`). Returns "" for regex modifiers or non-location lines — which
+// causes the caller to treat the frame as "no useful prefix".
+func parseLocationPrefix(line string) string {
+	rest := strings.TrimPrefix(line, "location")
+	if rest == line {
+		return ""
+	}
+	if len(rest) == 0 || (rest[0] != ' ' && rest[0] != '\t') {
+		return ""
+	}
+	rest = strings.TrimSpace(rest)
+	// strip trailing `{` and anything after (a one-line `location / { ... }`)
+	if i := strings.IndexByte(rest, '{'); i >= 0 {
+		rest = strings.TrimSpace(rest[:i])
+	}
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return ""
+	}
+	// optional modifier
+	mod := fields[0]
+	uri := ""
+	switch mod {
+	case "=", "^~":
+		if len(fields) >= 2 {
+			uri = fields[1]
+		}
+	case "~", "~*":
+		return "" // regex location — we can't compose a directory path
+	default:
+		uri = mod
+	}
+	if uri == "" || !strings.HasPrefix(uri, "/") {
+		return ""
+	}
+	return uri
+}
+
+// joinNginxPath composes <root>/<location-prefix> with one slash between
+// them, normalizing any trailing slash on root and leading/trailing slashes
+// on the prefix. Trailing slash on the result is preserved if the prefix
+// had one — that helps the index.html probe match the served directory.
+func joinNginxPath(root, prefix string) string {
+	root = strings.TrimRight(root, "/")
+	prefix = strings.TrimLeft(prefix, "/")
+	out := root + "/" + prefix
+	return strings.TrimRight(out, "/")
 }
 
 // nginxDirectiveRe returns the single-argument value of `name arg;` on this
