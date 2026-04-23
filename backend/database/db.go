@@ -164,10 +164,10 @@ func seedAdminUser(db *gorm.DB, cfg *config.Config) {
 //     demoting the alias so it won't match again.
 //  2. Otherwise promotes the oldest alias to Type="local".
 //  3. Creates a fresh row only when no candidate exists at all.
+//
+// Containerized: still runs merge logic (step 1) to fix legacy data, but skips
+// creation/promotion (steps 2-3) since the container cannot self-manage the host.
 func seedLocalServer(db *gorm.DB) {
-	if sysinfo.IsContainerized() {
-		return
-	}
 	localHosts := []string{"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 	localNames := []string{"本机", "本机 (SSH)"}
 
@@ -188,7 +188,11 @@ func seedLocalServer(db *gorm.DB) {
 		mergeLocalAliases(db, kept.ID, localHosts, localNames)
 		return
 	}
-	// No local row yet. Try to promote an existing localhost-like ssh row.
+	// No local row yet. In containerized mode, skip creation/promotion.
+	if sysinfo.IsContainerized() {
+		return
+	}
+	// Try to promote an existing localhost-like ssh row.
 	var existing model.Server
 	err := db.Where("type = ? AND (host IN ? OR name IN ?)", "ssh",
 		localHosts, localNames).
