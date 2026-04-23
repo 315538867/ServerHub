@@ -154,16 +154,23 @@ func seedAdminUser(db *gorm.DB, cfg *config.Config) {
 // runtimes (see Type field for rationale).
 //
 // Migration safety: earlier versions allowed users to manually add servers
-// pointing at 127.0.0.1/localhost as Type="ssh". On upgrade those would
-// coexist with a freshly seeded Type="local" row, producing two "本机"
-// entries. This function now (1) promotes the oldest localhost-like Type="ssh"
-// row to Type="local" if no local row exists yet, (2) demotes the rest into
-// inactive remarks rather than deleting (user data preservation), (3) only
-// creates a new row when no candidate exists.
+// pointing at 127.0.0.1/localhost (or a docker bridge gateway) as Type="ssh",
+// often named "本机"/"本机 (SSH)". On upgrade those would coexist with a
+// freshly seeded Type="local" row, producing two "本机" entries and splitting
+// services across server_ids (导致 Discover 无法识别 already_managed).
+// This function:
+//  1. If a local row exists, merges any ssh aliases ("looks-like-本机") into
+//     it — reassigning services/applications/dbconns/ssl_certs/metrics and
+//     demoting the alias so it won't match again.
+//  2. Otherwise promotes the oldest alias to Type="local".
+//  3. Creates a fresh row only when no candidate exists at all.
 func seedLocalServer(db *gorm.DB) {
 	if sysinfo.IsContainerized() {
 		return
 	}
+	localHosts := []string{"127.0.0.1", "localhost", "::1", "0.0.0.0"}
+	localNames := []string{"本机", "本机 (SSH)"}
+
 	var locals []model.Server
 	db.Where("type = ?", "local").Order("id asc").Find(&locals)
 	if len(locals) > 1 {
@@ -177,12 +184,14 @@ func seedLocalServer(db *gorm.DB) {
 		}
 	}
 	if len(locals) >= 1 {
+		kept := locals[0]
+		mergeLocalAliases(db, kept.ID, localHosts, localNames)
 		return
 	}
 	// No local row yet. Try to promote an existing localhost-like ssh row.
 	var existing model.Server
-	err := db.Where("type = ? AND host IN ?", "ssh",
-		[]string{"127.0.0.1", "localhost", "::1", "0.0.0.0"}).
+	err := db.Where("type = ? AND (host IN ? OR name IN ?)", "ssh",
+		localHosts, localNames).
 		Order("id asc").First(&existing).Error
 	now := time.Now()
 	if err == nil {
@@ -199,6 +208,7 @@ func seedLocalServer(db *gorm.DB) {
 			"remark":        "ServerHub 所在主机（本地执行，无需 SSH）",
 			"last_check_at": &now,
 		})
+		mergeLocalAliases(db, existing.ID, localHosts, localNames)
 		return
 	}
 	local := model.Server{
@@ -215,6 +225,34 @@ func seedLocalServer(db *gorm.DB) {
 	if err := db.Create(&local).Error; err != nil {
 		fmt.Printf("seedLocalServer: %v\n", err)
 	}
+}
+
+// mergeLocalAliases collapses legacy "本机"-shaped ssh Server rows into the
+// canonical Type="local" row (keptID), re-pointing any child records so the
+// Discover flow can correctly detect already-imported services. Aliases are
+// renamed + remarked (not deleted) to preserve user traceability; their host
+// is also neutralized so they cannot re-match this function on next boot.
+func mergeLocalAliases(db *gorm.DB, keptID uint, hosts, names []string) {
+	var aliases []model.Server
+	db.Where("id != ? AND type = ? AND (host IN ? OR name IN ?)",
+		keptID, "ssh", hosts, names).Find(&aliases)
+	if len(aliases) == 0 {
+		return
+	}
+	for _, a := range aliases {
+		db.Model(&model.Service{}).Where("server_id = ?", a.ID).Update("server_id", keptID)
+		db.Model(&model.Application{}).Where("server_id = ?", a.ID).Update("server_id", keptID)
+		db.Model(&model.DBConn{}).Where("server_id = ?", a.ID).Update("server_id", keptID)
+		db.Model(&model.SSLCert{}).Where("server_id = ?", a.ID).Update("server_id", keptID)
+		db.Model(&model.Metric{}).Where("server_id = ?", a.ID).Update("server_id", keptID)
+		db.Model(&a).Updates(map[string]any{
+			"name":   a.Name + " [已合并到本机]",
+			"host":   "",
+			"status": "offline",
+			"remark": a.Remark + " [auto-merged into local server]",
+		})
+	}
+	fmt.Printf("mergeLocalAliases: %d 条 ssh 本机别名已合并到 server_id=%d\n", len(aliases), keptID)
 }
 
 // backfillFingerprints fills SourceFingerprint for legacy Service rows that
