@@ -61,43 +61,50 @@ func ScanNginx(rn runner.Runner) ([]Candidate, error) {
 			if len(roots) == 0 {
 				continue
 			}
-			sid := name
+			sidBase := name
 			if len(sites) > 1 {
-				sid = name + "#" + strconv.Itoa(i)
+				sidBase = name + "#" + strconv.Itoa(i)
 			}
-			if seen[sid] {
-				continue
+			// Emit one candidate per static root path: each is independently
+			// deployable (takeover flow needs a single WorkDir) and the user
+			// should be able to pick them individually. Same vhost may back
+			// several paths (an admin panel aliased + a Vite app under /lxy/).
+			for _, rootPath := range roots {
+				sid := sidBase + "|" + slugPath(rootPath)
+				if seen[sid] {
+					continue
+				}
+				seen[sid] = true
+				sum := strings.TrimSpace(s.ServerName)
+				if sum == "" {
+					sum = "static site"
+				}
+				sum += "  root=" + rootPath
+				if s.HasProxy {
+					sum += "  +reverse-proxy"
+				}
+				dispName := fallbackStr(s.ServerName, name)
+				if len(roots) > 1 {
+					dispName += " [" + rootPath + "]"
+				}
+				out = append(out, Candidate{
+					Kind:     KindNginx,
+					SourceID: sid,
+					Name:     dispName,
+					Summary:  truncate(sum, 200),
+					Suggested: SuggestedDeploy{
+						Type:    "static",
+						WorkDir: rootPath,
+					},
+					ExtraLabels: map[string]string{
+						"config_file": path,
+						"server_name": s.ServerName,
+						"listen":      s.Listen,
+						"all_roots":   strings.Join(roots, ","),
+						"has_proxy":   boolStr(s.HasProxy),
+					},
+				})
 			}
-			seen[sid] = true
-			primary := roots[0]
-			sum := strings.TrimSpace(s.ServerName)
-			if sum == "" {
-				sum = "static site"
-			}
-			sum += "  root=" + primary
-			if len(roots) > 1 {
-				sum += "  (+" + strconv.Itoa(len(roots)-1) + " path)"
-			}
-			if s.HasProxy {
-				sum += "  +reverse-proxy"
-			}
-			out = append(out, Candidate{
-				Kind:     KindNginx,
-				SourceID: sid,
-				Name:     fallbackStr(s.ServerName, name),
-				Summary:  truncate(sum, 200),
-				Suggested: SuggestedDeploy{
-					Type:    "static",
-					WorkDir: primary,
-				},
-				ExtraLabels: map[string]string{
-					"config_file": path,
-					"server_name": s.ServerName,
-					"listen":      s.Listen,
-					"all_roots":   strings.Join(roots, ","),
-					"has_proxy":   boolStr(s.HasProxy),
-				},
-			})
 		}
 	}
 	return out, nil
@@ -148,6 +155,18 @@ func boolStr(b bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+// slugPath turns a filesystem path into a compact identifier fragment that's
+// stable across scans. We keep it readable (not hashed) so SourceIDs stay
+// debuggable and diff-friendly in the UI.
+func slugPath(p string) string {
+	p = strings.TrimSpace(p)
+	p = strings.Trim(p, "/")
+	if p == "" {
+		return "root"
+	}
+	return strings.ReplaceAll(p, "/", "_")
 }
 
 // osDefaultWebRoots are paths that ship with the distro's nginx/apache package
