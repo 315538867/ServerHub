@@ -2,7 +2,7 @@
   <div class="dc-page">
     <UiCard padding="none">
       <div class="dc-toolbar">
-        <div class="dc-hint">扫描当前服务器上运行的 Docker 容器、docker-compose 项目与 systemd 服务，选中后批量导入为部署项。</div>
+        <div class="dc-hint">扫描当前服务器上运行的 Docker 容器、docker-compose 项目、systemd 服务与 Nginx 静态站点，选中后批量导入为部署项。</div>
         <UiButton variant="primary" size="sm" :loading="scanning" @click="scan">
           <template #icon><RefreshCw :size="14" /></template>
           {{ scanned ? '重新扫描' : '开始扫描' }}
@@ -72,21 +72,22 @@ const serverId = computed(() => Number(route.params.serverId))
 const scanning = ref(false)
 const scanned = ref(false)
 const importing = ref(false)
-const activeTab = ref<'docker' | 'compose' | 'systemd'>('docker')
+const activeTab = ref<'docker' | 'compose' | 'systemd' | 'nginx'>('docker')
 
-const result = reactive<ScanResult>({ docker: [], compose: [], systemd: [], errors: [] })
-const selectedKeys = reactive<Record<string, string[]>>({ docker: [], compose: [], systemd: [] })
+const result = reactive<ScanResult>({ docker: [], compose: [], systemd: [], nginx: [], errors: [] })
+const selectedKeys = reactive<Record<string, string[]>>({ docker: [], compose: [], systemd: [], nginx: [] })
 
 const tabItems = computed(() => [
   { value: 'docker',  label: `Docker (${result.docker.length})` },
   { value: 'compose', label: `Compose (${result.compose.length})` },
   { value: 'systemd', label: `systemd (${result.systemd.length})` },
+  { value: 'nginx',   label: `Nginx 静态 (${result.nginx.length})` },
 ])
 
 const currentList = computed<Candidate[]>(() => result[activeTab.value] ?? [])
 
 const totalSelected = computed(() =>
-  selectedKeys.docker.length + selectedKeys.compose.length + selectedKeys.systemd.length,
+  selectedKeys.docker.length + selectedKeys.compose.length + selectedKeys.systemd.length + selectedKeys.nginx.length,
 )
 
 const columns = computed<DataTableColumns<Candidate>>(() => [
@@ -112,9 +113,10 @@ const columns = computed<DataTableColumns<Candidate>>(() => [
   },
 ])
 
-function toneOf(kind: string): 'success' | 'warning' | 'neutral' {
+function toneOf(kind: string): 'success' | 'warning' | 'neutral' | 'info' {
   if (kind === 'docker') return 'success'
   if (kind === 'compose') return 'warning'
+  if (kind === 'nginx') return 'info'
   return 'neutral'
 }
 
@@ -125,12 +127,14 @@ async function scan() {
     result.docker = data.docker ?? []
     result.compose = data.compose ?? []
     result.systemd = data.systemd ?? []
+    result.nginx = data.nginx ?? []
     result.errors = data.errors ?? []
     selectedKeys.docker = []
     selectedKeys.compose = []
     selectedKeys.systemd = []
+    selectedKeys.nginx = []
     scanned.value = true
-    const total = result.docker.length + result.compose.length + result.systemd.length
+    const total = result.docker.length + result.compose.length + result.systemd.length + result.nginx.length
     message.success(`扫描完成：发现 ${total} 个候选`)
   } catch (e: unknown) {
     const err = e as { message?: string }
@@ -150,6 +154,7 @@ async function doImport() {
       docker: pick(result.docker, selectedKeys.docker),
       compose: pick(result.compose, selectedKeys.compose),
       systemd: pick(result.systemd, selectedKeys.systemd),
+      nginx: pick(result.nginx, selectedKeys.nginx),
     }
     const data = await importCandidates(serverId.value, payload)
     const parts = [`导入 ${data.imported}`, `跳过 ${data.skipped}`]
@@ -161,6 +166,7 @@ async function doImport() {
     selectedKeys.docker = []
     selectedKeys.compose = []
     selectedKeys.systemd = []
+    selectedKeys.nginx = []
     // 新导入的应用需要立刻反映在侧边栏 / 应用列表里
     await appStore.fetch()
     if (data.imported > 0 && !data.errors?.length) {

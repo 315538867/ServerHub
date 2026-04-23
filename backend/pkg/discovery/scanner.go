@@ -16,6 +16,7 @@ func Scan(rn runner.Runner, kinds []string) Result {
 		want[KindDocker] = true
 		want[KindCompose] = true
 		want[KindSystemd] = true
+		want[KindNginx] = true
 	}
 
 	var r Result
@@ -37,6 +38,13 @@ func Scan(rn runner.Runner, kinds []string) Result {
 			r.Errors = append(r.Errors, "systemd: "+err.Error())
 		}
 		r.Systemd = s
+	}
+	if want[KindNginx] {
+		n, err := ScanNginx(rn)
+		if err != nil {
+			r.Errors = append(r.Errors, "nginx: "+err.Error())
+		}
+		r.Nginx = n
 	}
 	return r
 }

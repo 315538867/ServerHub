@@ -8,6 +8,7 @@ const (
 	KindDocker  = "docker"
 	KindCompose = "compose"
 	KindSystemd = "systemd"
+	KindNginx   = "nginx"
 )
 
 // Candidate is a normalized representation of a discovered service. The
@@ -46,5 +47,6 @@ type Result struct {
 	Docker  []Candidate `json:"docker"`
 	Compose []Candidate `json:"compose"`
 	Systemd []Candidate `json:"systemd"`
+	Nginx   []Candidate `json:"nginx"`
 	Errors  []string    `json:"errors,omitempty"`
 }

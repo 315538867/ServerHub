@@ -45,6 +45,7 @@ type importReq struct {
 	Docker  []discovery.Candidate `json:"docker"`
 	Compose []discovery.Candidate `json:"compose"`
 	Systemd []discovery.Candidate `json:"systemd"`
+	Nginx   []discovery.Candidate `json:"nginx"`
 }
 
 func importHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
@@ -58,10 +59,12 @@ func importHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
-		all := make([]discovery.Candidate, 0, len(req.Docker)+len(req.Compose)+len(req.Systemd))
+		all := make([]discovery.Candidate, 0,
+			len(req.Docker)+len(req.Compose)+len(req.Systemd)+len(req.Nginx))
 		all = append(all, req.Docker...)
 		all = append(all, req.Compose...)
 		all = append(all, req.Systemd...)
+		all = append(all, req.Nginx...)
 		out := discovery.Import(db, s.ID, all, cfg.Security.AESKey)
 		resp.OK(c, out)
 	}

@@ -17,17 +17,19 @@ export interface SuggestedDeploy {
 }
 
 export interface Candidate {
-  kind: 'docker' | 'compose' | 'systemd'
+  kind: 'docker' | 'compose' | 'systemd' | 'nginx'
   source_id: string
   name: string
   summary: string
   suggested: SuggestedDeploy
+  extra_labels?: Record<string, string>
 }
 
 export interface ScanResult {
   docker: Candidate[]
   compose: Candidate[]
   systemd: Candidate[]
+  nginx: Candidate[]
   errors?: string[]
 }
 
@@ -44,7 +46,7 @@ export function scanServer(id: number, kinds?: string[]) {
 
 export function importCandidates(
   id: number,
-  payload: { docker: Candidate[]; compose: Candidate[]; systemd: Candidate[] },
+  payload: { docker: Candidate[]; compose: Candidate[]; systemd: Candidate[]; nginx: Candidate[] },
 ) {
   return request.post<ImportResult>(`/servers/${id}/discover/import`, payload)
 }

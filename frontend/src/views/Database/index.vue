@@ -181,16 +181,19 @@
             <NRadio value="redis">Redis</NRadio>
           </NRadioGroup>
         </NFormItem>
-        <NFormItem label="Host">
-          <NInput v-model:value="connForm.host" placeholder="127.0.0.1 / localhost" />
+        <NFormItem label="数据库位置">
+          <NSelect v-model:value="hostMode" :options="hostModeOptions" />
           <template #feedback>
             <span style="font-size: var(--fs-xs); color: var(--ui-fg-3)">
-              填 <code>localhost</code> 走 Unix socket（适合只允许 <code>'user'@'localhost'</code> 的库）；填 <code>127.0.0.1</code> 走 TCP。
+              从<b>选中服务器本地</b>视角访问数据库。本机 Socket 对应 <code>'user'@'localhost'</code> 授权；回环 TCP 对应 <code>'user'@'127.0.0.1'</code>；自定义用于数据库部署在另一台内网主机的场景。
             </span>
           </template>
         </NFormItem>
-        <NFormItem label="端口">
-          <NInputNumber v-model:value="connForm.port" :min="1" :max="65535" :disabled="connForm.host?.toLowerCase() === 'localhost'" style="width:100%" />
+        <NFormItem v-if="hostMode === 'custom'" label="Host">
+          <NInput v-model:value="connForm.host" placeholder="10.0.0.2 / db.internal" />
+        </NFormItem>
+        <NFormItem v-if="hostMode !== 'socket'" label="端口">
+          <NInputNumber v-model:value="connForm.port" :min="1" :max="65535" style="width:100%" />
         </NFormItem>
         <NFormItem v-if="connForm.type === 'mysql'" label="用户名">
           <NInput v-model:value="connForm.username" placeholder="root" />
@@ -310,12 +313,28 @@ const addConnVisible = ref(false)
 const addConnLoading = ref(false)
 const connForm = ref({ name: '', server_id: 0, type: 'mysql' as 'mysql' | 'redis', host: '127.0.0.1', port: 3306, username: 'root', password: '', database: '' })
 
+// UI-only: Host 三档预设，避免用户误填 ServerHub 容器视角的 IP。
+// 后端识别 host="localhost" 时走 Unix socket，其他走 TCP。
+type HostMode = 'socket' | 'loopback' | 'custom'
+const hostMode = ref<HostMode>('loopback')
+const hostModeOptions = [
+  { label: '本机 Unix Socket（localhost）', value: 'socket' },
+  { label: '本机回环 TCP（127.0.0.1）', value: 'loopback' },
+  { label: '自定义 Host', value: 'custom' },
+]
+watch(hostMode, (m) => {
+  if (m === 'socket') connForm.value.host = 'localhost'
+  else if (m === 'loopback') connForm.value.host = '127.0.0.1'
+  else connForm.value.host = ''
+})
+
 watch(() => connForm.value.type, (t) => {
   connForm.value.port = t === 'redis' ? 6379 : 3306
 })
 
 function openAddConn() {
   connForm.value = { name: '', server_id: servers.value[0]?.id ?? 0, type: 'mysql', host: '127.0.0.1', port: 3306, username: 'root', password: '', database: '' }
+  hostMode.value = 'loopback'
   addConnVisible.value = true
 }
 
