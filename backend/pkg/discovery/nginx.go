@@ -38,11 +38,26 @@ func ScanNginx(rn runner.Runner) ([]Candidate, error) {
 		}
 		sites := parseNginxSites(body)
 		name := nginxBaseName(path)
+		// Skip the Debian/Ubuntu fallback vhost — it's an OS welcome page, not a
+		// real deployed site. Actual sites live in their own named conf files.
+		isDefaultFile := name == "default"
 		for i, s := range sites {
-			// Need at least one filesystem-backed location to qualify as a
-			// static-site candidate. A pure reverse proxy (no root, no alias)
-			// is uninteresting here — it shows up via docker / systemd.
+			// A pure reverse proxy (no root, no alias) is uninteresting here —
+			// it shows up via docker / systemd.
 			roots := s.Roots()
+			if len(roots) == 0 {
+				continue
+			}
+			// Drop the catch-all fallback vhost: `server_name _` or the Debian
+			// default file with an empty/default server_name is the welcome
+			// page, not a user-deployed frontend.
+			sn := strings.TrimSpace(s.ServerName)
+			if sn == "_" || (isDefaultFile && (sn == "" || sn == "_")) {
+				continue
+			}
+			// Filter each root path: drop OS-default dirs and paths that don't
+			// actually look like a frontend build (no index.html on disk).
+			roots = filterStaticRoots(rn, roots)
 			if len(roots) == 0 {
 				continue
 			}
@@ -133,6 +148,37 @@ func boolStr(b bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+// osDefaultWebRoots are paths that ship with the distro's nginx/apache package
+// as a welcome page. They virtually never host a real user-deployed frontend,
+// so we exclude them from discovery results.
+var osDefaultWebRoots = map[string]bool{
+	"/var/www":            true,
+	"/var/www/html":       true,
+	"/usr/share/nginx/html": true,
+	"/usr/share/nginx":    true,
+}
+
+// filterStaticRoots keeps only those paths that (a) are not OS-default welcome
+// directories and (b) actually contain an index.html on the target host. The
+// index.html check is a simple proxy for "a real frontend was deployed here"
+// — SPAs, Vite/Webpack/Next-export builds all produce one at the root.
+func filterStaticRoots(rn runner.Runner, roots []string) []string {
+	var out []string
+	for _, p := range roots {
+		clean := strings.TrimRight(p, "/")
+		if clean == "" || osDefaultWebRoots[clean] {
+			continue
+		}
+		// `test -f` returns 0 only if the file exists and is regular. We don't
+		// care about stderr; a non-zero exit just means "skip this path".
+		if _, err := rn.Run("test -f " + shellQuote(clean+"/index.html") + " && echo ok"); err != nil {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 // parseNginxSites splits the conf into server {} blocks by brace-depth
