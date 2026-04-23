@@ -32,7 +32,10 @@ func TestNginxRewrite_TopLevelRoot(t *testing.T) {
 
 // TestNginxRewrite_NestedRootJoinsLocationPrefix covers the discovery-aligned
 // case: a `location /lxy/ { root /var/www; }` whose effective directory is
-// /var/www/lxy must match oldRoot=/var/www/lxy and rewrite that root.
+// /var/www/lxy must match oldRoot=/var/www/lxy and be rewritten to an alias
+// (not root) so nginx strips the /lxy/ prefix instead of appending it to
+// newRoot — newRoot holds the contents of /var/www/lxy flat, not under a
+// /lxy/ subdir.
 func TestNginxRewrite_NestedRootJoinsLocationPrefix(t *testing.T) {
 	body := `server {
     listen 80;
@@ -50,8 +53,11 @@ func TestNginxRewrite_NestedRootJoinsLocationPrefix(t *testing.T) {
 	if hits != 1 {
 		t.Fatalf("hits = %d, want 1", hits)
 	}
-	if !strings.Contains(out, "root /opt/serverhub/apps/lxy/current;") {
-		t.Fatalf("rewritten root missing:\n%s", out)
+	if !strings.Contains(out, "alias /opt/serverhub/apps/lxy/current/;") {
+		t.Fatalf("nested root not converted to alias:\n%s", out)
+	}
+	if strings.Contains(out, "root /var/www;") {
+		t.Fatalf("original root still present:\n%s", out)
 	}
 	// try_files line must remain byte-for-byte intact
 	if !strings.Contains(out, "try_files $uri $uri/ /lxy/index.html;") {
@@ -59,10 +65,10 @@ func TestNginxRewrite_NestedRootJoinsLocationPrefix(t *testing.T) {
 	}
 }
 
-// TestNginxRewrite_AliasBecomesRoot verifies an alias directive is replaced
-// with a root pointing at newRoot (alias semantics no longer needed since the
-// new path mirrors oldRoot 1:1 via cp -a).
-func TestNginxRewrite_AliasBecomesRoot(t *testing.T) {
+// TestNginxRewrite_AliasStaysAlias verifies an alias directive keeps alias
+// semantics with its path swapped (alias already strips the location prefix,
+// which is what we want when newRoot holds flat contents).
+func TestNginxRewrite_AliasStaysAlias(t *testing.T) {
 	body := `server {
     location /assets/ {
         alias /srv/assets/;
@@ -76,8 +82,8 @@ func TestNginxRewrite_AliasBecomesRoot(t *testing.T) {
 	if hits != 1 {
 		t.Fatalf("hits = %d, want 1", hits)
 	}
-	if !strings.Contains(out, "root /opt/serverhub/apps/assets/current;") {
-		t.Fatalf("alias not converted to root:\n%s", out)
+	if !strings.Contains(out, "alias /opt/serverhub/apps/assets/current/;") {
+		t.Fatalf("alias path not swapped:\n%s", out)
 	}
 	if strings.Contains(out, "alias /srv/assets/;") {
 		t.Fatalf("original alias survived:\n%s", out)

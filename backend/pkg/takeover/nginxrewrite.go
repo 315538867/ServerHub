@@ -23,10 +23,15 @@ import (
 //   - `alias X;` matches if X (trimmed of trailing slash) equals oldRoot
 //     trimmed likewise
 //
-// The rewrite always emits the replacement as `root <newRoot>;` (even where
-// the original used alias) because newRoot is a serverhub-owned symlink whose
-// contents mirror oldRoot exactly — root semantics serve files from newRoot
-// directly without needing alias' prefix-replacement trick.
+// Semantics: we always want requests served out of newRoot directly, because
+// `cp -a oldRoot/. newRoot/` puts the served tree at newRoot's top level with
+// NO location-prefix subdirectory. nginx' root directive appends the full URI
+// to its argument, so for a request "/lxy/index.html" it would look for
+// "<newRoot>/lxy/index.html" — which doesn't exist and typically triggers a
+// try_files redirect cycle → 500. Inside a location block we therefore emit
+// `alias <newRoot>/;`, which strips the location prefix before appending.
+// At top level (no active location) we keep `root`. Original alias directives
+// stay as alias — just with their path swapped.
 func NginxRewrite(body, oldRoot, newRoot string) (string, int, error) {
 	old := strings.TrimRight(oldRoot, "/")
 	if old == "" {
@@ -52,18 +57,26 @@ func NginxRewrite(body, oldRoot, newRoot string) (string, int, error) {
 
 		if val := directiveValue("root", trimmed); val != "" {
 			effective := strings.TrimRight(val, "/")
-			if depth > 0 && prefix != "" {
+			nested := depth > 0 && prefix != ""
+			if nested {
 				effective = joinNginxPath(effective, prefix)
 			}
 			if effective == old {
-				lines[i] = replaceDirectiveValue(line, "root", new_)
+				if nested {
+					// Nested root: switch to alias so nginx strips the location
+					// prefix instead of appending it to newRoot (contents were
+					// copied flat, not under a <prefix>/ subdir).
+					lines[i] = replaceDirective(line, "root", "alias", new_+"/")
+				} else {
+					lines[i] = replaceDirectiveValue(line, "root", new_)
+				}
 				hits++
 			}
 		} else if val := directiveValue("alias", trimmed); val != "" {
 			if strings.TrimRight(val, "/") == old {
-				// Replace the alias directive with a root pointing to newRoot.
-				// We keep the original indentation via replaceDirective.
-				lines[i] = replaceDirective(line, "alias", "root", new_)
+				// Keep alias semantics; just point it at newRoot (trailing / is
+				// conventional for alias in prefix locations).
+				lines[i] = replaceDirectiveValue(line, "alias", new_+"/")
 				hits++
 			}
 		}
