@@ -7,18 +7,10 @@
           <span class="setup-brand-name">ServerHub</span>
         </div>
         <h2 class="setup-title">首次初始化</h2>
-        <p class="setup-sub">完成以下步骤，开始使用 ServerHub</p>
+        <p class="setup-sub">创建你的管理员账号，开始使用 ServerHub</p>
       </div>
 
-      <NSteps :current="currentStep" size="small" class="setup-steps">
-        <NStep title="创建管理员" />
-        <NStep v-if="needsLocal" title="本机纳管" />
-        <NStep title="完成" />
-      </NSteps>
-
-      <!-- Step 1: create admin -->
       <section v-if="stepKey === 'admin'" class="setup-step">
-        <p class="setup-hint">创建第一个管理员账号，以便登录面板。</p>
         <NForm ref="adminFormRef" :model="adminForm" :rules="adminRules" label-placement="top" @submit.prevent="handleCreateAdmin">
           <NFormItem label="用户名" path="username">
             <NInput v-model:value="adminForm.username" placeholder="至少 3 字符" size="large" />
@@ -30,43 +22,11 @@
             <NInput v-model:value="adminForm.confirm" type="password" show-password-on="click" placeholder="再次输入密码" size="large" @keydown.enter="handleCreateAdmin" />
           </NFormItem>
           <UiButton variant="primary" size="lg" :loading="loading" block @click="handleCreateAdmin">
-            创建管理员并继续
+            创建管理员并进入面板
           </UiButton>
         </NForm>
       </section>
 
-      <!-- Step 2: local host bootstrap -->
-      <section v-else-if="stepKey === 'local'" class="setup-step">
-        <p class="setup-hint">
-          ServerHub 运行在容器里，需要通过 SSH 回连宿主机才能管理 Nginx / Docker / systemd。
-          下面的命令会在宿主上授权 ServerHub 的公钥并配置免密 sudo。
-        </p>
-
-        <NFormItem label="宿主机 SSH 用户名" path="targetUser">
-          <NInput v-model:value="targetUser" placeholder="如 ubuntu / root / ec2-user" size="large" :disabled="!!initResult" />
-        </NFormItem>
-
-        <UiButton v-if="!initResult" variant="primary" size="lg" :loading="loading" block @click="handleInit">
-          生成 SSH 密钥
-        </UiButton>
-
-        <template v-if="initResult">
-          <div class="setup-code-label">
-            请在宿主机（<code>{{ initResult.host_gateway }}</code>）上以 root 或可 sudo 的账号执行：
-          </div>
-          <NCode :code="initResult.command" language="bash" class="setup-code" show-line-numbers />
-          <div class="setup-code-actions">
-            <UiButton variant="ghost" size="md" @click="copyCmd">{{ copied ? '已复制' : '复制命令' }}</UiButton>
-            <UiButton variant="ghost" size="md" @click="resetInit">重新生成</UiButton>
-          </div>
-
-          <UiButton variant="primary" size="lg" :loading="loading" block class="setup-activate" @click="handleActivate">
-            我已在宿主上执行 → 连接本机
-          </UiButton>
-        </template>
-      </section>
-
-      <!-- Step 3: finish -->
       <section v-else class="setup-step">
         <NResult status="success" title="初始化完成" description="即将跳转到面板首页…" />
       </section>
@@ -75,29 +35,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, reactive } from 'vue'
+import { onMounted, ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { invalidateSetupCache } from '@/router'
 import {
-  NForm, NFormItem, NInput, NSteps, NStep, NCode, NResult,
-  useMessage,
+  NForm, NFormItem, NInput, NResult,
 } from 'naive-ui'
 import type { FormInst, FormRules } from 'naive-ui'
 import UiButton from '@/components/ui/UiButton.vue'
 import { useAuthStore } from '@/stores/auth'
-import {
-  getSetupStatus, createAdmin, initLocal, activateLocal,
-  type InitLocalResp,
-} from '@/api/setup'
+import { getSetupStatus, createAdmin } from '@/api/setup'
 
 const router = useRouter()
-const message = useMessage()
 const auth = useAuthStore()
 
 const loading = ref(false)
-const needsAdmin = ref(true)
-const needsLocal = ref(false)
-const stepKey = ref<'admin' | 'local' | 'done'>('admin')
+const stepKey = ref<'admin' | 'done'>('admin')
 
 const adminFormRef = ref<FormInst | null>(null)
 const adminForm = reactive({ username: '', password: '', confirm: '' })
@@ -114,26 +67,12 @@ const adminRules: FormRules = {
   ],
 }
 
-const targetUser = ref('ubuntu')
-const initResult = ref<InitLocalResp | null>(null)
-const copied = ref(false)
-
-const currentStep = computed(() => {
-  if (stepKey.value === 'admin') return 1
-  if (stepKey.value === 'local') return 2
-  return needsLocal.value ? 3 : 2
-})
-
 onMounted(async () => {
   try {
     const st = await getSetupStatus()
-    needsAdmin.value = st.needs_admin
-    needsLocal.value = st.needs_local_server
-    if (!needsAdmin.value && !needsLocal.value) {
+    if (!st.needs_admin) {
       router.replace('/')
-      return
     }
-    stepKey.value = needsAdmin.value ? 'admin' : 'local'
   } catch {
     /* already handled by interceptor */
   }
@@ -144,59 +83,10 @@ async function handleCreateAdmin() {
   loading.value = true
   try {
     await createAdmin(adminForm.username, adminForm.password)
-    // Auto-login immediately so the freshly created token drives step 3+.
     await auth.login(adminForm.username, adminForm.password)
-    if (needsLocal.value) {
-      stepKey.value = 'local'
-    } else {
-      finish()
-    }
+    finish()
   } catch {
     /* error message shown by interceptor */
-  } finally {
-    loading.value = false
-  }
-}
-
-async function handleInit() {
-  if (!targetUser.value.trim()) {
-    message.error('请填写宿主机 SSH 用户名')
-    return
-  }
-  loading.value = true
-  try {
-    initResult.value = await initLocal(targetUser.value.trim())
-  } finally {
-    loading.value = false
-  }
-}
-
-function resetInit() {
-  initResult.value = null
-  copied.value = false
-}
-
-async function copyCmd() {
-  if (!initResult.value) return
-  try {
-    await navigator.clipboard.writeText(initResult.value.command)
-    copied.value = true
-    message.success('命令已复制')
-    setTimeout(() => (copied.value = false), 2000)
-  } catch {
-    message.warning('浏览器不支持剪贴板 API，请手动选中复制')
-  }
-}
-
-async function handleActivate() {
-  loading.value = true
-  try {
-    await activateLocal()
-    message.success('本机纳管成功')
-    finish()
-  } catch (e: unknown) {
-    const err = e as { msg?: string; message?: string }
-    message.error('连接本机失败：' + (err.msg ?? err.message ?? '请检查宿主侧命令是否已执行'))
   } finally {
     loading.value = false
   }
@@ -205,7 +95,7 @@ async function handleActivate() {
 function finish() {
   stepKey.value = 'done'
   invalidateSetupCache()
-  setTimeout(() => router.replace('/'), 1200)
+  setTimeout(() => router.replace('/'), 1000)
 }
 </script>
 
@@ -223,7 +113,7 @@ function finish() {
 }
 .setup-box {
   width: 100%;
-  max-width: 620px;
+  max-width: 480px;
   background: var(--ui-bg-2, #14181C);
   border: 1px solid var(--ui-border, rgba(255,255,255,.08));
   border-radius: var(--radius-lg, 12px);
@@ -254,28 +144,5 @@ function finish() {
   font-size: var(--fs-sm, 13px);
   color: var(--ui-fg-3, rgba(255,255,255,.55));
 }
-.setup-steps { margin: var(--space-6) 0; }
-
 .setup-step { margin-top: var(--space-4); }
-.setup-hint {
-  color: var(--ui-fg-2, rgba(255,255,255,.75));
-  font-size: 13px;
-  line-height: 1.6;
-  margin-bottom: var(--space-4);
-}
-.setup-code-label {
-  font-size: 12px;
-  color: var(--ui-fg-3, rgba(255,255,255,.55));
-  margin: var(--space-4) 0 var(--space-2);
-}
-.setup-code-label code {
-  color: var(--ui-brand, #3ECF8E);
-  font-family: monospace;
-}
-.setup-code { max-height: 280px; overflow: auto; }
-.setup-code-actions {
-  display: flex; gap: var(--space-2);
-  margin: var(--space-3) 0;
-}
-.setup-activate { margin-top: var(--space-4); }
 </style>

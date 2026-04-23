@@ -18,7 +18,16 @@ type Server struct {
 	// HostKeyFP stores the pinned SSH host-key fingerprint (SHA256:base64,
 	// matching ssh.FingerprintSHA256). Populated on first successful dial
 	// (TOFU). Later dials must match; mismatches abort the connection.
-	HostKeyFP string    `gorm:"default:''" json:"host_key_fp"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	HostKeyFP string `gorm:"default:''" json:"host_key_fp"`
+	// Capability is meaningful only when Type == "local". Stamped at boot by
+	// seedLocalServer based on sysinfo.LocalCapability(). Values:
+	//   - "full":   exec/docker/systemd/files all available (bare metal, or
+	//               container with --pid=host + /host + sock).
+	//   - "docker": only the docker socket is reachable (container with sock
+	//               but no host root / pid namespace).
+	//   - "":       legacy rows or Type != "local" — frontend treats empty as
+	//               "full" for backwards compat.
+	Capability string    `gorm:"default:''" json:"capability"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }

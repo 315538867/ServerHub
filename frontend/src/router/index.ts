@@ -110,7 +110,7 @@ async function checkSetup(): Promise<boolean> {
   setupPending = true
   try {
     const st = await getSetupStatus()
-    setupNeeded = st.needs_admin || st.needs_local_server
+    setupNeeded = st.needs_admin
     setupChecked = true
     return setupNeeded
   } catch {

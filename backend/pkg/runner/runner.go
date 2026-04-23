@@ -15,6 +15,7 @@ import (
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/sshpool"
+	"github.com/serverhub/serverhub/pkg/sysinfo"
 	gossh "golang.org/x/crypto/ssh"
 )
 
@@ -39,6 +40,12 @@ type Runner interface {
 	NewSession() (Session, error)
 	// IsLocal reports whether commands run via os/exec on this host.
 	IsLocal() bool
+	// Capability reports what kind of host control this runner offers.
+	// SSH runners are always "full". Local runners depend on the boot-time
+	// probe (see sysinfo.LocalCapability) — "full" when the binary can drive
+	// the host directly (bare metal or container with --pid=host + /host),
+	// "docker" when only the docker socket is reachable.
+	Capability() string
 	// Close releases any dedicated underlying connection (no-op for pooled).
 	Close() error
 }
@@ -49,7 +56,7 @@ func For(s *model.Server, cfg *config.Config) (Runner, error) {
 		return nil, errors.New("nil server")
 	}
 	if s.Type == "local" {
-		return localRunner{}, nil
+		return newLocalRunner(s.Capability), nil
 	}
 	cred, err := decryptCred(s, cfg)
 	if err != nil {
@@ -74,7 +81,7 @@ func ForDedicated(s *model.Server, cfg *config.Config) (Runner, error) {
 		return nil, errors.New("nil server")
 	}
 	if s.Type == "local" {
-		return localRunner{}, nil
+		return newLocalRunner(s.Capability), nil
 	}
 	cred, err := decryptCred(s, cfg)
 	if err != nil {
@@ -143,7 +150,8 @@ func (r *sshRunner) NewSession() (Session, error) {
 	return &sshSession{s: s}, nil
 }
 
-func (r *sshRunner) IsLocal() bool { return false }
+func (r *sshRunner) IsLocal() bool     { return false }
+func (r *sshRunner) Capability() string { return sysinfo.CapFull }
 
 func (r *sshRunner) Close() error {
 	if r.dedicated && r.client != nil {
@@ -168,18 +176,57 @@ func (s *sshSession) Close() error           { return s.s.Close() }
 
 // ─── local impl ──────────────────────────────────────────────────────────
 
-type localRunner struct{}
+// newLocalRunner picks between "direct bash -lc" (bare-metal or docker-only
+// capability) and "bash -lc wrapped by nsenter into PID 1 namespaces"
+// (containerized with full capability: --pid=host + /host + CAP_SYS_ADMIN).
+//
+// Legacy rows created before the Capability column (empty string) default to
+// "full" so a freshly upgraded bare-metal install keeps working without a
+// manual DB edit.
+func newLocalRunner(capability string) Runner {
+	c := capability
+	if c == "" {
+		c = sysinfo.CapFull
+	}
+	useNsenter := c == sysinfo.CapFull && sysinfo.IsContainerized()
+	return localRunner{capability: c, useNsenter: useNsenter}
+}
 
-func (localRunner) Run(cmd string) (string, error) {
-	out, err := exec.Command("bash", "-lc", cmd).CombinedOutput()
+type localRunner struct {
+	capability string
+	useNsenter bool
+}
+
+// wrap applies the nsenter prefix for host-namespace execution when the
+// runner was created inside a container with full capability. nsenter enters
+// the mount/uts/ipc/net/pid namespaces of PID 1 (the host init), giving the
+// child process the same view as if it were running on the host directly.
+// CAP_SYS_ADMIN is required for this and must be granted via --cap-add.
+func (r localRunner) wrap(cmd string) (string, []string) {
+	if r.useNsenter {
+		return "nsenter", []string{
+			"-t", "1", "-m", "-u", "-i", "-n", "-p", "--",
+			"bash", "-lc", cmd,
+		}
+	}
+	return "bash", []string{"-lc", cmd}
+}
+
+func (r localRunner) Run(cmd string) (string, error) {
+	name, args := r.wrap(cmd)
+	out, err := exec.Command(name, args...).CombinedOutput()
 	return string(out), err
 }
 
-func (localRunner) NewSession() (Session, error) { return &localSession{}, nil }
-func (localRunner) IsLocal() bool                { return true }
-func (localRunner) Close() error                 { return nil }
+func (r localRunner) NewSession() (Session, error) {
+	return &localSession{runner: r}, nil
+}
+func (r localRunner) IsLocal() bool       { return true }
+func (r localRunner) Capability() string  { return r.capability }
+func (r localRunner) Close() error        { return nil }
 
 type localSession struct {
+	runner localRunner
 	cmd    *exec.Cmd
 	stdout io.ReadCloser
 	piped  bool
@@ -200,7 +247,8 @@ func (s *localSession) StdoutPipe() (io.Reader, error) {
 }
 
 func (s *localSession) Start(cmd string) error {
-	s.cmd = exec.Command("bash", "-lc", cmd)
+	name, args := s.runner.wrap(cmd)
+	s.cmd = exec.Command(name, args...)
 	if s.piped {
 		pipe, err := s.cmd.StdoutPipe()
 		if err != nil {

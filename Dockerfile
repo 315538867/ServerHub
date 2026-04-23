@@ -76,7 +76,7 @@ FROM ${BASE_RUNTIME}
 ARG DOCKER_CLI_VERSION=27.3.1
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-      bash ca-certificates tini curl && \
+      bash ca-certificates tini curl gosu && \
     rm -rf /var/lib/apt/lists/* && \
     ARCH="$(uname -m)" && \
     curl -fsSL "https://download.docker.com/linux/static/stable/${ARCH}/docker-${DOCKER_CLI_VERSION}.tgz" \
@@ -86,12 +86,13 @@ RUN apt-get update && \
     useradd -u 65532 -g 65532 -m -s /bin/bash serverhub
 COPY --from=backend /out/serverhub /serverhub
 COPY backend/config.example.yaml /etc/serverhub/config.example.yaml
+COPY --chmod=0755 scripts/entrypoint.sh /entrypoint.sh
 ENV SERVERHUB_DATA_DIR=/data \
     SERVERHUB_CONFIG=/data/config.yaml \
     SERVERHUB_PORT=9999
 VOLUME ["/data"]
 EXPOSE 9999
-USER serverhub:serverhub
+# 以 root 启动，entrypoint.sh 对齐 docker.sock GID 后 gosu 降权到 serverhub。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD ["/serverhub", "--healthcheck"]
-ENTRYPOINT ["/usr/bin/tini", "--", "/serverhub"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/entrypoint.sh"]

@@ -35,11 +35,23 @@ curl -fsSL https://raw.githubusercontent.com/315538867/ServerHub/main/scripts/in
 **② Docker / Compose**
 
 ```bash
-docker build -t serverhub:local .
-docker compose up -d
+# 只管远端 SSH 机器（最小权限；本机卡片不出现）
+docker run -d --name serverhub \
+  -v serverhub-data:/data -p 9999:9999 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  ghcr.io/315538867/serverhub:latest
+
+# 额外纳管宿主本机（systemd / nginx / 文件管理）
+docker run -d --name serverhub \
+  -v serverhub-data:/data -p 9999:9999 \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  --pid=host --cap-add=SYS_ADMIN -v /:/host \
+  ghcr.io/315538867/serverhub:latest
 ```
 
-debian-slim 镜像（含 bash + docker-cli），nonroot uid 65532；或从 GitHub Release 下载 `serverhub_linux_<arch>.image.tar` 离线 `docker load`。
+启动时 entrypoint 会自动把 `docker.sock` 的宿主 GID 对齐进容器并把 `serverhub` 用户加入该组，然后 `gosu` 降权，**无需** `--group-add`。本机能力由启动时自动探测：挂了 sock → 仅能驱 Docker；再加 `--pid=host`/`/host`/`SYS_ADMIN` → 完整本机；都没挂 → 不出现本机卡片。
+
+也可 `docker compose up -d`，或从 GitHub Release 下载 `serverhub_linux_<arch>.image.tar` 离线 `docker load`。
 
 **③ 手动构建**
 
@@ -60,7 +72,7 @@ make dev-frontend       # cd frontend && bun run dev      → :5173
 
 ### 访问
 
-首次访问 `http://<host>:9999/panel/` 会进入初始化向导：填写管理员账号 → 容器部署还会引导一键纳管宿主机（生成 SSH 密钥，宿主上粘贴一行命令即可）。完成后跳到面板首页。
+首次访问 `http://<host>:9999/panel/` 会进入初始化向导：创建管理员账号即可进入面板。本机能力（Docker / 完整）由容器挂载自动探测，无需向导引导绑定。
 
 ## 文档
 

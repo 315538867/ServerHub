@@ -3,13 +3,69 @@ package sysinfo
 
 import (
 	"bufio"
-	"encoding/hex"
-	"fmt"
-	"net"
 	"os"
-	"os/exec"
 	"strings"
 )
+
+// Capability represents what the running binary can do to "the local host".
+//   - CapFull:   裸机，或容器挂载了 /host + --pid=host + sock，可经 nsenter
+//     管控宿主 systemd / 文件 / docker。
+//   - CapDocker: 仅挂 docker.sock；只能通过 socket 管控宿主 docker 引擎，
+//     不能读/改宿主文件、systemd。
+//   - CapNone:   容器既没挂 sock 也没挂宿主根；UI 不应显示"本机"卡片。
+const (
+	CapFull   = "full"
+	CapDocker = "docker"
+	CapNone   = "none"
+)
+
+// LocalCapability reports what operations the current process can perform
+// against the host it runs on. Called at boot by seedLocalServer to decide
+// whether to create a Type="local" Server row and what Capability to stamp.
+func LocalCapability() string {
+	if !IsContainerized() {
+		return CapFull
+	}
+	hasSock := hasDockerSocket()
+	hasHostRoot := dirExists("/host")
+	hostPID := hasHostPIDNamespace()
+	if hasSock && hasHostRoot && hostPID {
+		return CapFull
+	}
+	if hasSock {
+		return CapDocker
+	}
+	return CapNone
+}
+
+func hasDockerSocket() bool {
+	fi, err := os.Stat("/var/run/docker.sock")
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeSocket != 0
+}
+
+func dirExists(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
+}
+
+// hasHostPIDNamespace reports whether the container shares the host PID
+// namespace (launched with `--pid=host`). Detected by comparing our own
+// PID namespace inode with /proc/1/ns/pid — in a shared namespace they
+// match; in a private namespace PID 1 is the container's init.
+func hasHostPIDNamespace() bool {
+	self, err := os.Readlink("/proc/self/ns/pid")
+	if err != nil {
+		return false
+	}
+	one, err := os.Readlink("/proc/1/ns/pid")
+	if err != nil {
+		return false
+	}
+	return self == one
+}
 
 // IsContainerized reports whether the process is running inside a container.
 // Detection order: /.dockerenv (docker, also written by some buildah images),
@@ -36,74 +92,6 @@ func IsContainerized() bool {
 	return false
 }
 
-// HostGatewayIP returns the IPv4 address of the default route's next hop,
-// which inside a docker container points back at the host's bridge interface.
-// Used by the setup wizard to suggest the SSH target when self-managing the
-// host from within the container.
-//
-// Falls back to "host.docker.internal" lookup, then "172.17.0.1" (default
-// docker0), then empty string if everything fails.
-func HostGatewayIP() string {
-	if ip := defaultRouteGateway(); ip != "" {
-		return ip
-	}
-	if ip := procNetRouteGateway(); ip != "" {
-		return ip
-	}
-	if ips, err := net.LookupIP("host.docker.internal"); err == nil {
-		for _, ip := range ips {
-			if v4 := ip.To4(); v4 != nil {
-				return v4.String()
-			}
-		}
-	}
-	return "172.17.0.1"
-}
-
-func defaultRouteGateway() string {
-	out, err := exec.Command("ip", "route", "show", "default").Output()
-	if err != nil {
-		return ""
-	}
-	// Format: "default via 172.30.0.1 dev eth0 ..."
-	fields := strings.Fields(string(out))
-	for i, f := range fields {
-		if f == "via" && i+1 < len(fields) {
-			return fields[i+1]
-		}
-	}
-	return ""
-}
-
-// procNetRouteGateway reads /proc/net/route directly so the lookup works on
-// minimal images that don't ship the iproute2 binary. The Gateway column is
-// little-endian hex.
-func procNetRouteGateway() string {
-	f, err := os.Open("/proc/net/route")
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	sc := bufio.NewScanner(f)
-	first := true
-	for sc.Scan() {
-		if first {
-			first = false
-			continue
-		}
-		fields := strings.Fields(sc.Text())
-		if len(fields) < 3 {
-			continue
-		}
-		if fields[1] != "00000000" { // not default route
-			continue
-		}
-		raw, err := hex.DecodeString(fields[2])
-		if err != nil || len(raw) != 4 {
-			return ""
-		}
-		// little-endian → dotted quad
-		return fmt.Sprintf("%d.%d.%d.%d", raw[3], raw[2], raw[1], raw[0])
-	}
-	return ""
-}
+// HostGatewayIP / 路由探测工具已随首次引导 SSH 自管路径删除。
+// 容器现在通过挂载 docker.sock + /host + --pid=host 直接拥有本机能力，
+// 不再需要"猜宿主 IP 然后回连 SSH"。

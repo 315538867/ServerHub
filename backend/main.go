@@ -158,10 +158,10 @@ func main() {
 	apiauth.RegisterRoutes(authGroup, db, cfg)
 
 	// First-run wizard (intentionally public — user table is empty on first
-	// boot, so JWT auth isn't available yet. Each endpoint enforces its own
-	// safety gate server-side: /admin requires user_count==0, /local/* requires
-	// containerized runtime + admin already created.)
-	apisetup.RegisterRoutes(base.Group("/setup"), db, cfg)
+	// boot, so JWT auth isn't available yet). Only /admin and /status remain;
+	// /admin enforces user_count==0 server-side. Local-host SSH bootstrap was
+	// removed in v0.3.7-beta.16 in favor of capability-probed local server.
+	apisetup.RegisterRoutes(base.Group("/setup"), db)
 
 	// ── protected routes ───────────────────────────────────────────
 	protected := base.Group("/")

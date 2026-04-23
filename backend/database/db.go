@@ -67,10 +67,14 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.NotifyChannel{},
 		&model.Application{},
 		&model.AppNginxRoute{},
-		&model.SetupState{},
 	); err != nil {
 		panic(fmt.Sprintf("migration failed: %v", err))
 	}
+
+	// 历史 setup_states 表（首次引导 SSH 自管的临时密钥行）已弃用：v0.3.7-beta.16
+	// 起 setup 向导只创建管理员，不再生成本机 SSH 凭据。drop 干净以避免遗留
+	// 加密数据残留。
+	db.Exec("DROP TABLE IF EXISTS setup_states")
 
 	ensureIndexes(db)
 
@@ -149,33 +153,30 @@ func seedAdminUser(db *gorm.DB, cfg *config.Config) {
 	fmt.Println("✓ Dev admin user created: admin / admin123")
 }
 
-// seedLocalServer ensures exactly one Type="local" server record exists,
-// representing the host the binary itself runs on. Skipped under containerized
-// runtimes (see Type field for rationale).
+// seedLocalServer ensures a Type="local" Server row exists when the runtime
+// has capability to manage the host, otherwise leaves the row absent so the
+// UI doesn't surface a "本机" card we can't act on.
+//
+// Capability is decided by sysinfo.LocalCapability():
+//   - "full":   bare metal, OR container with --pid=host + -v /:/host + sock
+//   - "docker": container with only docker.sock mounted
+//   - "none":   container without any host bridge → no row created
 //
 // Migration safety: earlier versions allowed users to manually add servers
 // pointing at 127.0.0.1/localhost (or a docker bridge gateway) as Type="ssh",
 // often named "本机"/"本机 (SSH)". On upgrade those would coexist with a
 // freshly seeded Type="local" row, producing two "本机" entries and splitting
-// services across server_ids (导致 Discover 无法识别 already_managed).
-// This function:
-//  1. If a local row exists, merges any ssh aliases ("looks-like-本机") into
-//     it — reassigning services/applications/dbconns/ssl_certs/metrics and
-//     demoting the alias so it won't match again.
-//  2. Otherwise promotes the oldest alias to Type="local".
-//  3. Creates a fresh row only when no candidate exists at all.
-//
-// Containerized: still runs merge logic (step 1) to fix legacy data, but skips
-// creation/promotion (steps 2-3) since the container cannot self-manage the host.
+// services across server_ids. mergeLocalAliases collapses such legacy rows
+// into the canonical local row regardless of capability — so even in
+// docker-only or none mode we still run the merge step.
 func seedLocalServer(db *gorm.DB) {
 	localHosts := []string{"127.0.0.1", "localhost", "::1", "0.0.0.0"}
 	localNames := []string{"本机", "本机 (SSH)"}
+	lc := sysinfo.LocalCapability()
 
 	var locals []model.Server
 	db.Where("type = ?", "local").Order("id asc").Find(&locals)
 	if len(locals) > 1 {
-		// Multiple local rows existed (data corruption / older bug). Keep the
-		// oldest, mark the rest as ssh + flag in remark for manual review.
 		for _, s := range locals[1:] {
 			db.Model(&s).Updates(map[string]any{
 				"type":   "ssh",
@@ -185,19 +186,23 @@ func seedLocalServer(db *gorm.DB) {
 	}
 	if len(locals) >= 1 {
 		kept := locals[0]
+		if kept.Capability != lc && lc != sysinfo.CapNone {
+			db.Model(&kept).Update("capability", lc)
+		}
 		mergeLocalAliases(db, kept.ID, localHosts, localNames)
 		return
 	}
-	// No local row yet. In containerized mode, skip creation/promotion.
-	if sysinfo.IsContainerized() {
+	if lc == sysinfo.CapNone {
+		// No row to host the merge target either, but legacy aliases (if any)
+		// will simply remain as ssh records — user can clean up manually.
 		return
 	}
-	// Try to promote an existing localhost-like ssh row.
 	var existing model.Server
 	err := db.Where("type = ? AND (host IN ? OR name IN ?)", "ssh",
 		localHosts, localNames).
 		Order("id asc").First(&existing).Error
 	now := time.Now()
+	remark := localRemarkFor(lc)
 	if err == nil {
 		db.Model(&existing).Updates(map[string]any{
 			"type":          "local",
@@ -209,7 +214,8 @@ func seedLocalServer(db *gorm.DB) {
 			"password":      "",
 			"private_key":   "",
 			"status":        "online",
-			"remark":        "ServerHub 所在主机（本地执行，无需 SSH）",
+			"capability":    lc,
+			"remark":        remark,
 			"last_check_at": &now,
 		})
 		mergeLocalAliases(db, existing.ID, localHosts, localNames)
@@ -223,11 +229,23 @@ func seedLocalServer(db *gorm.DB) {
 		Username:    "local",
 		AuthType:    "local",
 		Status:      "online",
-		Remark:      "ServerHub 所在主机（本地执行，无需 SSH）",
+		Capability:  lc,
+		Remark:      remark,
 		LastCheckAt: &now,
 	}
 	if err := db.Create(&local).Error; err != nil {
 		fmt.Printf("seedLocalServer: %v\n", err)
+	}
+}
+
+func localRemarkFor(cap string) string {
+	switch cap {
+	case sysinfo.CapFull:
+		return "ServerHub 所在主机（本地执行，无需 SSH）"
+	case sysinfo.CapDocker:
+		return "ServerHub 容器仅挂载 docker.sock，本机仅支持 Docker 操作；如需 systemd/文件管理，请加 --pid=host 与 -v /:/host"
+	default:
+		return ""
 	}
 }
 
