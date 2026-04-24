@@ -52,19 +52,39 @@ func dirExists(p string) bool {
 }
 
 // hasHostPIDNamespace reports whether the container shares the host PID
-// namespace (launched with `--pid=host`). Detected by comparing our own
-// PID namespace inode with /proc/1/ns/pid — in a shared namespace they
-// match; in a private namespace PID 1 is the container's init.
+// namespace (launched with `--pid=host`).
+//
+// 历史实现用 os.Readlink("/proc/1/ns/pid") 比较 ns inode，但在大多数现代内核
+// 下，即便容器加了 CAP_SYS_ADMIN+CAP_SYS_PTRACE，readlink ns 链接也会被
+// ptrace_may_access 拒绝（要 PTRACE_MODE_READ on target），返回 EACCES，
+// 导致 --pid=host 也被误判为私有 PID ns。
+//
+// 改用 cgroup 指纹：PID 1 的 /proc/1/cgroup 内容能区分宿主 init 与容器 init。
+//   - 宿主 systemd init：路径形如 "/init.scope"、"/" 或 "0::/../../init.scope"
+//     （不含 docker/kubepods/containerd 段）。
+//   - 容器内 init：路径形如 "0::/docker/<id>" 或 "0::/kubepods/..."（含容器
+//     运行时段）。
+// 我们已知自身在容器里（IsContainerized==true 才会进到这里的调用方），所以
+// "PID 1 的 cgroup 不含容器运行时段" 即可推断 PID ns 与宿主共享。
 func hasHostPIDNamespace() bool {
-	self, err := os.Readlink("/proc/self/ns/pid")
+	f, err := os.Open("/proc/1/cgroup")
 	if err != nil {
 		return false
 	}
-	one, err := os.Readlink("/proc/1/ns/pid")
-	if err != nil {
-		return false
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	for sc.Scan() {
+		l := sc.Text()
+		if strings.Contains(l, "/docker/") ||
+			strings.Contains(l, "/docker-") ||
+			strings.Contains(l, "kubepods") ||
+			strings.Contains(l, "containerd") ||
+			strings.Contains(l, "/lxc/") ||
+			strings.Contains(l, "/podman") {
+			return false
+		}
 	}
-	return self == one
+	return true
 }
 
 // IsContainerized reports whether the process is running inside a container.
