@@ -25,8 +25,13 @@ func Audit(db *gorm.DB) gin.HandlerFunc {
 
 		start := time.Now()
 
-		// cap body to 1 KB to prevent audit log bloat
-		body, _ := io.ReadAll(io.LimitReader(c.Request.Body, 1024))
+		// Read the full body so downstream handlers still see it. The earlier
+		// implementation used io.LimitReader and wrote only the first 1 KB
+		// back, which truncated payloads larger than 1 KB (e.g. the
+		// discover/takeover candidate) and surfaced as "unexpected EOF"
+		// during ShouldBindJSON. We now sanitize the full body and truncate
+		// only the audit log entry.
+		body, _ := io.ReadAll(c.Request.Body)
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(body))
 
 		c.Next()
@@ -71,5 +76,11 @@ func sanitizeBody(body []byte) string {
 		}
 	}
 	out, _ := json.Marshal(m)
+	// Cap the stored audit string to 1 KB to prevent table bloat. Sanitizing
+	// before truncating ensures we don't slice through a multibyte rune or a
+	// JSON token in a way that hides the redaction.
+	if len(out) > 1024 {
+		return string(out[:1024])
+	}
 	return string(out)
 }
