@@ -75,6 +75,13 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.DeployRun{},
 		// Phase M3: App 级发布集（组合多个 Service 的 Release 做原子应用/回滚）
 		&model.AppReleaseSet{},
+		// Phase Nginx-P0: Ingress 模型（跨机入口编排），P0 建表 + 数据迁移，
+		// Renderer/Reconciler 在 P1 接入；NginxCert/AuditApply 表先占位，
+		// P2 (HTTPS) / P1 (审计) 起开始写入。
+		&model.Ingress{},
+		&model.IngressRoute{},
+		&model.NginxCert{},
+		&model.AuditApply{},
 	); err != nil {
 		panic(fmt.Sprintf("migration failed: %v", err))
 	}
@@ -90,6 +97,7 @@ func Init(cfg *config.Config) *gorm.DB {
 	seedAdminUser(db, cfg)
 	seedLocalServer(db)
 	backfillFingerprints(db)
+	backfillRunServerID(db)
 
 	return db
 }
@@ -311,5 +319,22 @@ func backfillFingerprints(db *gorm.DB) {
 	}
 	if len(rows) > 0 {
 		fmt.Printf("backfillFingerprints: %d 条已回填\n", len(rows))
+	}
+}
+
+// backfillRunServerID 把 applications.run_server_id=0 的旧行用 server_id 回填，
+// 用于 Nginx-P0 引入 RunServerID 字段后的平滑升级。每次启动跑一次，幂等：旧行
+// 一次性回填后，后续 BeforeSave 钩子保证 RunServerID 永远非零。
+//
+// 注意：直接走 Exec 而非 Update，避免触发 BeforeSave 钩子（钩子假设至少一边非
+// 零，回填阶段两边可能都为 0 但实际是干净库，没必要走钩子）。
+func backfillRunServerID(db *gorm.DB) {
+	res := db.Exec("UPDATE applications SET run_server_id = server_id WHERE run_server_id = 0 AND server_id != 0")
+	if res.Error != nil {
+		fmt.Printf("backfillRunServerID: %v\n", res.Error)
+		return
+	}
+	if res.RowsAffected > 0 {
+		fmt.Printf("backfillRunServerID: %d 条已回填\n", res.RowsAffected)
 	}
 }
