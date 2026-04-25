@@ -374,6 +374,79 @@ func TestServices_Listing(t *testing.T) {
 	}
 }
 
+// ── 协议校验（P2-D2）─────────────────────────────────────────────────────────
+
+func TestProtocol_GRPCAccepted(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	w, body := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge, "match_kind": "domain", "domain": "g.com",
+		"routes": []map[string]any{
+			{"path": "/", "protocol": "grpc",
+				"upstream": map[string]any{"type": "raw", "raw_url": "http://up:9"}},
+		},
+	})
+	if w.Code != http.StatusOK || body["code"].(float64) != 0 {
+		t.Fatalf("grpc 应放行, status=%d body=%v", w.Code, body)
+	}
+	var rt model.IngressRoute
+	db.First(&rt)
+	if rt.Protocol != "grpc" {
+		t.Errorf("DB 里 protocol 应保留 grpc, got %s", rt.Protocol)
+	}
+}
+
+func TestProtocol_TCPRejectedOnCreate(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	w, _ := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge, "match_kind": "domain", "domain": "t.com",
+		"routes": []map[string]any{
+			{"path": "/", "protocol": "tcp",
+				"upstream": map[string]any{"type": "raw", "raw_url": "10:1"}},
+		},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("tcp 应 400, got %d", w.Code)
+	}
+	// 同事务里 ingress 也应该被回滚（不留空壳）
+	var igCnt int64
+	db.Model(&model.Ingress{}).Count(&igCnt)
+	if igCnt != 0 {
+		t.Errorf("事务回滚后不该有 Ingress, 剩 %d", igCnt)
+	}
+}
+
+func TestProtocol_UDPRejectedOnAddRoute(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	ig := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "u.com"}
+	db.Create(&ig)
+	w, _ := do(t, r, "POST", "/ingresses/"+uintToStr(ig.ID)+"/routes", map[string]any{
+		"path": "/", "protocol": "udp",
+		"upstream": map[string]any{"type": "raw", "raw_url": "10:1"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("udp 应 400, got %d", w.Code)
+	}
+}
+
+func TestProtocol_UnknownRejectedOnUpdateRoute(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	ig := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "x.com"}
+	db.Create(&ig)
+	rt := model.IngressRoute{IngressID: ig.ID, Path: "/", Protocol: "http"}
+	db.Create(&rt)
+	w, _ := do(t, r, "PUT", "/ingresses/"+uintToStr(ig.ID)+"/routes/"+uintToStr(rt.ID), map[string]any{
+		"path": "/", "protocol": "weird",
+		"upstream": map[string]any{"type": "raw", "raw_url": "x"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("非法 protocol 应 400, got %d", w.Code)
+	}
+}
+
 func TestParseUintParam_BadID(t *testing.T) {
 	r, _ := setup(t)
 	w, _ := do(t, r, "GET", "/ingresses/abc", nil)

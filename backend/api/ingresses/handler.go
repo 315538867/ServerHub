@@ -88,6 +88,25 @@ func validateMatchKind(k string) error {
 	return nil
 }
 
+// validateProtocol 限制 RouteCtx.Protocol 的取值。
+//
+// 当前 Renderer 支持的协议：
+//   - http / "" / ws：proxy_pass 链路（ws 等价 http + WebSocket=true）
+//   - grpc：grpc_pass + http2 listen
+//
+// tcp / udp 需要 nginx stream 块，留到 P2-D3。提前在 API 层挡住可避免用户
+// 在前端选了 tcp/udp 之后 apply 时才被 nginx -t 拒绝。
+func validateProtocol(p string) error {
+	switch p {
+	case "", "http", "ws", "grpc":
+		return nil
+	case "tcp", "udp":
+		return errors.New("protocol=" + p + " 暂未支持（stream 段渲染计划中）")
+	default:
+		return errors.New("protocol 取值非法：" + p)
+	}
+}
+
 func loadIngress(db *gorm.DB, id uint) (*model.Ingress, error) {
 	var ig model.Ingress
 	if err := db.First(&ig, id).Error; err != nil {
@@ -169,6 +188,9 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 				return err
 			}
 			for _, r := range req.Routes {
+				if err := validateProtocol(r.Protocol); err != nil {
+					return err
+				}
 				ir := model.IngressRoute{
 					IngressID: ig.ID, Sort: r.Sort, Path: r.Path,
 					Protocol: r.Protocol, Upstream: r.Upstream,
@@ -183,7 +205,7 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 			}
 			return nil
 		}); err != nil {
-			resp.InternalError(c, err.Error())
+			resp.BadRequest(c, err.Error())
 			return
 		}
 		resp.OK(c, ig)
@@ -268,6 +290,10 @@ func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
+		if err := validateProtocol(req.Protocol); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
 		ir := model.IngressRoute{
 			IngressID: igID, Sort: req.Sort, Path: req.Path,
 			Protocol: req.Protocol, Upstream: req.Upstream,
@@ -302,6 +328,10 @@ func updateRouteHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 		var req routeReq
 		if err := c.ShouldBindJSON(&req); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
+		if err := validateProtocol(req.Protocol); err != nil {
 			resp.BadRequest(c, err.Error())
 			return
 		}
