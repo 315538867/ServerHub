@@ -49,7 +49,10 @@ func runAll(db *gorm.DB) {
 	cleanTable(db, "audit_logs", auditKeepDays)
 	cleanTable(db, "metrics", metricsKeepDays)
 	cleanTable(db, "deploy_logs", deployLogKeepDays(db))
-	deployer.PruneAllVersions(db, deployer.MaxVersionsPerDeploy)
+	// M3：旧 deploy_versions 表已只读，不再 PruneAllVersions；
+	// Release 保留 + Artifact 物理文件孤儿清理仍然生效。
+	deployer.PruneAllReleases(db, releaseKeepPerService(db))
+	deployer.PruneOrphanArtifactFiles(db)
 	if shouldVacuum(db) {
 		if err := db.Exec("VACUUM").Error; err != nil {
 			log.Printf("[retention] VACUUM error: %v", err)
@@ -97,6 +100,19 @@ func cleanTable(db *gorm.DB, table string, keepDays int) {
 	if res.RowsAffected > 0 {
 		log.Printf("[retention] %s: deleted %d rows older than %d days", table, res.RowsAffected, keepDays)
 	}
+}
+
+// releaseKeepPerService 读 settings.release_keep_per_service；缺省沿用常量。
+func releaseKeepPerService(db *gorm.DB) int {
+	var s model.Setting
+	if err := db.Where("key = ?", "release_keep_per_service").First(&s).Error; err != nil {
+		return deployer.MaxReleasesPerService
+	}
+	n, err := strconv.Atoi(s.Value)
+	if err != nil || n <= 0 {
+		return deployer.MaxReleasesPerService
+	}
+	return n
 }
 
 func deployLogKeepDays(db *gorm.DB) int {

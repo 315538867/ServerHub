@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -16,6 +17,7 @@ import (
 	"github.com/gin-gonic/gin"
 	apialerts "github.com/serverhub/serverhub/api/alerts"
 	apiapplication "github.com/serverhub/serverhub/api/application"
+	apiapprelease "github.com/serverhub/serverhub/api/apprelease"
 	apiaudit "github.com/serverhub/serverhub/api/audit"
 	apiapproutes "github.com/serverhub/serverhub/api/approutes"
 	apiauth "github.com/serverhub/serverhub/api/auth"
@@ -28,6 +30,7 @@ import (
 	apimetrics "github.com/serverhub/serverhub/api/metrics"
 	apilogsearch "github.com/serverhub/serverhub/api/logsearch"
 	apinginx "github.com/serverhub/serverhub/api/nginx"
+	apirelease "github.com/serverhub/serverhub/api/release"
 	apiservers "github.com/serverhub/serverhub/api/servers"
 	apisetup "github.com/serverhub/serverhub/api/setup"
 	apissl "github.com/serverhub/serverhub/api/ssl"
@@ -37,10 +40,13 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/database"
 	"github.com/serverhub/serverhub/middleware"
+	"github.com/serverhub/serverhub/migration"
+	"github.com/serverhub/serverhub/pkg/deployer"
 	"github.com/serverhub/serverhub/pkg/scheduler"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/retention"
 	"github.com/serverhub/serverhub/pkg/auditq"
+	"gorm.io/gorm"
 )
 
 // Version is injected at build time via ldflags.
@@ -54,6 +60,7 @@ func main() {
 		devMode     = flag.Bool("dev", false, "development mode (CORS, debug logging)")
 		healthcheck = flag.Bool("healthcheck", false, "probe local /healthz and exit 0/1 (for container HEALTHCHECK)")
 		showVersion = flag.Bool("version", false, "print version and exit")
+		migrateCmd  = flag.String("migrate", "", "run a data migration and exit: m2|m2-dryrun")
 	)
 	flag.Parse()
 
@@ -95,6 +102,15 @@ func main() {
 
 	db := database.Init(cfg)
 
+	// 一次性迁移命令：跑完立即退出，不起 HTTP 服务
+	if *migrateCmd != "" {
+		if err := runMigration(*migrateCmd, db, cfg.Security.AESKey); err != nil {
+			fmt.Fprintf(os.Stderr, "migration failed: %v\n", err)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	sshpool.SetHostKeyStore(sshpool.NewGormHostKeyStore(db))
 
 	auditq.Default = auditq.New(db)
@@ -125,6 +141,9 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	// Release / Artifact 保留策略需要 data_dir 来删除 upload 物理文件
+	deployer.ArtifactsDataDir = cfg.Server.DataDir
 
 	scheduler.Start(db, cfg)
 	scheduler.StartReconciler(db, cfg)
@@ -182,10 +201,14 @@ func main() {
 	apialerts.RegisterRoutes(protected.Group("/alerts"), db, cfg)
 	apideploy.RegisterRoutes(protected.Group("/services"), db, cfg)
 	apideploy.RegisterWebhookRoutes(base.Group("/webhooks"), db, cfg)
+	// Phase M1: Release 三维模型新链路，与 apideploy 共享 /services 组
+	apirelease.RegisterRoutes(protected.Group("/services"), db, cfg)
 	apimetrics.RegisterRoutes(protected.Group("/metrics"), db)
 	apisettings.RegisterRoutes(protected.Group("/settings"), db, cfg)
 	appsGroup := protected.Group("/apps")
 	apiapplication.RegisterRoutes(appsGroup, db, cfg)
+	// Phase M3: AppReleaseSet（App 级 Release 组合 + SSE Apply/Rollback）
+	apiapprelease.RegisterRoutes(appsGroup, db, cfg)
 	apiapproutes.RegisterRoutes(appsGroup, db, cfg)
 	apiaudit.RegisterRoutes(protected.Group("/audit"), db)
 
@@ -289,4 +312,31 @@ func runHealthcheck(configPath string, portFlag int) int {
 		return 1
 	}
 	return 0
+}
+
+// runMigration 分发 -migrate=xxx 命令。成功后打印 JSON 报告。
+func runMigration(name string, db interface{}, aesKey string) error {
+	gdb, ok := db.(*gorm.DB)
+	if !ok {
+		return fmt.Errorf("migration: unexpected db type")
+	}
+	switch name {
+	case "m2":
+		rep, err := migration.RunM2(gdb, aesKey, false)
+		if err != nil {
+			return err
+		}
+		b, _ := json.MarshalIndent(rep, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	case "m2-dryrun":
+		rep, err := migration.RunM2(gdb, aesKey, true)
+		if err != nil {
+			return err
+		}
+		b, _ := json.MarshalIndent(rep, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	}
+	return fmt.Errorf("unknown migration: %s (want m2|m2-dryrun)", name)
 }

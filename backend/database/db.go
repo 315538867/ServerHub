@@ -67,6 +67,14 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.NotifyChannel{},
 		&model.Application{},
 		&model.AppNginxRoute{},
+		// Phase M1: Release 三维正交模型（与旧 DeployVersion/DeployLog 并存）
+		&model.Artifact{},
+		&model.EnvVarSet{},
+		&model.ConfigFileSet{},
+		&model.Release{},
+		&model.DeployRun{},
+		// Phase M3: App 级发布集（组合多个 Service 的 Release 做原子应用/回滚）
+		&model.AppReleaseSet{},
 	); err != nil {
 		panic(fmt.Sprintf("migration failed: %v", err))
 	}
