@@ -195,8 +195,7 @@ const serviceOptions = computed<SelectOption[]>(() =>
 const protocolOptions = [
   { label: 'http', value: 'http' },
   { label: 'grpc', value: 'grpc' },
-  { label: 'tcp', value: 'tcp' },
-  { label: 'udp', value: 'udp' },
+  // tcp/udp 需要 nginx stream 段渲染，留待 P2-D3
 ]
 
 // ── 列表 ──────────────────────────────────────────────────────────────────────
