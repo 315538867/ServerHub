@@ -50,6 +50,19 @@ export interface Server {
   updated_at: string
 }
 
+// Network 描述 server 的可达入口，由 Resolver 在跨机选 upstream 时使用。
+// loopback 由后端自动注入，前端只读不编辑（编辑提交时会被后端钩子过滤）。
+export type NetworkKind = 'loopback' | 'private' | 'vpn' | 'tunnel' | 'public'
+
+export interface Network {
+  kind: NetworkKind
+  network_id: string
+  address: string
+  priority: number
+  reachable_from?: number[]
+  label?: string
+}
+
 export interface ServerForm {
   name: string
   host: string

@@ -60,6 +60,7 @@ const tabs = [
   { value: 'overview',  label: '概览' },
   { value: 'services',  label: '服务' },
   { value: 'nginx',     label: 'Nginx 网关' },
+  { value: 'networks',  label: '网络' },
   { value: 'docker',    label: 'Docker' },
   { value: 'system',    label: '系统' },
   { value: 'logs-search', label: '日志搜索' },

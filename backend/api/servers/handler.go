@@ -24,6 +24,8 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.POST("/:id/metrics/collect", collectMetricsHandler(db, cfg))
 	r.GET("/:id/metrics", listMetricsHandler(db))
 	r.GET("/:id/services", listServicesHandler(db))
+	r.GET("/:id/networks", listNetworksHandler(db))
+	r.PUT("/:id/networks", updateNetworksHandler(db))
 }
 
 type serverResp struct {
