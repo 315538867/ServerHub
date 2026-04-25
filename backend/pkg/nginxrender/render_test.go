@@ -215,7 +215,8 @@ func TestRender_OutputSortedByPath(t *testing.T) {
 }
 
 func TestRender_ByteEquivalentToOldApplyPath(t *testing.T) {
-	// 与旧 applyPath 的字节级对照（来自 backend/api/approutes/handler.go 312-331）。
+	// 与已下线的旧 applyPath 字节级对照（来自 git 历史 backend/api/approutes/handler.go 312-331,
+	// P3 已删 — 此用例固化字节格式以防未来 Renderer 改动悄悄改输出）。
 	files, _ := Render([]IngressCtx{{
 		EdgeServerID: 1, FileStem: "demo", MatchKind: MatchKindPath, Domain: "_",
 		Routes: []RouteCtx{
@@ -245,7 +246,8 @@ func TestRender_ByteEquivalentToOldApplyPath(t *testing.T) {
 }
 
 func TestRender_ByteEquivalentToOldApplySite(t *testing.T) {
-	// 与旧 applySite 的字节级对照（来自 backend/api/approutes/handler.go 362-384）。
+	// 与已下线的旧 applySite 字节级对照（来自 git 历史 backend/api/approutes/handler.go 362-384,
+	// P3 已删 — 此用例固化字节格式以防未来 Renderer 改动悄悄改输出）。
 	files, _ := Render([]IngressCtx{{
 		EdgeServerID: 1, FileStem: "demo", MatchKind: MatchKindDomain, Domain: "demo.example.com",
 		Routes: []RouteCtx{

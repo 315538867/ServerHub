@@ -38,9 +38,8 @@ const router = createRouter({
             {
               path: 'network',
               component: () => import('@/views/Apps/Network.vue'),
-              redirect: (to) => `${to.path}/routes`,
+              redirect: (to) => `${to.path}/domain`,
               children: [
-                { path: 'routes', name: 'AppNetworkRoutes', component: () => import('@/views/Apps/NginxRoutes.vue') },
                 { path: 'domain', name: 'AppNetworkDomain', component: () => import('@/views/Apps/Domain.vue') },
               ],
             },

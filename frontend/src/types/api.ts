@@ -86,7 +86,7 @@ export interface Metric {
 }
 
 // ServerService 是 GET /servers/:id/services 返回的精简 Service 视图，
-// 供 Server 详情 "服务" Tab 和 NginxRoutes upstream 下拉使用。
+// 供 Server 详情 "服务" Tab 和 Ingress upstream 下拉使用。
 export interface ServerService {
   id: number
   name: string

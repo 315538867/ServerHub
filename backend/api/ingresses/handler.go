@@ -1,6 +1,6 @@
-// Package ingresses 提供 P1 新链路的 Ingress 编排 API：CRUD、apply、dry-run、
-// audit 历史与下拉数据源。前端旧 approutes API 仍保留（其 apply 已桥接到本包
-// 同源的 Reconciler），P3 完整下线。
+// Package ingresses 提供新链路的 Ingress 编排 API：CRUD、apply、dry-run、
+// audit 历史与下拉数据源。旧 approutes API 与 AppNginxRoute 表已在 P3 完整下线,
+// 历史数据由一次性 m4 迁移搬到 Ingress/IngressRoute,此后所有 nginx 编排走本包。
 package ingresses
 
 import (

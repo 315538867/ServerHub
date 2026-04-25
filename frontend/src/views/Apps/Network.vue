@@ -30,7 +30,8 @@ const app = computed(() => appStore.getById(appId.value))
 const subTabs = computed(() => {
   const a = app.value
   const list: Array<{ value: string; label: string }> = []
-  if (a?.expose_mode && a.expose_mode !== 'none') list.push({ value: 'routes', label: '路由配置' })
+  // 旧 "路由配置" 子页(NginxRoutes.vue)在 P3 已下线,
+  // 路由维护改到 /servers/:id/ingresses。这里只保留域名 + 占位。
   if (a?.site_name) list.push({ value: 'domain', label: '域名与 SSL' })
   if (list.length === 0) list.push({ value: 'empty', label: '概览' })
   return list

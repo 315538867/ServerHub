@@ -66,7 +66,6 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.AlertEvent{},
 		&model.NotifyChannel{},
 		&model.Application{},
-		&model.AppNginxRoute{},
 		// Phase M1: Release 三维正交模型（与旧 DeployVersion/DeployLog 并存）
 		&model.Artifact{},
 		&model.EnvVarSet{},

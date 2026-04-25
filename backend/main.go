@@ -19,7 +19,6 @@ import (
 	apiapplication "github.com/serverhub/serverhub/api/application"
 	apiapprelease "github.com/serverhub/serverhub/api/apprelease"
 	apiaudit "github.com/serverhub/serverhub/api/audit"
-	apiapproutes "github.com/serverhub/serverhub/api/approutes"
 	apiauth "github.com/serverhub/serverhub/api/auth"
 	apidatabase "github.com/serverhub/serverhub/api/database"
 	apideploy "github.com/serverhub/serverhub/api/deploy"
@@ -210,7 +209,6 @@ func main() {
 	apiapplication.RegisterRoutes(appsGroup, db, cfg)
 	// Phase M3: AppReleaseSet（App 级 Release 组合 + SSE Apply/Rollback）
 	apiapprelease.RegisterRoutes(appsGroup, db, cfg)
-	apiapproutes.RegisterRoutes(appsGroup, db, cfg)
 	apiingresses.RegisterRoutes(protected.Group("/ingresses"), db, cfg)
 	apiaudit.RegisterRoutes(protected.Group("/audit"), db)
 
@@ -339,22 +337,6 @@ func runMigration(name string, db interface{}, aesKey string) error {
 		b, _ := json.MarshalIndent(rep, "", "  ")
 		fmt.Println(string(b))
 		return nil
-	case "m4":
-		rep, err := migration.RunM4(gdb, false)
-		if err != nil {
-			return err
-		}
-		b, _ := json.MarshalIndent(rep, "", "  ")
-		fmt.Println(string(b))
-		return nil
-	case "m4-dryrun":
-		rep, err := migration.RunM4(gdb, true)
-		if err != nil {
-			return err
-		}
-		b, _ := json.MarshalIndent(rep, "", "  ")
-		fmt.Println(string(b))
-		return nil
 	}
-	return fmt.Errorf("unknown migration: %s (want m2|m2-dryrun|m4|m4-dryrun)", name)
+	return fmt.Errorf("unknown migration: %s (want m2|m2-dryrun)", name)
 }
