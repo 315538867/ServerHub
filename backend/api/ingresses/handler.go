@@ -4,7 +4,9 @@
 package ingresses
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -52,13 +54,24 @@ type createReq struct {
 	MatchKind    string                `json:"match_kind" binding:"required"`
 	Domain       string                `json:"domain" binding:"required"`
 	DefaultPath  string                `json:"default_path"`
+	CertID       *uint                 `json:"cert_id"`
+	ForceHTTPS   bool                  `json:"force_https"`
 	Routes       []routeReq            `json:"routes"`
 }
 
 type updateReq struct {
-	MatchKind   string `json:"match_kind"`
-	Domain      string `json:"domain"`
-	DefaultPath string `json:"default_path"`
+	MatchKind    string `json:"match_kind"`
+	Domain       string `json:"domain"`
+	DefaultPath  string `json:"default_path"`
+	// CertID 用 json.RawMessage 实现真三态：
+	//   nil           → 字段未传(保持现值)
+	//   []byte("null")→ 显式清空
+	//   "<uint>"      → 替换
+	// 注：Go stdlib JSON 的 **uint 把 "字段缺失" 与 "null" 都解成 nil,无法区分,
+	// 因此这里改用 RawMessage,在 handler 里手动二次解。
+	CertID       json.RawMessage `json:"cert_id,omitempty"`
+	// ForceHTTPS 同样需要"未传/传 false/传 true"三态,用 *bool。
+	ForceHTTPS   *bool  `json:"force_https,omitempty"`
 }
 
 type routeReq struct {
@@ -122,6 +135,30 @@ func loadIngress(db *gorm.DB, id uint) (*model.Ingress, error) {
 	return &ig, nil
 }
 
+// validateTLS 校验 cert_id / force_https / match_kind 的组合一致性。
+//   - matchKind=path 时不允许带 CertID（共享 hub 站点暂不支持 per-ingress 证书）
+//   - certID==nil 但 forceHTTPS=true → 拒（强制跳转必须有目的端证书）
+//   - certID!=nil 时：cert 必须存在 && cert.ServerID == edgeServerID
+func validateTLS(db *gorm.DB, edgeServerID uint, matchKind string, certID *uint, forceHTTPS bool) error {
+	if certID != nil && matchKind == "path" {
+		return errors.New("path 模式暂不支持 TLS（cert_id 必须为空）")
+	}
+	if certID == nil && forceHTTPS {
+		return errors.New("force_https=true 需要先指定 cert_id")
+	}
+	if certID == nil {
+		return nil
+	}
+	var cert model.SSLCert
+	if err := db.First(&cert, *certID).Error; err != nil {
+		return errors.New("cert_id 引用的证书不存在")
+	}
+	if cert.ServerID != edgeServerID {
+		return errors.New("cert 不属于该 edge_server")
+	}
+	return nil
+}
+
 // ── handlers ──────────────────────────────────────────────────────────────
 
 func listHandler(db *gorm.DB) gin.HandlerFunc {
@@ -175,6 +212,10 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
+		if err := validateTLS(db, req.EdgeServerID, req.MatchKind, req.CertID, req.ForceHTTPS); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
 		// 强一致：同 edge 同 domain 必须 MatchKind 一致
 		var existing model.Ingress
 		err := db.Where("edge_server_id = ? AND domain = ?", req.EdgeServerID, req.Domain).First(&existing).Error
@@ -188,6 +229,8 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 			MatchKind:    req.MatchKind,
 			Domain:       req.Domain,
 			DefaultPath:  req.DefaultPath,
+			CertID:       req.CertID,
+			ForceHTTPS:   req.ForceHTTPS,
 			Status:       "pending",
 		}
 		if err := db.Transaction(func(tx *gorm.DB) error {
@@ -237,18 +280,46 @@ func updateHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		updates := map[string]any{}
+		// 先把 match_kind/cert_id/force_https 的最终值算出来再走 validateTLS
+		nextMatchKind := ig.MatchKind
+		nextCertID := ig.CertID
+		nextForceHTTPS := ig.ForceHTTPS
 		if req.MatchKind != "" {
 			if err := validateMatchKind(req.MatchKind); err != nil {
 				resp.BadRequest(c, err.Error())
 				return
 			}
 			updates["match_kind"] = req.MatchKind
+			nextMatchKind = req.MatchKind
 		}
 		if req.Domain != "" {
 			updates["domain"] = req.Domain
 		}
 		if req.DefaultPath != "" {
 			updates["default_path"] = req.DefaultPath
+		}
+		if len(req.CertID) > 0 {
+			// RawMessage 三态：长度为 0 = 字段未传；"null" = 清空；其它 = 解 uint
+			if bytes.Equal(bytes.TrimSpace(req.CertID), []byte("null")) {
+				updates["cert_id"] = nil
+				nextCertID = nil
+			} else {
+				var v uint
+				if err := json.Unmarshal(req.CertID, &v); err != nil {
+					resp.BadRequest(c, "cert_id 必须是非负整数或 null")
+					return
+				}
+				updates["cert_id"] = v
+				nextCertID = &v
+			}
+		}
+		if req.ForceHTTPS != nil {
+			updates["force_https"] = *req.ForceHTTPS
+			nextForceHTTPS = *req.ForceHTTPS
+		}
+		if err := validateTLS(db, ig.EdgeServerID, nextMatchKind, nextCertID, nextForceHTTPS); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
 		}
 		if len(updates) == 0 {
 			resp.OK(c, ig)

@@ -45,4 +45,12 @@ type IngressCtx struct {
 	MatchKind    string     // domain | path
 	Domain       string     // server_name 用；path 模式下也用于聚合到同一个 hub
 	Routes       []RouteCtx // 至少一条；空 routes 不会渲染出文件
+	// TLS 配置（仅 domain 模式生效；path 模式由调用方在校验层拦掉）。
+	// TLSCertPath 非空即视为启用 HTTPS：renderer 输出 listen 443 ssl 块。
+	// path 上的证书/私钥文件由 ssl 模块负责落盘到目标机，本包仅引用绝对路径。
+	TLSCertPath string
+	TLSKeyPath  string
+	// ForceHTTPS=true 时再额外生成 listen 80 → 301 https 跳转 server 块；
+	// 仅在 TLSCertPath 非空时有意义（renderer 在两者同时为 false/false 时退化为纯 HTTP）。
+	ForceHTTPS bool
 }

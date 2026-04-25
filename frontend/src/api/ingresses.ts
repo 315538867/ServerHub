@@ -30,6 +30,8 @@ export interface Ingress {
   match_kind: IngressMatchKind
   domain: string
   default_path: string
+  cert_id?: number | null
+  force_https: boolean
   status: string
   last_applied_at: string | null
   created_at: string
@@ -95,6 +97,8 @@ export interface CreateIngressBody {
   match_kind: IngressMatchKind
   domain: string
   default_path?: string
+  cert_id?: number | null
+  force_https?: boolean
   routes?: RouteBody[]
 }
 
@@ -102,6 +106,9 @@ export interface UpdateIngressBody {
   match_kind?: IngressMatchKind
   domain?: string
   default_path?: string
+  // 三态：未传字段不动；传 null 清空；传具体 id 替换
+  cert_id?: number | null
+  force_https?: boolean
 }
 
 export interface RouteBody {

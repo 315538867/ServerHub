@@ -115,6 +115,14 @@ func RenderHubSite() (ConfigFile, error) {
 //
 // 任一 route.Protocol=="grpc" 时给 listen 加 http2 标志（nginx grpc_pass 强依赖
 // HTTP/2 over cleartext）。后续 TLS 接入后再扩展为 listen 443 ssl http2。
+//
+// TLS（P2-D4）：
+//   - TLSCertPath 非空即视为启用 HTTPS：渲染额外的 listen 443 ssl 块（grpc 时升级
+//     成 ssl http2）；同时把 ssl_certificate / ssl_certificate_key 写在 server_name
+//     之后、空行之前
+//   - ForceHTTPS=true：把 80 块替换成 return 301 https://$host$request_uri 的跳转
+//     server；HTTPS 块照常渲染
+//   - ForceHTTPS=false 且 TLS 启用：80 与 443 同时挂同一组路由（明/密双轨）
 func renderDomainSite(ig IngressCtx) (ConfigFile, error) {
 	if ig.FileStem == "" {
 		return ConfigFile{}, fmt.Errorf("FileStem 不可为空")
@@ -122,24 +130,55 @@ func renderDomainSite(ig IngressCtx) (ConfigFile, error) {
 	if ig.Domain == "" {
 		return ConfigFile{}, fmt.Errorf("domain 不可为空（domain 模式）")
 	}
+	tlsOn := ig.TLSCertPath != ""
+	if tlsOn && ig.TLSKeyPath == "" {
+		return ConfigFile{}, fmt.Errorf("启用 TLS 时 TLSKeyPath 不可为空")
+	}
 
 	routes := sortedRoutes(ig.Routes)
-	listen := "listen 80;"
-	if anyGRPC(routes) {
-		listen = "listen 80 http2;"
-	}
+	grpc := anyGRPC(routes)
+
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "server {\n    %s\n    server_name %s;\n\n", listen, ig.Domain)
-	for _, rt := range routes {
-		writeLocation(&sb, rt, "    ")
+	// 80 段：要么走重定向（force_https + tls），要么挂同样的路由
+	if tlsOn && ig.ForceHTTPS {
+		fmt.Fprintf(&sb, "server {\n    listen 80;\n    server_name %s;\n    return 301 https://$host$request_uri;\n}\n", ig.Domain)
+	} else {
+		listen := "listen 80;"
+		if grpc {
+			listen = "listen 80 http2;"
+		}
+		writeServerWithRoutes(&sb, listen, ig.Domain, "", "", routes)
 	}
-	sb.WriteString("}\n")
+	// 443 段：仅 TLS 启用时输出
+	if tlsOn {
+		listen := "listen 443 ssl;"
+		if grpc {
+			listen = "listen 443 ssl http2;"
+		}
+		writeServerWithRoutes(&sb, listen, ig.Domain, ig.TLSCertPath, ig.TLSKeyPath, routes)
+	}
 
 	return ConfigFile{
 		Path:    fmt.Sprintf("%s/%s-sh.conf", SitesAvailableDir, ig.FileStem),
 		Content: sb.String(),
 		Mode:    0o644,
 	}, nil
+}
+
+// writeServerWithRoutes 输出一个 server { listen ...; server_name ...; [ssl_*]; <routes> } 块。
+// certPath 非空时在 server_name 之后注入 ssl_certificate / ssl_certificate_key 两行。
+// 字节级与旧 applySite 对齐：所有路由前固定一个空行，块尾为 "}\n"。
+func writeServerWithRoutes(sb *strings.Builder, listen, name, certPath, keyPath string, routes []RouteCtx) {
+	fmt.Fprintf(sb, "server {\n    %s\n    server_name %s;\n", listen, name)
+	if certPath != "" {
+		fmt.Fprintf(sb, "    ssl_certificate %s;\n", certPath)
+		fmt.Fprintf(sb, "    ssl_certificate_key %s;\n", keyPath)
+	}
+	sb.WriteString("\n")
+	for _, rt := range routes {
+		writeLocation(sb, rt, "    ")
+	}
+	sb.WriteString("}\n")
 }
 
 // renderPathLocations 输出 path 模式下的纯 location 列表（无外层 server）。

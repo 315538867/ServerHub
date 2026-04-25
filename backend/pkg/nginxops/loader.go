@@ -56,12 +56,20 @@ func LoadDesired(db *gorm.DB, edge *model.Server) ([]nginxrender.IngressCtx, err
 			})
 		}
 
+		certPath, keyPath, err := loadCertPaths(db, edge, ig.CertID)
+		if err != nil {
+			return nil, err
+		}
+
 		out = append(out, nginxrender.IngressCtx{
 			EdgeServerID: ig.EdgeServerID,
 			FileStem:     fileStem(ig),
 			MatchKind:    ig.MatchKind,
 			Domain:       ig.Domain,
 			Routes:       ctxRoutes,
+			TLSCertPath:  certPath,
+			TLSKeyPath:   keyPath,
+			ForceHTTPS:   ig.ForceHTTPS,
 		})
 	}
 	return out, nil
@@ -143,4 +151,25 @@ func resolveUpstream(db *gorm.DB, edge *model.Server, rt *model.IngressRoute) (s
 	default:
 		return "", fmt.Errorf("未知 upstream.type=%q", up.Type)
 	}
+}
+
+// loadCertPaths 把 Ingress.CertID 解析成本机绝对路径。
+//   - certID == nil → 返回空串（renderer 视为不启用 TLS）
+//   - cert.ServerID 必须等于 edge.ID（API 层在写入时已强校验，这里防御式再查一次）
+//   - 找不到 / 跨机引用 / 路径残缺 → 返回错误，由 Reconciler 把错误冒到 audit
+func loadCertPaths(db *gorm.DB, edge *model.Server, certID *uint) (string, string, error) {
+	if certID == nil {
+		return "", "", nil
+	}
+	var cert model.SSLCert
+	if err := db.First(&cert, *certID).Error; err != nil {
+		return "", "", fmt.Errorf("加载 cert id=%d: %w", *certID, err)
+	}
+	if cert.ServerID != edge.ID {
+		return "", "", fmt.Errorf("cert id=%d 属于 server=%d，与 edge=%d 不匹配", cert.ID, cert.ServerID, edge.ID)
+	}
+	if cert.CertPath == "" || cert.KeyPath == "" {
+		return "", "", fmt.Errorf("cert id=%d 缺 cert_path/key_path", cert.ID)
+	}
+	return cert.CertPath, cert.KeyPath, nil
 }

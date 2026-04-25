@@ -18,6 +18,10 @@ type Ingress struct {
 	Domain        string     `gorm:"not null;uniqueIndex:idx_ingress_edge_domain,priority:2" json:"domain"`
 	DefaultPath   string     `gorm:"default:'/'" json:"default_path"`
 	CertID        *uint      `gorm:"index" json:"cert_id"`
+	// ForceHTTPS=true 时渲染额外 server{listen 80; return 301 https://...}
+	// 强制 80→443 跳转；仅当 CertID 非空时才允许置 true（API 层校验）。
+	// 显式 column 避免 GORM 默认把 HTTPS 拆成 force_http_s。
+	ForceHTTPS    bool       `gorm:"default:false;column:force_https" json:"force_https"`
 	Status        string     `gorm:"default:'pending'" json:"status"` // pending|applied|drift|broken
 	LastAppliedAt *time.Time `json:"last_applied_at"`
 	CreatedAt     time.Time  `json:"created_at"`

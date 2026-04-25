@@ -78,7 +78,18 @@
           <NInput v-model:value="ingressForm.domain" placeholder="example.com 或 _" />
         </NFormItem>
         <NFormItem label="默认路径">
-          <NInput v-model:value="ingressForm.default_path" placeholder="可选，默认 location 的根路径" />
+          <NInput v-model:value="ingressForm.default_path" placeholder="可选,默认 location 的根路径" />
+        </NFormItem>
+        <NFormItem v-if="ingressForm.match_kind === 'domain'" label="TLS 证书">
+          <NSelect
+            v-model:value="ingressForm.cert_id"
+            :options="certOptions"
+            placeholder="不启用 HTTPS 留空"
+            clearable
+          />
+        </NFormItem>
+        <NFormItem v-if="ingressForm.match_kind === 'domain' && ingressForm.cert_id" label="强制 HTTPS">
+          <NSwitch v-model:value="ingressForm.force_https" />
         </NFormItem>
       </NForm>
       <template #footer>
@@ -171,6 +182,7 @@ import type {
   Ingress, IngressDetail, IngressRoute, IngressMatchKind,
   ApplyResult, IngressChange, AuditApply, ServiceOpt, ChangeKind,
 } from '@/api/ingresses'
+import { listCerts, type SSLCert } from '@/api/ssl'
 import UiSection from '@/components/ui/UiSection.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -198,6 +210,14 @@ const serviceOptions = computed<SelectOption[]>(() =>
   services.value.map((s) => ({
     label: s.exposed_port > 0 ? `${s.name} (:${s.exposed_port})` : s.name,
     value: s.id,
+  })),
+)
+
+const certs = ref<SSLCert[]>([])
+const certOptions = computed<SelectOption[]>(() =>
+  certs.value.map((c) => ({
+    label: `${c.domain}${c.days_left >= 0 ? ` (剩余 ${c.days_left}d)` : ''}`,
+    value: c.id,
   })),
 )
 
@@ -238,6 +258,14 @@ async function loadServices() {
   }
 }
 
+async function loadCerts() {
+  try {
+    certs.value = await listCerts(serverId.value)
+  } catch {
+    certs.value = []
+  }
+}
+
 async function loadAudit() {
   auditLoading.value = true
   try {
@@ -250,7 +278,7 @@ async function loadAudit() {
 }
 
 async function loadAll() {
-  await Promise.all([loadIngressList(), loadServices(), loadAudit()])
+  await Promise.all([loadIngressList(), loadServices(), loadCerts(), loadAudit()])
 }
 
 // ── Ingress 表单 ──────────────────────────────────────────────────────────────
@@ -258,15 +286,26 @@ async function loadAll() {
 const ingressVisible = ref(false)
 const ingressSaving = ref(false)
 const editIngress = ref<Ingress | null>(null)
-const ingressForm = ref<{ match_kind: IngressMatchKind; domain: string; default_path: string }>({
+const ingressForm = ref<{
+  match_kind: IngressMatchKind
+  domain: string
+  default_path: string
+  cert_id: number | null
+  force_https: boolean
+}>({
   match_kind: 'domain',
   domain: '',
   default_path: '',
+  cert_id: null,
+  force_https: false,
 })
 
 function openCreate() {
   editIngress.value = null
-  ingressForm.value = { match_kind: 'domain', domain: '', default_path: '' }
+  ingressForm.value = {
+    match_kind: 'domain', domain: '', default_path: '',
+    cert_id: null, force_https: false,
+  }
   ingressVisible.value = true
 }
 
@@ -276,6 +315,8 @@ function openEditIngress(ig: Ingress) {
     match_kind: ig.match_kind,
     domain: ig.domain,
     default_path: ig.default_path,
+    cert_id: ig.cert_id ?? null,
+    force_https: !!ig.force_https,
   }
   ingressVisible.value = true
 }
@@ -285,6 +326,14 @@ async function saveIngress() {
     message.warning('域名不能为空')
     return
   }
+  if (ingressForm.value.match_kind === 'path' && ingressForm.value.cert_id) {
+    message.warning('path 模式暂不支持 TLS,请清空证书')
+    return
+  }
+  if (ingressForm.value.force_https && !ingressForm.value.cert_id) {
+    message.warning('强制 HTTPS 需要先选择证书')
+    return
+  }
   ingressSaving.value = true
   try {
     if (editIngress.value) {
@@ -292,6 +341,8 @@ async function saveIngress() {
         match_kind: ingressForm.value.match_kind,
         domain: ingressForm.value.domain,
         default_path: ingressForm.value.default_path,
+        cert_id: ingressForm.value.cert_id,
+        force_https: ingressForm.value.force_https,
       })
     } else {
       await createIngress({
@@ -299,6 +350,8 @@ async function saveIngress() {
         match_kind: ingressForm.value.match_kind,
         domain: ingressForm.value.domain,
         default_path: ingressForm.value.default_path,
+        cert_id: ingressForm.value.cert_id,
+        force_https: ingressForm.value.force_https,
       })
     }
     message.success('已保存')
@@ -496,6 +549,13 @@ const ingressColumns = computed<DataTableColumns<Ingress>>(() => [
     title: '匹配', key: 'match_kind', width: 100,
     render: (row) => h(NTag, { size: 'small', type: row.match_kind === 'domain' ? 'info' : 'default' },
       { default: () => row.match_kind === 'domain' ? '域名' : '路径' }),
+  },
+  {
+    title: 'TLS', key: 'cert_id', width: 110,
+    render: (row) => row.cert_id
+      ? h(NTag, { size: 'small', type: row.force_https ? 'error' : 'success' },
+          { default: () => row.force_https ? 'HTTPS强制' : 'HTTPS' })
+      : '—',
   },
   { title: '默认路径', key: 'default_path', width: 140, ellipsis: { tooltip: true } },
   {

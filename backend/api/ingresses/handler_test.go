@@ -31,6 +31,7 @@ func setup(t *testing.T) (*gin.Engine, *gorm.DB) {
 	if err := db.AutoMigrate(
 		&model.Server{}, &model.Service{},
 		&model.Ingress{}, &model.IngressRoute{}, &model.AuditApply{},
+		&model.SSLCert{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -508,6 +509,176 @@ func TestParseUintParam_BadID(t *testing.T) {
 	w2, _ := do(t, r, "GET", "/ingresses/0", nil)
 	if w2.Code != http.StatusBadRequest {
 		t.Fatalf(":id=0 应 400, got %d", w2.Code)
+	}
+}
+
+// ── TLS / HTTPS（P2-D4）─────────────────────────────────────────────────────
+
+// mkCert 在指定 server 下建一张 SSLCert,返回 cert ID。
+func mkCert(t *testing.T, db *gorm.DB, serverID uint, domain, certPath, keyPath string) uint {
+	t.Helper()
+	c := model.SSLCert{
+		ServerID: serverID, Domain: domain,
+		CertPath: certPath, KeyPath: keyPath,
+	}
+	if err := db.Create(&c).Error; err != nil {
+		t.Fatalf("create cert: %v", err)
+	}
+	return c.ID
+}
+
+func TestTLS_CreateWithCertOK(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	cert := mkCert(t, db, edge, "tls.example.com", "/etc/ssl/tls.crt", "/etc/ssl/tls.key")
+
+	w, body := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge,
+		"match_kind":     "domain",
+		"domain":         "tls.example.com",
+		"cert_id":        cert,
+		"force_https":    true,
+	})
+	if w.Code != http.StatusOK || body["code"].(float64) != 0 {
+		t.Fatalf("应放行,status=%d body=%v", w.Code, body)
+	}
+	var ig model.Ingress
+	if err := db.First(&ig).Error; err != nil {
+		t.Fatalf("加载 ingress: %v", err)
+	}
+	if ig.CertID == nil || *ig.CertID != cert {
+		t.Errorf("cert_id 未持久化: %+v", ig)
+	}
+	if !ig.ForceHTTPS {
+		t.Errorf("force_https 未持久化")
+	}
+}
+
+func TestTLS_CreateRejectsCertCrossServer(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	other := mkEdge(t, db)
+	cert := mkCert(t, db, other, "x.com", "/c", "/k")
+
+	w, body := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge,
+		"match_kind":     "domain",
+		"domain":         "x.com",
+		"cert_id":        cert,
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("跨机 cert 应 400, got %d body=%v", w.Code, body)
+	}
+}
+
+func TestTLS_CreateRejectsForceHTTPSWithoutCert(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	w, body := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge,
+		"match_kind":     "domain",
+		"domain":         "n.com",
+		"force_https":    true,
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("force_https 无 cert 应 400, got %d body=%v", w.Code, body)
+	}
+}
+
+func TestTLS_CreateRejectsPathModeWithCert(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	cert := mkCert(t, db, edge, "p.com", "/c", "/k")
+
+	w, body := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge,
+		"match_kind":     "path",
+		"domain":         "p.com",
+		"cert_id":        cert,
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("path 模式 + cert 应 400, got %d body=%v", w.Code, body)
+	}
+}
+
+func TestTLS_CreateRejectsMissingCert(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	w, _ := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge,
+		"match_kind":     "domain",
+		"domain":         "m.com",
+		"cert_id":        9999,
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("不存在 cert_id 应 400, got %d", w.Code)
+	}
+}
+
+func TestTLS_UpdateAttachCert(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	ig := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "u.com", Status: "applied"}
+	db.Create(&ig)
+	cert := mkCert(t, db, edge, "u.com", "/c", "/k")
+
+	w, body := do(t, r, "PUT", "/ingresses/"+uintToStr(ig.ID), map[string]any{
+		"cert_id":     cert,
+		"force_https": true,
+	})
+	if w.Code != http.StatusOK || body["code"].(float64) != 0 {
+		t.Fatalf("挂 cert 应放行, status=%d body=%v", w.Code, body)
+	}
+	var got model.Ingress
+	db.First(&got, ig.ID)
+	if got.CertID == nil || *got.CertID != cert {
+		t.Errorf("cert_id 未持久化: %+v", got)
+	}
+	if !got.ForceHTTPS {
+		t.Errorf("force_https 未持久化")
+	}
+	if got.Status != "pending" {
+		t.Errorf("挂证书后 status 应翻 pending, got=%s", got.Status)
+	}
+}
+
+func TestTLS_UpdateClearCertViaNull(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	cert := mkCert(t, db, edge, "c.com", "/c", "/k")
+	certID := cert
+	ig := model.Ingress{
+		EdgeServerID: edge, MatchKind: "domain", Domain: "c.com",
+		CertID: &certID, ForceHTTPS: false, Status: "applied",
+	}
+	db.Create(&ig)
+
+	// 注意:三态语义下,cert_id=null 表示清空;同步要把 force_https 关掉
+	// 否则 validateTLS 会拒(force_https 需要 cert_id)
+	w, body := do(t, r, "PUT", "/ingresses/"+uintToStr(ig.ID), map[string]any{
+		"cert_id": nil,
+	})
+	if w.Code != http.StatusOK || body["code"].(float64) != 0 {
+		t.Fatalf("清空 cert 应放行, status=%d body=%v", w.Code, body)
+	}
+	var got model.Ingress
+	db.First(&got, ig.ID)
+	if got.CertID != nil {
+		t.Errorf("cert_id 未清空: %+v", got)
+	}
+}
+
+func TestTLS_UpdateRejectsForceHTTPSWithoutCert(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	ig := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "f.com", Status: "applied"}
+	db.Create(&ig)
+
+	w, body := do(t, r, "PUT", "/ingresses/"+uintToStr(ig.ID), map[string]any{
+		"force_https": true,
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("无 cert 开 force_https 应 400, got %d body=%v", w.Code, body)
 	}
 }
 

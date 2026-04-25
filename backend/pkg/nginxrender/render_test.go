@@ -550,3 +550,122 @@ func TestStreamUpstream_Helpers(t *testing.T) {
 		}
 	}
 }
+
+// ── TLS / HTTPS（P2-D4）──────────────────────────────────────────────────────
+
+func TestRender_TLS_DomainAddsHTTPSServerWithCertLines(t *testing.T) {
+	files, err := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "s", MatchKind: MatchKindDomain, Domain: "s.com",
+		TLSCertPath: "/etc/ssl/certs/s.pem",
+		TLSKeyPath:  "/etc/ssl/private/s.key",
+		Routes: []RouteCtx{{Path: "/", UpstreamURL: "http://up:1"}},
+	}})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	c := files[0].Content
+	// 80 段保留（未 force_https）
+	if !strings.Contains(c, "listen 80;") {
+		t.Errorf("默认 force_https=false 应保留 80 server:\n%s", c)
+	}
+	// 443 段
+	if !strings.Contains(c, "listen 443 ssl;") {
+		t.Errorf("应渲染 listen 443 ssl;\n%s", c)
+	}
+	if !strings.Contains(c, "ssl_certificate /etc/ssl/certs/s.pem;") {
+		t.Errorf("缺 ssl_certificate:\n%s", c)
+	}
+	if !strings.Contains(c, "ssl_certificate_key /etc/ssl/private/s.key;") {
+		t.Errorf("缺 ssl_certificate_key:\n%s", c)
+	}
+	// 80 与 443 都应该挂 location（双轨）
+	if strings.Count(c, "location /") < 2 {
+		t.Errorf("80/443 应同时挂同一组 routes:\n%s", c)
+	}
+}
+
+func TestRender_TLS_ForceHTTPSEmitsRedirect(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "f", MatchKind: MatchKindDomain, Domain: "f.com",
+		TLSCertPath: "/c.pem", TLSKeyPath: "/c.key",
+		ForceHTTPS:  true,
+		Routes:      []RouteCtx{{Path: "/", UpstreamURL: "http://up:1"}},
+	}})
+	c := files[0].Content
+	if !strings.Contains(c, "return 301 https://$host$request_uri;") {
+		t.Errorf("force_https 应触发 80→443 跳转:\n%s", c)
+	}
+	// 80 server 体里不应有 location（被 redirect 占据）
+	idx80 := strings.Index(c, "listen 80;")
+	idx443 := strings.Index(c, "listen 443 ssl;")
+	if idx80 < 0 || idx443 < 0 || idx80 >= idx443 {
+		t.Fatalf("80 段应在 443 段之前:\n%s", c)
+	}
+	// 80~443 之间不应有 location 关键字
+	if strings.Contains(c[idx80:idx443], "location ") {
+		t.Errorf("force_https 80 段不应挂 location:\n%s", c[idx80:idx443])
+	}
+	// 443 段应有 location
+	if !strings.Contains(c[idx443:], "location /") {
+		t.Errorf("443 段应挂 location:\n%s", c[idx443:])
+	}
+}
+
+func TestRender_TLS_GRPCUpgrades443ToHTTP2(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "g", MatchKind: MatchKindDomain, Domain: "g.com",
+		TLSCertPath: "/c.pem", TLSKeyPath: "/c.key",
+		Routes:      []RouteCtx{{Path: "/", Protocol: "grpc", UpstreamURL: "http://up:9"}},
+	}})
+	c := files[0].Content
+	if !strings.Contains(c, "listen 443 ssl http2;") {
+		t.Errorf("grpc + tls 应是 listen 443 ssl http2:\n%s", c)
+	}
+	if !strings.Contains(c, "listen 80 http2;") {
+		t.Errorf("grpc 即使加了 tls,80 段也仍是 http2:\n%s", c)
+	}
+}
+
+func TestRender_TLS_NoCertDoesNothing(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "n", MatchKind: MatchKindDomain, Domain: "n.com",
+		Routes: []RouteCtx{{Path: "/", UpstreamURL: "http://up:1"}},
+	}})
+	c := files[0].Content
+	if strings.Contains(c, "listen 443") || strings.Contains(c, "ssl_certificate") {
+		t.Errorf("无 cert 不应渲染 443/ssl_*:\n%s", c)
+	}
+}
+
+func TestRender_TLS_MissingKeyErrors(t *testing.T) {
+	_, err := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "x", MatchKind: MatchKindDomain, Domain: "x.com",
+		TLSCertPath: "/c.pem", // KeyPath 留空
+		Routes:      []RouteCtx{{Path: "/", UpstreamURL: "http://up:1"}},
+	}})
+	if err == nil {
+		t.Fatal("仅给 TLSCertPath 缺 TLSKeyPath 应报错")
+	}
+}
+
+func TestRender_TLS_ByteAlignedNonTLSCase(t *testing.T) {
+	// TLS 字段为零值时,字节级输出与 P1 旧版完全一致——保护 reconciler 不因升级触发全量重写。
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "demo", MatchKind: MatchKindDomain, Domain: "demo.example.com",
+		Routes: []RouteCtx{{Sort: 0, Path: "/", UpstreamURL: "http://127.0.0.1:9000"}},
+	}})
+	want := "server {\n" +
+		"    listen 80;\n" +
+		"    server_name demo.example.com;\n\n" +
+		"    location / {\n" +
+		"        proxy_pass http://127.0.0.1:9000;\n" +
+		"        proxy_set_header Host $host;\n" +
+		"        proxy_set_header X-Real-IP $remote_addr;\n" +
+		"        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n" +
+		"        proxy_set_header X-Forwarded-Proto $scheme;\n" +
+		"    }\n\n" +
+		"}\n"
+	if files[0].Content != want {
+		t.Errorf("非 TLS 路径字节回归:\nwant:\n%q\ngot:\n%q", want, files[0].Content)
+	}
+}
