@@ -11,8 +11,7 @@ import (
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
-	"github.com/serverhub/serverhub/pkg/sshpool"
-	gossh "golang.org/x/crypto/ssh"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"gorm.io/gorm"
 )
 
@@ -49,7 +48,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 type connCtx struct {
 	conn   model.DBConn
 	pass   string
-	client *gossh.Client
+	runner runner.Runner
 }
 
 func getConnCtx(c *gin.Context, db *gorm.DB, cfg *config.Config) (*connCtx, bool) {
@@ -76,27 +75,12 @@ func getConnCtx(c *gin.Context, db *gorm.DB, cfg *config.Config) (*connCtx, bool
 		resp.NotFound(c, "服务器不存在")
 		return nil, false
 	}
-	var cred string
-	switch srv.AuthType {
-	case "key":
-		if srv.PrivateKey != "" {
-			cred, err = crypto.Decrypt(srv.PrivateKey, cfg.Security.AESKey)
-		}
-	default:
-		if srv.Password != "" {
-			cred, err = crypto.Decrypt(srv.Password, cfg.Security.AESKey)
-		}
-	}
+	r, err := runner.For(&srv, cfg)
 	if err != nil {
-		resp.InternalError(c, "解密服务器凭据失败")
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "连接失败: "+err.Error())
 		return nil, false
 	}
-	client, err := sshpool.Connect(srv.ID, srv.Host, srv.Port, srv.Username, srv.AuthType, cred)
-	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
-		return nil, false
-	}
-	return &connCtx{conn: conn, pass: pass, client: client}, true
+	return &connCtx{conn: conn, pass: pass, runner: r}, true
 }
 
 func (cx *connCtx) mysqlArgs() string {
@@ -308,7 +292,7 @@ func testConnHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		} else {
 			cmd = cx.mysqlCmd("SELECT 1")
 		}
-		out, err := sshpool.Run(cx.client, cmd)
+		out, err := cx.runner.Run(cmd)
 		if err != nil {
 			resp.Fail(c, 200, 5010, "连接失败: "+err.Error())
 			return
@@ -335,7 +319,7 @@ func parseMySQLTable(out string) (columns []string, rows [][]string) {
 }
 
 func mysqlRun(cx *connCtx, sql string) (string, error) {
-	return sshpool.Run(cx.client, cx.mysqlCmd(sql))
+	return cx.runner.Run(cx.mysqlCmd(sql))
 }
 
 func mysqlListDatabases(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
@@ -500,7 +484,7 @@ func mysqlQuery(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		cmd := fmt.Sprintf("%smysql %s --batch -e %s 2>&1",
 			cx.mysqlEnv(), cx.mysqlArgs(), shellQuote(dbPrefix+body.SQL))
-		out, err := sshpool.Run(cx.client, cmd)
+		out, err := cx.runner.Run(cmd)
 		if err != nil || strings.Contains(out, "ERROR") {
 			resp.Fail(c, 200, 5020, strings.TrimSpace(out))
 			return
@@ -520,7 +504,7 @@ func mysqlExport(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		cmd := fmt.Sprintf("%smysqldump -h%s -P%d -u%s %s 2>/dev/null",
 			cx.mysqlEnv(), shellQuote(cx.conn.Host), cx.conn.Port,
 			shellQuote(cx.conn.Username), shellQuote(dbName))
-		out, err := sshpool.Run(cx.client, cmd)
+		out, err := cx.runner.Run(cmd)
 		if err != nil {
 			resp.InternalError(c, "数据库导出失败")
 			return
@@ -549,7 +533,7 @@ func mysqlStatus(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 // ── Redis ─────────────────────────────────────────────────────────────────────
 
 func redisRun(cx *connCtx, args string) (string, error) {
-	return sshpool.Run(cx.client, cx.redisCli(args))
+	return cx.runner.Run(cx.redisCli(args))
 }
 
 func redisInfo(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {

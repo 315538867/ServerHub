@@ -9,11 +9,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
 	"github.com/serverhub/serverhub/pkg/sshpool"
-	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
 
@@ -69,7 +68,7 @@ func getApp(c *gin.Context, db *gorm.DB) (*model.Application, bool) {
 	return &app, true
 }
 
-func getSSHFromApp(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Client, *model.Application, bool) {
+func getRunnerForApp(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, *model.Application, bool) {
 	app, ok := getApp(c, db)
 	if !ok {
 		return nil, nil, false
@@ -79,30 +78,12 @@ func getSSHFromApp(c *gin.Context, db *gorm.DB, cfg *config.Config) (*gossh.Clie
 		resp.NotFound(c, "服务器不存在")
 		return nil, nil, false
 	}
-	var (
-		cred string
-		err  error
-	)
-	switch s.AuthType {
-	case "key":
-		if s.PrivateKey != "" {
-			cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-		}
-	default:
-		if s.Password != "" {
-			cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-		}
-	}
+	r, err := runner.For(&s, cfg)
 	if err != nil {
-		resp.InternalError(c, "解密失败")
+		resp.Fail(c, http.StatusServiceUnavailable, 5003, "连接失败: "+err.Error())
 		return nil, nil, false
 	}
-	client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
-	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
-		return nil, nil, false
-	}
-	return client, app, true
+	return r, app, true
 }
 
 // ── GET /:id/nginx ────────────────────────────────────────────────────────────
@@ -260,7 +241,7 @@ const appLocationsDir = "/etc/nginx/app-locations"
 
 func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		client, app, ok := getSSHFromApp(c, db, cfg)
+		r, app, ok := getRunnerForApp(c, db, cfg)
 		if !ok {
 			return
 		}
@@ -273,8 +254,8 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		// Re-validate persisted routes — DB rows from before this validation
 		// landed could still contain dangerous values.
 		for i := range routes {
-			r := routeReq{Path: routes[i].Path, Upstream: routes[i].Upstream, Extra: routes[i].Extra}
-			if err := validateRoute(&r); err != nil {
+			rq := routeReq{Path: routes[i].Path, Upstream: routes[i].Upstream, Extra: routes[i].Extra}
+			if err := validateRoute(&rq); err != nil {
 				resp.BadRequest(c, fmt.Sprintf("路由 #%d 非法: %s", routes[i].ID, err.Error()))
 				return
 			}
@@ -285,11 +266,11 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		switch app.ExposeMode {
 		case "none":
-			output, err = applyNone(client, app.Name)
+			output, err = applyNone(r, app.Name)
 		case "path":
-			output, err = applyPath(client, app.Name, routes)
+			output, err = applyPath(r, app.Name, routes)
 		case "site":
-			output, err = applySite(client, app.Name, app.Domain, routes)
+			output, err = applySite(r, app.Name, app.Domain, routes)
 		default:
 			resp.BadRequest(c, "请先设置暴露模式")
 			return
@@ -303,40 +284,40 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func applyNone(client *gossh.Client, name string) (string, error) {
+func applyNone(r runner.Runner, name string) (string, error) {
 	cmds := []string{
 		fmt.Sprintf("sudo -n rm -f %s/%s.conf", appLocationsDir, name),
 		fmt.Sprintf("sudo -n rm -f /etc/nginx/sites-enabled/%s-sh", name),
 		fmt.Sprintf("sudo -n rm -f /etc/nginx/sites-available/%s-sh.conf", name),
 		"sudo -n nginx -s reload 2>&1",
 	}
-	return sshpool.Run(client, strings.Join(cmds, " && "))
+	return r.Run(strings.Join(cmds, " && "))
 }
 
-func applyPath(client *gossh.Client, name string, routes []model.AppNginxRoute) (string, error) {
+func applyPath(r runner.Runner, name string, routes []model.AppNginxRoute) (string, error) {
 	// ensure app-locations dir exists
-	if _, err := sshpool.Run(client, "sudo -n mkdir -p "+appLocationsDir); err != nil {
+	if _, err := r.Run("sudo -n mkdir -p " + appLocationsDir); err != nil {
 		return "", fmt.Errorf("创建目录失败")
 	}
 
 	// generate location blocks
 	var sb strings.Builder
-	for _, r := range routes {
-		sb.WriteString(fmt.Sprintf("location %s {\n", r.Path))
-		sb.WriteString(fmt.Sprintf("    proxy_pass %s;\n", r.Upstream))
+	for _, rt := range routes {
+		sb.WriteString(fmt.Sprintf("location %s {\n", rt.Path))
+		sb.WriteString(fmt.Sprintf("    proxy_pass %s;\n", rt.Upstream))
 		sb.WriteString("    proxy_set_header Host $host;\n")
 		sb.WriteString("    proxy_set_header X-Real-IP $remote_addr;\n")
 		sb.WriteString("    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
 		sb.WriteString("    proxy_set_header X-Forwarded-Proto $scheme;\n")
-		if r.Extra != "" {
-			sb.WriteString("    " + r.Extra + "\n")
+		if rt.Extra != "" {
+			sb.WriteString("    " + rt.Extra + "\n")
 		}
 		sb.WriteString("}\n\n")
 	}
 
 	locPath := fmt.Sprintf("%s/%s.conf", appLocationsDir, name)
 	writeCmd := safeshell.WriteRemoteFile(locPath, sb.String(), true)
-	if _, err := sshpool.Run(client, writeCmd); err != nil {
+	if _, err := r.Run(writeCmd); err != nil {
 		return "", fmt.Errorf("写入 location 配置失败")
 	}
 
@@ -351,19 +332,19 @@ func applyPath(client *gossh.Client, name string, routes []model.AppNginxRoute) 
 }`, appLocationsDir)
 
 	checkCmd := fmt.Sprintf("test -f %s", sq(hubAvail))
-	if _, err := sshpool.Run(client, checkCmd); err != nil {
+	if _, err := r.Run(checkCmd); err != nil {
 		// hub doesn't exist, create it
 		createCmd := safeshell.WriteRemoteFile(hubAvail, hubConf, true)
-		if _, err := sshpool.Run(client, createCmd); err != nil {
+		if _, err := r.Run(createCmd); err != nil {
 			return "", fmt.Errorf("创建 app-hub 站点失败")
 		}
 	}
-	sshpool.Run(client, fmt.Sprintf("sudo -n ln -sf %s %s", sq(hubAvail), sq(hubEnabled))) //nolint:errcheck
+	r.Run(fmt.Sprintf("sudo -n ln -sf %s %s", sq(hubAvail), sq(hubEnabled))) //nolint:errcheck
 
-	return sshpool.Run(client, "sudo -n nginx -t 2>&1 && sudo -n nginx -s reload 2>&1")
+	return r.Run("sudo -n nginx -t 2>&1 && sudo -n nginx -s reload 2>&1")
 }
 
-func applySite(client *gossh.Client, name, domain string, routes []model.AppNginxRoute) (string, error) {
+func applySite(r runner.Runner, name, domain string, routes []model.AppNginxRoute) (string, error) {
 	if domain == "" {
 		return "", fmt.Errorf("site 模式需要配置域名")
 	}
@@ -373,15 +354,15 @@ func applySite(client *gossh.Client, name, domain string, routes []model.AppNgin
 
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("server {\n    listen 80;\n    server_name %s;\n\n", domain))
-	for _, r := range routes {
-		sb.WriteString(fmt.Sprintf("    location %s {\n", r.Path))
-		sb.WriteString(fmt.Sprintf("        proxy_pass %s;\n", r.Upstream))
+	for _, rt := range routes {
+		sb.WriteString(fmt.Sprintf("    location %s {\n", rt.Path))
+		sb.WriteString(fmt.Sprintf("        proxy_pass %s;\n", rt.Upstream))
 		sb.WriteString("        proxy_set_header Host $host;\n")
 		sb.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
 		sb.WriteString("        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
 		sb.WriteString("        proxy_set_header X-Forwarded-Proto $scheme;\n")
-		if r.Extra != "" {
-			sb.WriteString("        " + r.Extra + "\n")
+		if rt.Extra != "" {
+			sb.WriteString("        " + rt.Extra + "\n")
 		}
 		sb.WriteString("    }\n\n")
 	}
@@ -391,10 +372,10 @@ func applySite(client *gossh.Client, name, domain string, routes []model.AppNgin
 	symlinkPath := fmt.Sprintf("/etc/nginx/sites-enabled/%s-sh", name)
 
 	writeCmd := safeshell.WriteRemoteFile(sitePath, sb.String(), true)
-	if _, err := sshpool.Run(client, writeCmd); err != nil {
+	if _, err := r.Run(writeCmd); err != nil {
 		return "", fmt.Errorf("写入站点配置失败")
 	}
-	sshpool.Run(client, fmt.Sprintf("sudo -n ln -sf %s %s", sq(sitePath), sq(symlinkPath))) //nolint:errcheck
+	r.Run(fmt.Sprintf("sudo -n ln -sf %s %s", sq(sitePath), sq(symlinkPath))) //nolint:errcheck
 
-	return sshpool.Run(client, "sudo -n nginx -t 2>&1 && sudo -n nginx -s reload 2>&1")
+	return r.Run("sudo -n nginx -t 2>&1 && sudo -n nginx -s reload 2>&1")
 }

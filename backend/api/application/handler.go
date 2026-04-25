@@ -11,11 +11,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
-	"github.com/serverhub/serverhub/pkg/sshpool"
-	gossh "golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 )
 
@@ -48,43 +46,26 @@ type appReq struct {
 
 // ── SSH helper ────────────────────────────────────────────────────────────────
 
-func connectSSH(db *gorm.DB, cfg *config.Config, serverID uint) (*gossh.Client, error) {
+func runnerForServer(db *gorm.DB, cfg *config.Config, serverID uint) (runner.Runner, error) {
 	var s model.Server
 	if err := db.First(&s, serverID).Error; err != nil {
 		return nil, fmt.Errorf("服务器不存在")
 	}
-	var (
-		cred string
-		err  error
-	)
-	switch s.AuthType {
-	case "key":
-		if s.PrivateKey != "" {
-			cred, err = crypto.Decrypt(s.PrivateKey, cfg.Security.AESKey)
-		}
-	default:
-		if s.Password != "" {
-			cred, err = crypto.Decrypt(s.Password, cfg.Security.AESKey)
-		}
-	}
-	if err != nil {
-		return nil, fmt.Errorf("解密失败: %w", err)
-	}
-	return sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+	return runner.For(&s, cfg)
 }
 
 func initAppDirs(db *gorm.DB, cfg *config.Config, app *model.Application) error {
 	if err := safeshell.AbsPath(app.BaseDir); err != nil {
 		return fmt.Errorf("base_dir 非法: %w", err)
 	}
-	client, err := connectSSH(db, cfg, app.ServerID)
+	r, err := runnerForServer(db, cfg, app.ServerID)
 	if err != nil {
 		return err
 	}
 	bd := safeshell.Quote(app.BaseDir)
 	cmd := fmt.Sprintf("mkdir -p %s/data %s/logs %s/config %s/backup",
 		bd, bd, bd, bd)
-	_, err = sshpool.Run(client, cmd)
+	_, err = r.Run(cmd)
 	return err
 }
 
@@ -434,9 +415,9 @@ func dirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "base_dir 非法: "+err.Error())
 			return
 		}
-		client, err := connectSSH(db, cfg, app.ServerID)
+		client, err := runnerForServer(db, cfg, app.ServerID)
 		if err != nil {
-			resp.Fail(c, http.StatusServiceUnavailable, 5003, "SSH 连接失败: "+err.Error())
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, "连接失败: "+err.Error())
 			return
 		}
 		bd := safeshell.Quote(app.BaseDir)
@@ -450,7 +431,7 @@ func dirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
     echo "$d|||missing"
   fi
 done`, bd)
-		out, err := sshpool.Run(client, cmd)
+		out, err := client.Run(cmd)
 		if err != nil {
 			resp.InternalError(c, "执行失败: "+err.Error())
 			return
@@ -546,16 +527,16 @@ func metricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.OK(c, appMetrics{Available: false, Reason: "未关联容器"})
 			return
 		}
-		client, err := connectSSH(db, cfg, app.ServerID)
+		client, err := runnerForServer(db, cfg, app.ServerID)
 		if err != nil {
-			resp.OK(c, appMetrics{Available: false, Reason: "SSH 连接失败: " + err.Error()})
+			resp.OK(c, appMetrics{Available: false, Reason: "连接失败: " + err.Error()})
 			return
 		}
 		cmd := fmt.Sprintf(
 			"docker stats --no-stream --format '{{json .}}' %s 2>/dev/null",
 			shellQuoteSafe(app.ContainerName),
 		)
-		out, err := sshpool.Run(client, cmd)
+		out, err := client.Run(cmd)
 		if err != nil || strings.TrimSpace(out) == "" {
 			reason := "容器未运行或不存在"
 			if err != nil {
@@ -617,6 +598,3 @@ func timeNowUnix() int64 {
 var timeNowFn = func() int64 {
 	return time.Now().Unix()
 }
-
-// 避免 gossh 未使用报警（connectSSH 已使用）
-var _ = (*gossh.Client)(nil)
