@@ -72,6 +72,20 @@ export interface Metric {
   created_at: string
 }
 
+// ServerService 是 GET /servers/:id/services 返回的精简 Service 视图，
+// 供 Server 详情 "服务" Tab 和 NginxRoutes upstream 下拉使用。
+export interface ServerService {
+  id: number
+  name: string
+  type: string
+  application_id: number | null
+  application_name?: string
+  exposed_port: number
+  image_name?: string
+  work_dir?: string
+  last_status?: string
+}
+
 export interface ConfigFile {
   name: string
   content: string
@@ -98,6 +112,9 @@ export interface Deploy {
   // status
   last_run_at: string | null
   last_status: '' | 'running' | 'success' | 'failed'
+  // Release 三维模型（Phase M1）
+  current_release_id?: number | null
+  auto_rollback_on_fail?: boolean
   created_at: string
   updated_at: string
 }

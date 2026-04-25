@@ -23,6 +23,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.POST("/:id/test", testHandler(db, cfg))
 	r.POST("/:id/metrics/collect", collectMetricsHandler(db, cfg))
 	r.GET("/:id/metrics", listMetricsHandler(db))
+	r.GET("/:id/services", listServicesHandler(db))
 }
 
 type serverResp struct {
@@ -280,6 +281,63 @@ func listMetricsHandler(db *gorm.DB) gin.HandlerFunc {
 		var metrics []model.Metric
 		db.Where("server_id = ?", s.ID).Order("created_at desc").Limit(limit).Find(&metrics)
 		resp.OK(c, metrics)
+	}
+}
+
+// listServicesHandler 返回该服务器上所有 Service（供 NginxRoutes 下拉用）。
+// 同时附带 Application 名（nullable）便于前端展示归属关系。
+func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
+	type svcItem struct {
+		ID              uint   `json:"id"`
+		Name            string `json:"name"`
+		Type            string `json:"type"`
+		ApplicationID   *uint  `json:"application_id"`
+		ApplicationName string `json:"application_name,omitempty"`
+		ExposedPort     int    `json:"exposed_port"`
+		ImageName       string `json:"image_name,omitempty"`
+		WorkDir         string `json:"work_dir,omitempty"`
+		LastStatus      string `json:"last_status,omitempty"`
+	}
+	return func(c *gin.Context) {
+		s, ok := findServer(c, db)
+		if !ok {
+			return
+		}
+		var svcs []model.Service
+		db.Where("server_id = ?", s.ID).Order("id asc").Find(&svcs)
+
+		// 一次性取出 Application 名称
+		appIDs := make([]uint, 0, len(svcs))
+		for _, sv := range svcs {
+			if sv.ApplicationID != nil {
+				appIDs = append(appIDs, *sv.ApplicationID)
+			}
+		}
+		nameByApp := make(map[uint]string, len(appIDs))
+		if len(appIDs) > 0 {
+			var apps []model.Application
+			db.Where("id IN ?", appIDs).Find(&apps)
+			for _, a := range apps {
+				nameByApp[a.ID] = a.Name
+			}
+		}
+
+		out := make([]svcItem, len(svcs))
+		for i, sv := range svcs {
+			it := svcItem{
+				ID: sv.ID, Name: sv.Name, Type: sv.Type,
+				ApplicationID: sv.ApplicationID,
+				ExposedPort:   sv.ExposedPort,
+				ImageName:     sv.ImageName,
+				WorkDir:       sv.WorkDir,
+				LastStatus:    sv.LastStatus,
+			}
+			if sv.ApplicationID != nil {
+				it.ApplicationName = nameByApp[*sv.ApplicationID]
+			}
+			out[i] = it
+		}
+		resp.OK(c, out)
 	}
 }
 

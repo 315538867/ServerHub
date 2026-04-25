@@ -208,7 +208,7 @@ func runDocker(db *gorm.DB, rn runner.Runner, log *Log, server model.Server,
 		LastStatus:     "success",
 		LastRunAt:      &now,
 	}
-	if _, err := attachToApplication(db, &d, c, req.TargetName); err != nil {
+	if _, err := attachToApplication(db, &d, c, req); err != nil {
 		log.Printf("⚠ Application 绑定失败: %v\n", err)
 		return fmt.Errorf("application 绑定失败: %w", err)
 	}

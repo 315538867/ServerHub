@@ -102,6 +102,11 @@ func importHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 type takeoverReq struct {
 	Candidate  discovery.Candidate `json:"candidate" binding:"required"`
 	TargetName string              `json:"target_name" binding:"required"`
+
+	// 归属策略（见 takeover.Request 注释）：floating|existing|new，空串按 floating
+	AppMode string `json:"app_mode,omitempty"`
+	AppID   *uint  `json:"app_id,omitempty"`
+	AppName string `json:"app_name,omitempty"`
 }
 
 func takeoverHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
@@ -118,6 +123,9 @@ func takeoverHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		out := takeover.Run(db, cfg, s, takeover.Request{
 			Candidate:  req.Candidate,
 			TargetName: req.TargetName,
+			AppMode:    req.AppMode,
+			AppID:      req.AppID,
+			AppName:    req.AppName,
 		})
 		resp.OK(c, out)
 	}

@@ -2,7 +2,7 @@
   <div class="dc-page">
     <UiCard padding="none">
       <div class="dc-toolbar">
-        <div class="dc-hint">扫描当前服务器上运行的 Docker 容器、docker-compose 项目、systemd 服务与 Nginx 静态站点，选中后批量导入为部署项。</div>
+        <div class="dc-hint">扫描当前服务器上运行的 Docker 容器、docker-compose 项目、systemd 服务与 Nginx 静态站点，接管后以 Service 形式纳管。</div>
         <UiButton variant="primary" size="sm" :loading="scanning" @click="scan">
           <template #icon><RefreshCw :size="14" /></template>
           {{ scanned ? '重新扫描' : '开始扫描' }}
@@ -32,7 +32,7 @@
           </div>
           <UiButton variant="primary" size="sm" :disabled="totalSelected === 0" :loading="importing" @click="doImport">
             <template #icon><Download :size="14" /></template>
-            导入所选 ({{ totalSelected }})
+            批量导入（浮动 Service）
           </UiButton>
         </div>
 
@@ -47,11 +47,12 @@
       </div>
     </UiCard>
 
+    <!-- ══════════ 接管弹窗：三档归属 ══════════ -->
     <NModal
       v-model:show="takeoverDialogVisible"
       preset="card"
       title="接管到标准目录"
-      style="width: 540px"
+      style="width: 620px"
       :bordered="false"
       :mask-closable="false"
     >
@@ -60,8 +61,26 @@
         <div class="dc-tk-sub">{{ takeoverTarget.summary }}</div>
       </div>
       <NForm :model="takeoverForm" label-placement="left" label-width="100" style="margin-top: var(--space-4)">
-        <NFormItem label="目标名称">
+        <NFormItem label="Service 名称">
           <NInput v-model:value="takeoverForm.target_name" placeholder="例如 lxy-app" />
+        </NFormItem>
+        <NFormItem label="归属">
+          <NRadioGroup v-model:value="takeoverForm.app_mode" size="small">
+            <NRadioButton value="floating">浮动（不绑定 App）</NRadioButton>
+            <NRadioButton value="existing">挂到已有 App</NRadioButton>
+            <NRadioButton value="new">新建 App</NRadioButton>
+          </NRadioGroup>
+        </NFormItem>
+        <NFormItem v-if="takeoverForm.app_mode === 'existing'" label="选择 App">
+          <NSelect
+            v-model:value="takeoverForm.app_id"
+            :options="existingAppOptions"
+            placeholder="选择一个已存在的应用"
+            clearable
+          />
+        </NFormItem>
+        <NFormItem v-if="takeoverForm.app_mode === 'new'" label="新 App 名称">
+          <NInput v-model:value="takeoverForm.app_name" placeholder="留空则与 Service 同名" />
         </NFormItem>
       </NForm>
       <div class="dc-tk-warn">
@@ -84,14 +103,29 @@
           <code>serverhub-{{ takeoverForm.target_name || '<name>' }}.service</code>，
           停掉旧 unit 并启动新 unit。<b>系统包托管的服务会被拒绝接管。</b>
         </div>
+        <div class="dc-tk-mode-hint">
+          <template v-if="takeoverForm.app_mode === 'floating'">
+            Service 独立存在，不出现在「应用」侧边栏。之后可随时迁入某个 App。
+          </template>
+          <template v-else-if="takeoverForm.app_mode === 'existing'">
+            Service 将绑定到指定 App，共享该 App 的域名 / Nginx / 数据库配置。
+          </template>
+          <template v-else>
+            将以 <code>{{ takeoverForm.app_name || takeoverForm.target_name || '<name>' }}</code> 为名创建新 App，
+            并以当前 Service 作为主服务（PrimaryService）。
+          </template>
+        </div>
         <div style="margin-top:6px;">中途任何步骤失败将自动回滚。</div>
       </div>
       <template #footer>
         <div class="modal-foot">
           <UiButton variant="secondary" size="sm" @click="takeoverDialogVisible = false">取消</UiButton>
-          <UiButton variant="primary" size="sm" :loading="takingOver" :disabled="!takeoverForm.target_name" @click="confirmTakeover">
-            执行接管
-          </UiButton>
+          <UiButton
+            variant="primary" size="sm"
+            :loading="takingOver"
+            :disabled="!canConfirm"
+            @click="confirmTakeover"
+          >执行接管</UiButton>
         </div>
       </template>
     </NModal>
@@ -112,9 +146,9 @@
             v-if="takeoverResult?.success && takeoverResult.deploy_id"
             variant="primary"
             size="sm"
-            @click="goToApp(takeoverResult.deploy_id!)"
+            @click="goToService(takeoverResult.deploy_id!)"
           >
-            查看应用
+            查看 Service
           </UiButton>
         </div>
       </template>
@@ -123,13 +157,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive, h } from 'vue'
+import { ref, computed, reactive, h, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NDataTable, NModal, NForm, NFormItem, NInput, useMessage } from 'naive-ui'
-import type { DataTableColumns } from 'naive-ui'
+import {
+  NDataTable, NModal, NForm, NFormItem, NInput, NSelect,
+  NRadioGroup, NRadioButton, useMessage,
+} from 'naive-ui'
+import type { DataTableColumns, SelectOption } from 'naive-ui'
 import { RefreshCw, Download } from 'lucide-vue-next'
 import { scanServer, importCandidates, takeoverCandidate } from '@/api/discovery'
-import type { Candidate, ScanResult, TakeoverResult } from '@/api/discovery'
+import type { Candidate, ScanResult, TakeoverResult, TakeoverAppMode, TakeoverPayload } from '@/api/discovery'
 import { useAppStore } from '@/stores/app'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -254,10 +291,9 @@ async function doImport() {
     selectedKeys.compose = []
     selectedKeys.systemd = []
     selectedKeys.nginx = []
-    // 新导入的应用需要立刻反映在侧边栏 / 应用列表里
-    await appStore.fetch()
+    // 批量导入只生成浮动 Service — 跳转到当前服务器的 Services Tab
     if (data.imported > 0 && !data.errors?.length) {
-      router.push('/apps')
+      router.push(`/servers/${serverId.value}/services`)
     }
   } catch (e: unknown) {
     const err = e as { message?: string }
@@ -272,8 +308,31 @@ const takeoverDialogVisible = ref(false)
 const takeoverLogVisible = ref(false)
 const takingOver = ref(false)
 const takeoverTarget = ref<Candidate | null>(null)
-const takeoverForm = reactive<{ target_name: string }>({ target_name: '' })
+const takeoverForm = reactive<{
+  target_name: string
+  app_mode: TakeoverAppMode
+  app_id: number | null
+  app_name: string
+}>({
+  target_name: '',
+  app_mode: 'floating',
+  app_id: null,
+  app_name: '',
+})
 const takeoverResult = ref<TakeoverResult | null>(null)
+
+// 已有 App 下拉：只显示绑定在当前服务器上的 App
+const existingAppOptions = computed<SelectOption[]>(() =>
+  appStore.apps
+    .filter((a) => a.server_id === serverId.value)
+    .map((a) => ({ label: a.name, value: a.id })),
+)
+
+const canConfirm = computed(() => {
+  if (!takeoverForm.target_name) return false
+  if (takeoverForm.app_mode === 'existing' && !takeoverForm.app_id) return false
+  return true
+})
 
 const takeoverLogTitle = computed(() => {
   const r = takeoverResult.value
@@ -294,7 +353,7 @@ const takeoverStatusTone = computed(() => {
 const takeoverStatusText = computed(() => {
   const r = takeoverResult.value
   if (!r) return ''
-  if (r.success) return `✓ Deploy 已创建（id=${r.deploy_id}），原服务已迁移至 /opt/serverhub/apps/`
+  if (r.success) return `✓ Service 已创建（id=${r.deploy_id}），原服务已迁移至 /opt/serverhub/apps/`
   if (r.rolled_back) return `↩ ${r.error || '步骤失败'}，已自动回滚到接管前状态`
   return `✗ ${r.error || '失败'}（注意：可能未完整回滚，请检查 /opt/serverhub/backups/）`
 })
@@ -309,17 +368,27 @@ function slugify(s: string): string {
 function openTakeover(row: Candidate) {
   takeoverTarget.value = row
   takeoverForm.target_name = slugify(row.name)
+  takeoverForm.app_mode = 'floating'
+  takeoverForm.app_id = null
+  takeoverForm.app_name = ''
   takeoverDialogVisible.value = true
 }
 
 async function confirmTakeover() {
-  if (!takeoverTarget.value || !takeoverForm.target_name) return
+  if (!takeoverTarget.value || !canConfirm.value) return
   takingOver.value = true
   try {
-    const data = await takeoverCandidate(serverId.value, {
+    const payload: TakeoverPayload = {
       candidate: takeoverTarget.value,
       target_name: takeoverForm.target_name,
-    })
+      app_mode: takeoverForm.app_mode,
+    }
+    if (takeoverForm.app_mode === 'existing' && takeoverForm.app_id) {
+      payload.app_id = takeoverForm.app_id
+    } else if (takeoverForm.app_mode === 'new') {
+      payload.app_name = takeoverForm.app_name || takeoverForm.target_name
+    }
+    const data = await takeoverCandidate(serverId.value, payload)
     takeoverResult.value = data
     takeoverDialogVisible.value = false
     takeoverLogVisible.value = true
@@ -339,10 +408,15 @@ async function confirmTakeover() {
   }
 }
 
-function goToApp(deployId: number) {
+function goToService(serviceId: number) {
   takeoverLogVisible.value = false
-  router.push(`/apps/${deployId}`)
+  router.push(`/services/${serviceId}`)
 }
+
+onMounted(async () => {
+  // Discover 页要用 App 列表做下拉
+  if (!appStore.apps.length) await appStore.ensure()
+})
 </script>
 
 <style scoped>
@@ -425,6 +499,12 @@ function goToApp(deployId: number) {
   background: var(--ui-bg);
   padding: 1px 4px;
   border-radius: var(--radius-sm);
+}
+.dc-tk-mode-hint {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--ui-border);
+  color: var(--ui-fg-2);
 }
 .dc-tk-status {
   padding: var(--space-2) var(--space-3);

@@ -12,10 +12,21 @@ import (
 )
 
 // Request is the operator's intent: take over this discovered service and
-// surface it as a Deploy named TargetName under the standard apps directory.
+// surface it as a Service named TargetName under the standard apps directory.
+//
+// AppMode 决定接管完成后 Service 的归属策略：
+//   - "floating"（默认）：Service 不绑定任何 Application（ApplicationID = nil）
+//   - "existing"：绑定到已存在的 App（AppID 必填，且 ServerID 必须匹配）
+//   - "new"：以 AppName 为名创建一条新 Application 并绑定
+//
+// 为向前兼容空字符串视为 "floating"（旧调用方只传 TargetName 的情况）。
 type Request struct {
 	Candidate  discovery.Candidate `json:"candidate"`
 	TargetName string              `json:"target_name"`
+
+	AppMode string `json:"app_mode,omitempty"`
+	AppID   *uint  `json:"app_id,omitempty"`
+	AppName string `json:"app_name,omitempty"`
 }
 
 // Result bundles the outcome of a takeover attempt. Output always contains the

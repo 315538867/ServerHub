@@ -1,5 +1,5 @@
 import request from './request'
-import type { Server, ServerForm, Metric } from '@/types/api'
+import type { Server, ServerForm, Metric, ServerService } from '@/types/api'
 
 export function getServers() {
   return request.get<never, Server[]>('/servers')
@@ -31,4 +31,8 @@ export function collectMetrics(id: number) {
 
 export function getMetrics(id: number, limit = 60) {
   return request.get<never, Metric[]>(`/servers/${id}/metrics`, { params: { limit } })
+}
+
+export function getServerServices(id: number) {
+  return request.get<never, ServerService[]>(`/servers/${id}/services`)
 }

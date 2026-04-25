@@ -61,9 +61,16 @@ export interface TakeoverResult {
   error?: string
 }
 
-export function takeoverCandidate(
-  serverId: number,
-  payload: { candidate: Candidate; target_name: string },
-) {
+export type TakeoverAppMode = 'floating' | 'existing' | 'new'
+
+export interface TakeoverPayload {
+  candidate: Candidate
+  target_name: string
+  app_mode?: TakeoverAppMode
+  app_id?: number
+  app_name?: string
+}
+
+export function takeoverCandidate(serverId: number, payload: TakeoverPayload) {
   return request.post<TakeoverResult>(`/servers/${serverId}/discover/takeover`, payload)
 }
