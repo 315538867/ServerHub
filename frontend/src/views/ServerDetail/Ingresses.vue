@@ -103,7 +103,16 @@
         <NFormItem label="协议">
           <NSelect v-model:value="routeForm.protocol" :options="protocolOptions" />
         </NFormItem>
-        <NFormItem label="WebSocket">
+        <NFormItem v-if="isStreamProto(routeForm.protocol)" label="监听端口">
+          <NInputNumber
+            v-model:value="routeForm.listen_port"
+            :min="1"
+            :max="65535"
+            placeholder="如 5432"
+            style="width: 100%"
+          />
+        </NFormItem>
+        <NFormItem v-if="!isStreamProto(routeForm.protocol)" label="WebSocket">
           <NSwitch v-model:value="routeForm.websocket" />
         </NFormItem>
         <NFormItem label="上游">
@@ -195,8 +204,11 @@ const serviceOptions = computed<SelectOption[]>(() =>
 const protocolOptions = [
   { label: 'http', value: 'http' },
   { label: 'grpc', value: 'grpc' },
-  // tcp/udp 需要 nginx stream 段渲染，留待 P2-D3
+  { label: 'tcp', value: 'tcp' },
+  { label: 'udp', value: 'udp' },
 ]
+
+const isStreamProto = (p: string) => p === 'tcp' || p === 'udp'
 
 // ── 列表 ──────────────────────────────────────────────────────────────────────
 
@@ -325,6 +337,7 @@ const routeForm = ref<{
   raw_url: string
   extra: string
   sort: number
+  listen_port: number | null
 }>({
   path: '/',
   protocol: 'http',
@@ -334,6 +347,7 @@ const routeForm = ref<{
   raw_url: '',
   extra: '',
   sort: 0,
+  listen_port: null,
 })
 
 function openAddRoute(ig: Ingress) {
@@ -349,6 +363,7 @@ function openAddRoute(ig: Ingress) {
     raw_url: '',
     extra: '',
     sort: baseSort,
+    listen_port: null,
   }
   routeVisible.value = true
 }
@@ -365,6 +380,7 @@ function openEditRoute(ig: Ingress, rt: IngressRoute) {
     raw_url: rt.upstream.raw_url ?? '',
     extra: rt.extra,
     sort: rt.sort,
+    listen_port: rt.listen_port ?? null,
   }
   routeVisible.value = true
 }
@@ -386,11 +402,18 @@ async function saveRoute() {
     message.warning('请填写 URL')
     return
   }
+  if (isStreamProto(f.protocol)) {
+    if (!f.listen_port || f.listen_port <= 0 || f.listen_port > 65535) {
+      message.warning('tcp/udp 需要填写 1-65535 之间的监听端口')
+      return
+    }
+  }
   routeSaving.value = true
   try {
     const body = {
       path: f.path, protocol: f.protocol, websocket: f.websocket,
       upstream, extra: f.extra, sort: f.sort,
+      listen_port: isStreamProto(f.protocol) ? f.listen_port : null,
     }
     if (editRoute.value) {
       await updateIngressRoute(routeIngressId.value, editRoute.value.id, body)
@@ -517,6 +540,7 @@ function renderRoutes(row: Ingress) {
       h('code', { class: 'ig-mono' }, rt.path),
       h(NTag, { size: 'tiny', type: 'default' }, { default: () => rt.protocol || 'http' }),
       rt.websocket ? h(NTag, { size: 'tiny', type: 'success' }, { default: () => 'WS' }) : null,
+      rt.listen_port ? h(NTag, { size: 'tiny', type: 'warning' }, { default: () => `:${rt.listen_port}` }) : null,
       h('span', { class: 'ig-arrow' }, '→'),
       h('code', { class: 'ig-mono ig-mono--up' }, upstreamLabel(rt)),
       rt.extra ? h('code', { class: 'ig-mono ig-mono--muted' }, rt.extra) : null,

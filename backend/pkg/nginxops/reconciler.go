@@ -114,6 +114,17 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 		return res, err
 	}
 
+	// stream 路由的 include 不能落在 sites-enabled（被 http{} include），必须挂在
+	// nginx.conf 顶层。这步独立于 Diff：直接读 nginx.conf、做带标记的幂等 rewrite，
+	// 把变化（如有）作为合成 Change 加进 rollback 列表。
+	streamWanted := desiredHasStreams(desired)
+	if streamChange, err := ensureStreamInclude(r, streamWanted); err != nil {
+		return res, err
+	} else if streamChange != nil {
+		changes = append(changes, *streamChange)
+		res.Changes = changes
+	}
+
 	out, terr := r.Run("sudo -n nginx -t 2>&1")
 	res.Output = strings.TrimSpace(out)
 	if terr != nil {

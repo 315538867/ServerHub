@@ -407,7 +407,7 @@ func TestProtocol_TCPRejectedOnCreate(t *testing.T) {
 		},
 	})
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("tcp 应 400, got %d", w.Code)
+		t.Fatalf("tcp 缺 listen_port 应 400, got %d", w.Code)
 	}
 	// 同事务里 ingress 也应该被回滚（不留空壳）
 	var igCnt int64
@@ -417,17 +417,69 @@ func TestProtocol_TCPRejectedOnCreate(t *testing.T) {
 	}
 }
 
+func TestProtocol_TCPAcceptedWithListenPort(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	w, body := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge, "match_kind": "domain", "domain": "t.com",
+		"routes": []map[string]any{
+			{"path": "/", "protocol": "tcp", "listen_port": 5432,
+				"upstream": map[string]any{"type": "raw", "raw_url": "10.0.0.5:5432"}},
+		},
+	})
+	if w.Code != http.StatusOK || body["code"].(float64) != 0 {
+		t.Fatalf("tcp + listen_port 应放行, status=%d body=%v", w.Code, body)
+	}
+	var rt model.IngressRoute
+	if err := db.First(&rt).Error; err != nil {
+		t.Fatalf("加载 route: %v", err)
+	}
+	if rt.Protocol != "tcp" || rt.ListenPort == nil || *rt.ListenPort != 5432 {
+		t.Errorf("listen_port 未持久化: %+v", rt)
+	}
+}
+
 func TestProtocol_UDPRejectedOnAddRoute(t *testing.T) {
 	r, db := setup(t)
 	edge := mkEdge(t, db)
 	ig := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "u.com"}
 	db.Create(&ig)
+	// 缺 listen_port
 	w, _ := do(t, r, "POST", "/ingresses/"+uintToStr(ig.ID)+"/routes", map[string]any{
 		"path": "/", "protocol": "udp",
 		"upstream": map[string]any{"type": "raw", "raw_url": "10:1"},
 	})
 	if w.Code != http.StatusBadRequest {
-		t.Fatalf("udp 应 400, got %d", w.Code)
+		t.Fatalf("udp 缺 listen_port 应 400, got %d", w.Code)
+	}
+}
+
+func TestProtocol_UDPAcceptedWithListenPort(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	ig := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "u.com"}
+	db.Create(&ig)
+	w, body := do(t, r, "POST", "/ingresses/"+uintToStr(ig.ID)+"/routes", map[string]any{
+		"path": "/", "protocol": "udp", "listen_port": 53,
+		"upstream": map[string]any{"type": "raw", "raw_url": "10.0.0.5:53"},
+	})
+	if w.Code != http.StatusOK || body["code"].(float64) != 0 {
+		t.Fatalf("udp + listen_port 应放行, status=%d body=%v", w.Code, body)
+	}
+}
+
+func TestProtocol_TCPListenPortOutOfRange(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	w, _ := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge, "match_kind": "domain", "domain": "x.com",
+		"routes": []map[string]any{
+			{"path": "/", "protocol": "tcp", "listen_port": 99999,
+				"upstream": map[string]any{"type": "raw", "raw_url": "h:1"}},
+		},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("超范围 listen_port 应 400, got %d", w.Code)
 	}
 }
 

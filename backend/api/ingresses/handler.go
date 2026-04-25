@@ -62,12 +62,13 @@ type updateReq struct {
 }
 
 type routeReq struct {
-	Sort      int                    `json:"sort"`
-	Path      string                 `json:"path" binding:"required"`
-	Protocol  string                 `json:"protocol"`
-	Upstream  model.IngressUpstream  `json:"upstream"`
-	WebSocket bool                   `json:"websocket"`
-	Extra     string                 `json:"extra"`
+	Sort       int                   `json:"sort"`
+	Path       string                `json:"path" binding:"required"`
+	Protocol   string                `json:"protocol"`
+	Upstream   model.IngressUpstream `json:"upstream"`
+	WebSocket  bool                  `json:"websocket"`
+	Extra      string                `json:"extra"`
+	ListenPort *int                  `json:"listen_port,omitempty"`
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────
@@ -93,15 +94,21 @@ func validateMatchKind(k string) error {
 // 当前 Renderer 支持的协议：
 //   - http / "" / ws：proxy_pass 链路（ws 等价 http + WebSocket=true）
 //   - grpc：grpc_pass + http2 listen
+//   - tcp / udp：聚合到 streams.conf 的 stream{} 顶层块；必须配 listen_port
 //
-// tcp / udp 需要 nginx stream 块，留到 P2-D3。提前在 API 层挡住可避免用户
-// 在前端选了 tcp/udp 之后 apply 时才被 nginx -t 拒绝。
-func validateProtocol(p string) error {
+// listenPort 仅在 tcp/udp 协议下被检查（>0 必填）；其它协议为 nil 即可。
+func validateProtocol(p string, listenPort *int) error {
 	switch p {
 	case "", "http", "ws", "grpc":
 		return nil
 	case "tcp", "udp":
-		return errors.New("protocol=" + p + " 暂未支持（stream 段渲染计划中）")
+		if listenPort == nil || *listenPort <= 0 {
+			return errors.New("protocol=" + p + " 需要 listen_port>0")
+		}
+		if *listenPort > 65535 {
+			return errors.New("listen_port 超出范围")
+		}
+		return nil
 	default:
 		return errors.New("protocol 取值非法：" + p)
 	}
@@ -188,13 +195,14 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 				return err
 			}
 			for _, r := range req.Routes {
-				if err := validateProtocol(r.Protocol); err != nil {
+				if err := validateProtocol(r.Protocol, r.ListenPort); err != nil {
 					return err
 				}
 				ir := model.IngressRoute{
 					IngressID: ig.ID, Sort: r.Sort, Path: r.Path,
 					Protocol: r.Protocol, Upstream: r.Upstream,
 					WebSocket: r.WebSocket, Extra: r.Extra,
+					ListenPort: r.ListenPort,
 				}
 				if ir.Protocol == "" {
 					ir.Protocol = "http"
@@ -290,7 +298,7 @@ func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
-		if err := validateProtocol(req.Protocol); err != nil {
+		if err := validateProtocol(req.Protocol, req.ListenPort); err != nil {
 			resp.BadRequest(c, err.Error())
 			return
 		}
@@ -298,6 +306,7 @@ func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			IngressID: igID, Sort: req.Sort, Path: req.Path,
 			Protocol: req.Protocol, Upstream: req.Upstream,
 			WebSocket: req.WebSocket, Extra: req.Extra,
+			ListenPort: req.ListenPort,
 		}
 		if ir.Protocol == "" {
 			ir.Protocol = "http"
@@ -331,7 +340,7 @@ func updateRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
-		if err := validateProtocol(req.Protocol); err != nil {
+		if err := validateProtocol(req.Protocol, req.ListenPort); err != nil {
 			resp.BadRequest(c, err.Error())
 			return
 		}
@@ -343,6 +352,7 @@ func updateRouteHandler(db *gorm.DB) gin.HandlerFunc {
 		ir.Upstream = req.Upstream
 		ir.WebSocket = req.WebSocket
 		ir.Extra = req.Extra
+		ir.ListenPort = req.ListenPort
 		if err := db.Save(&ir).Error; err != nil {
 			resp.InternalError(c, err.Error())
 			return

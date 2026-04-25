@@ -27,10 +27,11 @@ type ConfigFile struct {
 type RouteCtx struct {
 	Sort        int    // 排序键（asc）
 	Path        string // location 路径，如 /api 或 /
-	Protocol    string // P1 仅 http；ws/grpc/tcp/udp 留 P2/P3
+	Protocol    string // http|ws|grpc|tcp|udp（空 = http）
 	UpstreamURL string // 已由 Resolver 算出，例如 http://10.0.0.5:8080
 	WebSocket   bool   // 勾选后注入 Upgrade/Connection 头
 	Extra       string // 用户自定义 nginx 指令（已过 safeshell.NginxValue 校验）
+	ListenPort  int    // 仅 tcp/udp 用：stream server 的 listen 端口
 }
 
 // IngressCtx 是渲染一个入口（一组 location 或一个独占 server block）的上下文。

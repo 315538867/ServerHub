@@ -23,10 +23,11 @@ type ActualFile struct {
 // inspectScript 在远端列出所有「我们管的」nginx 配置文件，逐行输出
 // `<path>\t<sha256>\t<base64>`。三段以 TAB 分隔，方便上层解析。
 //
-// 管辖范围（与 nginxrender 路径策略对齐）：
+// 管辖范围（与 nginxrender 路径策略对齐）:
 //   - SitesAvailableDir/*-sh.conf
 //   - SitesAvailableDir/serverhub-app-hub
 //   - AppLocationsDir/*.conf
+//   - StreamsConf（tcp/udp 聚合文件）
 //
 // 用 `2>/dev/null || true` 容忍目录不存在的场景（首次 apply）。
 const inspectScript = `set -eu
@@ -42,6 +43,7 @@ emit() {
 emit ` + nginxrender.SitesAvailableDir + `/*-sh.conf 2>/dev/null || true
 emit ` + nginxrender.SitesAvailableDir + `/` + nginxrender.HubSiteName + ` 2>/dev/null || true
 emit ` + nginxrender.AppLocationsDir + `/*.conf 2>/dev/null || true
+emit ` + nginxrender.StreamsConf + ` 2>/dev/null || true
 exit 0
 `
 

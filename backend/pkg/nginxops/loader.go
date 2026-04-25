@@ -41,6 +41,10 @@ func LoadDesired(db *gorm.DB, edge *model.Server) ([]nginxrender.IngressCtx, err
 			if err != nil {
 				return nil, fmt.Errorf("ingress=%d route=%d upstream 解析失败: %w", ig.ID, rt.ID, err)
 			}
+			lp := 0
+			if rt.ListenPort != nil {
+				lp = *rt.ListenPort
+			}
 			ctxRoutes = append(ctxRoutes, nginxrender.RouteCtx{
 				Sort:        rt.Sort,
 				Path:        rt.Path,
@@ -48,6 +52,7 @@ func LoadDesired(db *gorm.DB, edge *model.Server) ([]nginxrender.IngressCtx, err
 				UpstreamURL: url,
 				WebSocket:   rt.WebSocket,
 				Extra:       rt.Extra,
+				ListenPort:  lp,
 			})
 		}
 

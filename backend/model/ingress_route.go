@@ -69,6 +69,9 @@ type IngressRoute struct {
 	Upstream         IngressUpstream `gorm:"type:text" json:"upstream"`
 	WebSocket        bool            `gorm:"default:false" json:"websocket"`
 	Extra            string          `gorm:"default:''" json:"extra"`
+	// ListenPort 仅 protocol=tcp/udp 时使用：渲染成 stream server 的 `listen` 端口。
+	// http/grpc/ws 路由共用 80（或后续 443），ListenPort 为 nil。
+	ListenPort       *int            `gorm:"default:null" json:"listen_port,omitempty"`
 	LegacyAppRouteID *uint           `gorm:"index" json:"-"` // 桥接期映射，P3 删除
 	CreatedAt        time.Time       `json:"created_at"`
 	UpdatedAt        time.Time       `json:"updated_at"`

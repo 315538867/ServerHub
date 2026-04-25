@@ -20,6 +20,7 @@ export interface IngressRoute {
   upstream: IngressUpstream
   websocket: boolean
   extra: string
+  listen_port?: number | null
   legacy_app_route_id?: number | null
 }
 
@@ -110,6 +111,7 @@ export interface RouteBody {
   upstream: IngressUpstream
   websocket?: boolean
   extra?: string
+  listen_port?: number | null
 }
 
 export function createIngress(body: CreateIngressBody) {

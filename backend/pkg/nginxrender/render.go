@@ -12,6 +12,10 @@ const (
 	SitesEnabledDir   = "/etc/nginx/sites-enabled"
 	AppLocationsDir   = "/etc/nginx/app-locations"
 	HubSiteName       = "serverhub-app-hub"
+	// StreamsConf 聚合所有 tcp/udp 路由的 nginx stream 配置。stream 块只能在
+	// nginx.conf 顶层 include，因此独立成文件，由 Reconciler 在 nginx.conf 写入
+	// 幂等的 include。
+	StreamsConf = "/etc/nginx/streams.conf"
 )
 
 // MatchKind 常量。
@@ -26,26 +30,38 @@ const (
 // 路径策略：
 //   - MatchKind=domain → SitesAvailableDir/<FileStem>-sh.conf（独占 server block）
 //   - MatchKind=path   → AppLocationsDir/<FileStem>.conf（被 hub 站点 include）
+//   - protocol=tcp|udp → 全部聚合到 StreamsConf 单文件（顶层 stream 块）
 //
-// 注意：sites-enabled 下的 symlink 不在本函数输出中，由 Reconciler 单独维护
-// （Differ 把 symlink 当成独立 ChangeKind）。
+// 注意：sites-enabled 下的 symlink、nginx.conf 中的 stream include 都不在本函数
+// 输出中，由 Reconciler 单独维护（Differ 把 symlink 当成独立 ChangeKind；nginx.conf
+// 的 marker 块由 Reconciler.ensureStreamInclude 幂等处理）。
 func Render(ingresses []IngressCtx) ([]ConfigFile, error) {
 	var files []ConfigFile
 	hasPath := false
+	var streamRoutes []RouteCtx
 
 	for _, ig := range ingresses {
 		if len(ig.Routes) == 0 {
 			continue
 		}
-		switch ig.MatchKind {
+		// 先按协议拆分：stream 路由全局聚合，其余按 MatchKind 走原渲染路径
+		httpRoutes, sRoutes := partitionStream(ig.Routes)
+		streamRoutes = append(streamRoutes, sRoutes...)
+		if len(httpRoutes) == 0 {
+			continue
+		}
+		igHTTP := ig
+		igHTTP.Routes = httpRoutes
+
+		switch igHTTP.MatchKind {
 		case MatchKindDomain:
-			f, err := renderDomainSite(ig)
+			f, err := renderDomainSite(igHTTP)
 			if err != nil {
 				return nil, fmt.Errorf("render ingress edge=%d domain=%q: %w", ig.EdgeServerID, ig.Domain, err)
 			}
 			files = append(files, f)
 		case MatchKindPath:
-			f, err := renderPathLocations(ig)
+			f, err := renderPathLocations(igHTTP)
 			if err != nil {
 				return nil, fmt.Errorf("render ingress edge=%d domain=%q: %w", ig.EdgeServerID, ig.Domain, err)
 			}
@@ -63,6 +79,15 @@ func Render(ingresses []IngressCtx) ([]ConfigFile, error) {
 			return nil, err
 		}
 		files = append(files, hub)
+	}
+
+	// 任一 stream 路由 → 聚合成单个 streams.conf
+	if len(streamRoutes) > 0 {
+		sf, err := renderStreams(streamRoutes)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, sf)
 	}
 
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
@@ -218,4 +243,84 @@ func sortedRoutes(in []RouteCtx) []RouteCtx {
 		return out[i].Path < out[j].Path
 	})
 	return out
+}
+
+// partitionStream 拆 routes 成（http/grpc/ws 走 sites/locations，stream 走 streams.conf）。
+// stream 协议：tcp / udp。
+func partitionStream(in []RouteCtx) (http, stream []RouteCtx) {
+	for _, r := range in {
+		if isStreamProto(r.Protocol) {
+			stream = append(stream, r)
+		} else {
+			http = append(http, r)
+		}
+	}
+	return
+}
+
+func isStreamProto(p string) bool {
+	return p == "tcp" || p == "udp"
+}
+
+// renderStreams 把所有 tcp/udp 路由聚合成单个 streams.conf。
+//
+// nginx stream 块语义：
+//   - 必须挂在 nginx.conf 顶层（不能在 http{} 里）
+//   - 一台 nginx 实例只能有一个 stream{} 块，因此本函数收集 edge 上所有 stream
+//     路由放进同一个 server 列表
+//   - listen 端口默认 TCP；udp 路由 listen 后追加 " udp"
+//   - proxy_pass 接受 host:port，scheme 必须剥掉
+//
+// 路由按 (ListenPort asc, Path asc) 稳定排序，使输出可重现。
+func renderStreams(routes []RouteCtx) (ConfigFile, error) {
+	srv := make([]RouteCtx, 0, len(routes))
+	for _, r := range routes {
+		if r.ListenPort <= 0 {
+			return ConfigFile{}, fmt.Errorf("stream 路由 path=%q protocol=%s 缺 listen_port", r.Path, r.Protocol)
+		}
+		if r.UpstreamURL == "" {
+			return ConfigFile{}, fmt.Errorf("stream 路由 path=%q listen=%d 缺 upstream", r.Path, r.ListenPort)
+		}
+		srv = append(srv, r)
+	}
+	sort.SliceStable(srv, func(i, j int) bool {
+		if srv[i].ListenPort != srv[j].ListenPort {
+			return srv[i].ListenPort < srv[j].ListenPort
+		}
+		return srv[i].Path < srv[j].Path
+	})
+
+	var sb strings.Builder
+	sb.WriteString("stream {\n")
+	for _, r := range srv {
+		listen := fmt.Sprintf("%d", r.ListenPort)
+		if r.Protocol == "udp" {
+			listen += " udp"
+		}
+		fmt.Fprintf(&sb, "    server {\n")
+		fmt.Fprintf(&sb, "        listen %s;\n", listen)
+		fmt.Fprintf(&sb, "        proxy_pass %s;\n", streamUpstream(r.UpstreamURL))
+		if r.Extra != "" {
+			fmt.Fprintf(&sb, "        %s\n", r.Extra)
+		}
+		fmt.Fprintf(&sb, "    }\n")
+	}
+	sb.WriteString("}\n")
+	return ConfigFile{Path: StreamsConf, Content: sb.String(), Mode: 0o644}, nil
+}
+
+// streamUpstream 把上游 URL 转成 stream proxy_pass 期望的 host:port。
+//   - http://h:p  → h:p
+//   - https://h:p → h:p（stream 不区分 scheme，走原始 TLS/明文留 nginx 自己判断；
+//     P3 接 ssl_preread 时再扩展）
+//   - 已是 h:p     → 原样
+func streamUpstream(u string) string {
+	switch {
+	case strings.HasPrefix(u, "http://"):
+		return strings.TrimPrefix(u, "http://")
+	case strings.HasPrefix(u, "https://"):
+		return strings.TrimPrefix(u, "https://")
+	default:
+		return u
+	}
 }

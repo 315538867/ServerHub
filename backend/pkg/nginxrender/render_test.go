@@ -408,3 +408,145 @@ func TestGRPCURL_Helpers(t *testing.T) {
 		}
 	}
 }
+
+// ── stream（P2-D3）────────────────────────────────────────────────────────────
+
+func TestRender_StreamTCP_Single(t *testing.T) {
+	files, err := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "db", MatchKind: MatchKindDomain, Domain: "_",
+		Routes: []RouteCtx{{
+			Path: "/", Protocol: "tcp", ListenPort: 5432,
+			UpstreamURL: "http://10.0.0.5:5432",
+		}},
+	}})
+	if err != nil {
+		t.Fatalf("render err: %v", err)
+	}
+	if len(files) != 1 || files[0].Path != StreamsConf {
+		t.Fatalf("stream-only ingress 应只输出 streams.conf, got %+v", files)
+	}
+	want := "stream {\n" +
+		"    server {\n" +
+		"        listen 5432;\n" +
+		"        proxy_pass 10.0.0.5:5432;\n" +
+		"    }\n" +
+		"}\n"
+	if files[0].Content != want {
+		t.Errorf("streams.conf mismatch:\nwant:\n%s\ngot:\n%s", want, files[0].Content)
+	}
+}
+
+func TestRender_StreamUDP_AppendsUDPMarker(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "dns", MatchKind: MatchKindDomain, Domain: "_",
+		Routes: []RouteCtx{{
+			Path: "/", Protocol: "udp", ListenPort: 53,
+			UpstreamURL: "10.0.0.5:53",
+		}},
+	}})
+	if !strings.Contains(files[0].Content, "listen 53 udp;") {
+		t.Errorf("udp 路由 listen 行应带 udp:\n%s", files[0].Content)
+	}
+	if !strings.Contains(files[0].Content, "proxy_pass 10.0.0.5:53;") {
+		t.Errorf("proxy_pass 应剥掉 scheme:\n%s", files[0].Content)
+	}
+}
+
+func TestRender_StreamAggregatesAcrossIngresses(t *testing.T) {
+	files, _ := Render([]IngressCtx{
+		{EdgeServerID: 1, FileStem: "a", MatchKind: MatchKindDomain, Domain: "_",
+			Routes: []RouteCtx{{Path: "/", Protocol: "tcp", ListenPort: 9000, UpstreamURL: "http://up:1"}}},
+		{EdgeServerID: 1, FileStem: "b", MatchKind: MatchKindDomain, Domain: "_",
+			Routes: []RouteCtx{{Path: "/", Protocol: "udp", ListenPort: 53, UpstreamURL: "up:2"}}},
+	})
+	streamCnt := 0
+	for _, f := range files {
+		if f.Path == StreamsConf {
+			streamCnt++
+		}
+	}
+	if streamCnt != 1 {
+		t.Fatalf("跨 ingress 的 stream 路由应聚合到单个 streams.conf, got %d", streamCnt)
+	}
+	c := files[0].Content
+	// listen 端口升序：53 在 9000 之前
+	i53 := strings.Index(c, "listen 53")
+	i9k := strings.Index(c, "listen 9000")
+	if !(i53 > 0 && i53 < i9k) {
+		t.Errorf("stream server 应按 listen_port 升序:\n%s", c)
+	}
+}
+
+func TestRender_StreamMixedWithHTTPSameIngress(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "m", MatchKind: MatchKindDomain, Domain: "m.com",
+		Routes: []RouteCtx{
+			{Path: "/api", UpstreamURL: "http://up:1"},
+			{Path: "/", Protocol: "tcp", ListenPort: 5432, UpstreamURL: "http://up:5432"},
+		},
+	}})
+	var hasSite, hasStream bool
+	for _, f := range files {
+		switch {
+		case strings.HasSuffix(f.Path, "-sh.conf"):
+			hasSite = true
+			if strings.Contains(f.Content, "5432") {
+				t.Errorf("http server 块不应混入 stream 内容:\n%s", f.Content)
+			}
+		case f.Path == StreamsConf:
+			hasStream = true
+		}
+	}
+	if !hasSite || !hasStream {
+		t.Errorf("混合路由应同时输出 site + streams.conf, got files=%+v", files)
+	}
+}
+
+func TestRender_StreamMissingListenPortErrors(t *testing.T) {
+	_, err := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "x", MatchKind: MatchKindDomain, Domain: "_",
+		Routes: []RouteCtx{{Path: "/", Protocol: "tcp", UpstreamURL: "h:1"}},
+	}})
+	if err == nil {
+		t.Fatal("缺 ListenPort 应报错")
+	}
+}
+
+func TestRender_StreamOnlyIngressDoesNotCreateSite(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "x", MatchKind: MatchKindDomain, Domain: "_",
+		Routes: []RouteCtx{{Path: "/", Protocol: "tcp", ListenPort: 1234, UpstreamURL: "h:1"}},
+	}})
+	for _, f := range files {
+		if strings.HasSuffix(f.Path, "-sh.conf") {
+			t.Errorf("纯 stream ingress 不应输出 -sh.conf: %s", f.Path)
+		}
+	}
+}
+
+func TestRender_StreamExtraInjected(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "e", MatchKind: MatchKindDomain, Domain: "_",
+		Routes: []RouteCtx{{
+			Path: "/", Protocol: "tcp", ListenPort: 6379, UpstreamURL: "h:6379",
+			Extra: "proxy_timeout 1h;",
+		}},
+	}})
+	if !strings.Contains(files[0].Content, "        proxy_timeout 1h;\n") {
+		t.Errorf("extra 应以 server 内缩进注入:\n%s", files[0].Content)
+	}
+}
+
+func TestStreamUpstream_Helpers(t *testing.T) {
+	cases := map[string]string{
+		"http://h:1":  "h:1",
+		"https://h:2": "h:2",
+		"h:3":         "h:3",
+		"":            "",
+	}
+	for in, want := range cases {
+		if got := streamUpstream(in); got != want {
+			t.Errorf("streamUpstream(%q)=%q want %q", in, got, want)
+		}
+	}
+}
