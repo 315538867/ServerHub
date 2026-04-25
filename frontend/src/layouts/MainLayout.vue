@@ -67,12 +67,6 @@
         </NavLink>
 
         <div v-show="!collapsed" class="nav__group">管理</div>
-        <NavLink to="/deploy" label="部署管理" :collapsed="collapsed">
-          <template #icon><GitBranch :size="16" /></template>
-        </NavLink>
-        <NavLink to="/database" label="数据库" :collapsed="collapsed">
-          <template #icon><Database :size="16" /></template>
-        </NavLink>
         <NavLink to="/notifications" label="通知" :collapsed="collapsed" :badge="unreadCount || undefined">
           <template #icon><Bell :size="16" /></template>
         </NavLink>
@@ -143,7 +137,7 @@ import { computed, ref, watch, onMounted, h } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { NDropdown } from 'naive-ui'
 import {
-  LayoutDashboard, Plus, GitBranch, Database, Bell, Settings,
+  LayoutDashboard, Plus, Bell, Settings,
   ChevronRight, ChevronDown, ChevronLeft, Search,
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
@@ -185,6 +179,7 @@ const appStore = useAppStore()
 
 const serverSubItems = [
   { path: 'overview', label: '概览' },
+  { path: 'services', label: '服务' },
   { path: 'nginx',    label: 'Nginx 网关' },
   { path: 'docker',   label: 'Docker' },
   { path: 'system',   label: '系统' },
@@ -220,8 +215,8 @@ const breadcrumbs = computed<Array<{ label: string; path?: string }>>(() => {
     const app = appStore.getById(appId)
     const tab = path.split('/').pop()
     const tabLabel: Record<string, string> = {
-      overview: '概览', domain: '域名', service: '服务',
-      deploy: '部署', logs: '日志', database: '数据库', env: '环境变量',
+      overview: '概览', releases: 'Releases', network: '网络',
+      ops: '运维', data: '数据',
     }
     return [
       { label: '应用', path: '/apps' },
@@ -250,9 +245,10 @@ const breadcrumbs = computed<Array<{ label: string; path?: string }>>(() => {
     ]
   }
   const topLabels: Record<string, string> = {
-    '/servers': '服务器管理', '/deploy': '部署管理',
-    '/database': '数据库', '/notifications': '通知',
-    '/settings': '设置', '/apps': '应用',
+    '/servers': '服务器管理',
+    '/notifications': '通知',
+    '/settings': '设置',
+    '/apps': '应用',
   }
   return topLabels[path] ? [{ label: topLabels[path] }] : []
 })

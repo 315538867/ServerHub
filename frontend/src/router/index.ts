@@ -34,7 +34,7 @@ const router = createRouter({
           children: [
             // ── 5 Tab 新结构 ──
             { path: 'overview', name: 'AppOverview', component: () => import('@/views/Apps/Overview.vue') },
-            { path: 'deploy', name: 'AppDeploy', component: () => import('@/views/Apps/Deploy.vue') },
+            { path: 'releases', name: 'AppReleases', component: () => import('@/views/Apps/Releases.vue') },
             {
               path: 'network',
               component: () => import('@/views/Apps/Network.vue'),
@@ -63,7 +63,9 @@ const router = createRouter({
             { path: 'logs', redirect: (to) => `/apps/${to.params.appId}/ops/logs` },
             { path: 'terminal', redirect: (to) => `/apps/${to.params.appId}/ops/terminal` },
             { path: 'database', redirect: (to) => `/apps/${to.params.appId}/data` },
-            { path: 'env', redirect: (to) => `/apps/${to.params.appId}/deploy` },
+            // M3: /apps/:id/deploy 已退役，统一跳到 Releases Tab
+            { path: 'deploy', redirect: (to) => `/apps/${to.params.appId}/releases` },
+            { path: 'env', redirect: (to) => `/apps/${to.params.appId}/releases` },
           ],
         },
 
@@ -75,6 +77,7 @@ const router = createRouter({
           redirect: (to) => `${to.path}/overview`,
           children: [
             { path: 'overview', name: 'ServerOverview', component: () => import('@/views/ServerDetail/Overview.vue') },
+            { path: 'services', name: 'ServerServices', component: () => import('@/views/ServerDetail/Services.vue') },
             { path: 'nginx', name: 'ServerNginx', component: () => import('@/views/ServerDetail/Nginx.vue') },
             { path: 'docker', name: 'ServerDocker', component: () => import('@/views/ServerDetail/Docker.vue') },
             { path: 'system', name: 'ServerSystem', component: () => import('@/views/ServerDetail/System.vue') },
@@ -85,8 +88,10 @@ const router = createRouter({
           ],
         },
 
+        // ── Service 详情（Phase M1 新链路） ──
+        { path: 'services/:id', name: 'ServiceDetail', component: () => import('@/views/service/ServiceDetail.vue') },
+
         // ── 全局管理（保留：功能未被应用视角完全替代） ──
-        { path: 'deploy', name: 'Deploy', component: () => import('@/views/Deploy/index.vue') },
         { path: 'database', name: 'Database', component: () => import('@/views/Database/index.vue') },
 
         // ── 全局 ──

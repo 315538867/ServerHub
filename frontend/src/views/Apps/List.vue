@@ -185,7 +185,7 @@ function renderName(row: Application) {
 function renderOps(row: Application) {
   return h('div', { class: 'cell-ops' }, [
     h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => router.push(`/apps/${row.id}/overview`) }, () => '查看'),
-    h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => router.push(`/apps/${row.id}/deploy`) }, () => '部署'),
+    h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => router.push(`/apps/${row.id}/releases`) }, () => 'Releases'),
   ])
 }
 

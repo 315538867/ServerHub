@@ -160,8 +160,7 @@
 import { reactive, ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NSteps, NStep, NInput, NSelect, NAlert, useMessage } from 'naive-ui'
-import { createApp, updateApp } from '@/api/application'
-import { createDeploy } from '@/api/deploy'
+import { createApp } from '@/api/application'
 import { useServerStore } from '@/stores/server'
 import { useAppStore } from '@/stores/app'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -257,24 +256,14 @@ function onSkip() {
 async function handleCreate() {
   if (!form.name || !form.server_id) { step.value = 0; message.warning('请填写应用名称和服务器'); return }
   if (form.expose_mode === 'site' && !form.domain) { step.value = 2; message.warning('独立站点模式需填写域名'); return }
-  if (deployType.value === 'docker' && !deployForm.image_name) { message.warning('Docker 部署需填写镜像名'); return }
   saving.value = true
   try {
     const app = await createApp(form as any)
+    // M3：部署方式不再由向导一步创建，用户在 Releases Tab 建 Release 时选择。
     if (deployType.value) {
-      const deploy = await createDeploy({
-        name: app.name,
-        server_id: app.server_id,
-        type: deployType.value,
-        work_dir: deployForm.work_dir || form.base_dir,
-        compose_file: deployForm.compose_file || 'docker-compose.yml',
-        image_name: deployForm.image_name,
-        start_cmd: deployForm.start_cmd,
-      })
-      await updateApp(app.id, { ...app, deploy_id: deploy.id } as any)
-      message.success('应用创建成功，已关联部署配置')
+      message.success('应用创建成功，请前往 Releases Tab 创建首个 Release')
       await appStore.fetch()
-      router.push(`/apps/${app.id}/deploy`)
+      router.push(`/apps/${app.id}/releases`)
     } else {
       message.success('应用创建成功')
       await appStore.fetch()

@@ -95,7 +95,7 @@ function onGlobalKey(e: KeyboardEvent) {
   const isMod = e.metaKey || e.ctrlKey
   if (isMod && e.key.toLowerCase() === 'd' && currentAppId.value) {
     e.preventDefault()
-    router.push(`/apps/${currentAppId.value}/deploy`)
+    router.push(`/apps/${currentAppId.value}/releases`)
     return
   }
   if (isMod && e.key.toLowerCase() === 'l' && currentAppId.value) {
@@ -123,8 +123,6 @@ const navItems = computed<CmdItem[]>(() => [
   { id: 'nav:apps',       group: '页面', icon: '📋', title: '应用列表',   action: () => router.push('/apps') },
   { id: 'nav:create',     group: '页面', icon: '➕', title: '新建应用',   action: () => router.push('/apps/create') },
   { id: 'nav:servers',    group: '页面', icon: '🖥️', title: '服务器列表', action: () => router.push('/servers') },
-  { id: 'nav:deploy',     group: '页面', icon: '🚀', title: '全局部署',   action: () => router.push('/deploy') },
-  { id: 'nav:database',   group: '页面', icon: '🗄️', title: '全局数据库', action: () => router.push('/database') },
   { id: 'nav:notif',      group: '页面', icon: '🔔', title: '通知中心',   action: () => router.push('/notifications') },
   { id: 'nav:settings',   group: '页面', icon: '⚙️', title: '设置',       action: () => router.push('/settings') },
 ])
@@ -141,13 +139,13 @@ const appItems = computed<CmdItem[]>(() =>
       action: () => router.push(`/apps/${a.id}/overview`),
     },
     {
-      id: `app-deploy:${a.id}`,
+      id: `app-releases:${a.id}`,
       group: '应用',
       icon: '🚀',
-      title: `部署 ${a.name}`,
-      subtitle: '直接进入部署驾驶舱',
-      keywords: `deploy 部署 ${a.name}`,
-      action: () => router.push(`/apps/${a.id}/deploy`),
+      title: `Releases ${a.name}`,
+      subtitle: '查看发布历史 / 发起新 Release',
+      keywords: `release 发布 ${a.name}`,
+      action: () => router.push(`/apps/${a.id}/releases`),
     },
   ])
 )
@@ -170,7 +168,7 @@ const contextItems = computed<CmdItem[]>(() => {
   const app = appStore.getById(Number(id))
   const name = app?.name || '当前应用'
   return [
-    { id: 'ctx:deploy',  group: '操作（当前应用）', icon: '▶',  title: `部署 ${name}`,  shortcut: '⌘+D', action: () => router.push(`/apps/${id}/deploy`) },
+    { id: 'ctx:releases', group: '操作（当前应用）', icon: '▶',  title: `Releases ${name}`, shortcut: '⌘+D', action: () => router.push(`/apps/${id}/releases`) },
     { id: 'ctx:logs',    group: '操作（当前应用）', icon: '📜', title: `查看日志`,      shortcut: '⌘+L', action: () => router.push(`/apps/${id}/ops/logs`) },
     { id: 'ctx:term',    group: '操作（当前应用）', icon: '💻', title: `打开终端`,                       action: () => router.push(`/apps/${id}/ops/terminal`) },
     { id: 'ctx:metrics', group: '操作（当前应用）', icon: '📊', title: `实时指标 / 总览`,                 action: () => router.push(`/apps/${id}/overview`) },
