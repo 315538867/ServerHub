@@ -1,18 +1,17 @@
 package approutes
 
 import (
+	"context"
 	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/pkg/nginxops"
 	"github.com/serverhub/serverhub/pkg/resp"
-	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
-	"github.com/serverhub/serverhub/pkg/sshpool"
 	"gorm.io/gorm"
 )
 
@@ -26,8 +25,6 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-func sq(s string) string { return safeshell.Quote(s) }
 
 // validateRoute rejects route fields that would let a caller break out of the
 // nginx directive or inject a shell terminator when written via base64+tee.
@@ -66,24 +63,6 @@ func getApp(c *gin.Context, db *gorm.DB) (*model.Application, bool) {
 		return nil, false
 	}
 	return &app, true
-}
-
-func getRunnerForApp(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, *model.Application, bool) {
-	app, ok := getApp(c, db)
-	if !ok {
-		return nil, nil, false
-	}
-	var s model.Server
-	if err := db.First(&s, app.ServerID).Error; err != nil {
-		resp.NotFound(c, "服务器不存在")
-		return nil, nil, false
-	}
-	r, err := runner.For(&s, cfg)
-	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "连接失败: "+err.Error())
-		return nil, nil, false
-	}
-	return r, app, true
 }
 
 // ── GET /:id/nginx ────────────────────────────────────────────────────────────
@@ -251,12 +230,12 @@ func deleteRouteHandler(db *gorm.DB) gin.HandlerFunc {
 
 // ── POST /:id/nginx/apply ─────────────────────────────────────────────────────
 
-const appHubSiteName = "serverhub-app-hub"
-const appLocationsDir = "/etc/nginx/app-locations"
-
+// applyHandler 兼容旧 NginxRoutes.vue 路径的 apply 入口。新链路下，
+// 真正的 nginx 写盘 / reload / 回滚都由 nginxops.Reconciler 完成；
+// 这里仅做参数校验与 edge 解析后转发。
 func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		r, app, ok := getRunnerForApp(c, db, cfg)
+		app, ok := getApp(c, db)
 		if !ok {
 			return
 		}
@@ -276,121 +255,33 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			}
 		}
 
-		var output string
-		var err error
-
-		switch app.ExposeMode {
-		case "none":
-			output, err = applyNone(r, app.Name)
-		case "path":
-			output, err = applyPath(r, app.Name, routes)
-		case "site":
-			output, err = applySite(r, app.Name, app.Domain, routes)
-		default:
-			resp.BadRequest(c, "请先设置暴露模式")
+		edge := app.RunServerID
+		if edge == 0 {
+			edge = app.ServerID
+		}
+		if edge == 0 {
+			resp.BadRequest(c, "应用未绑定运行节点")
 			return
 		}
 
+		var actor *uint
+		if v, exists := c.Get("userID"); exists {
+			if uid, okUID := v.(uint); okUID && uid > 0 {
+				actor = &uid
+			}
+		}
+
+		res, err := nginxops.Apply(context.Background(), db, cfg, edge, actor)
 		if err != nil {
-			resp.InternalError(c, sshpool.HumanizeErr(output)+": "+err.Error())
+			resp.InternalError(c, err.Error())
 			return
 		}
-		resp.OK(c, gin.H{"output": strings.TrimSpace(output)})
+		resp.OK(c, gin.H{
+			"output":      strings.TrimSpace(res.Output),
+			"changes":     res.Changes,
+			"no_op":       res.NoOp,
+			"rolled_back": res.RolledBack,
+			"audit_id":    res.AuditID,
+		})
 	}
-}
-
-func applyNone(r runner.Runner, name string) (string, error) {
-	cmds := []string{
-		fmt.Sprintf("sudo -n rm -f %s/%s.conf", appLocationsDir, name),
-		fmt.Sprintf("sudo -n rm -f /etc/nginx/sites-enabled/%s-sh", name),
-		fmt.Sprintf("sudo -n rm -f /etc/nginx/sites-available/%s-sh.conf", name),
-		"sudo -n nginx -s reload 2>&1",
-	}
-	return r.Run(strings.Join(cmds, " && "))
-}
-
-func applyPath(r runner.Runner, name string, routes []model.AppNginxRoute) (string, error) {
-	// ensure app-locations dir exists
-	if _, err := r.Run("sudo -n mkdir -p " + appLocationsDir); err != nil {
-		return "", fmt.Errorf("创建目录失败")
-	}
-
-	// generate location blocks
-	var sb strings.Builder
-	for _, rt := range routes {
-		sb.WriteString(fmt.Sprintf("location %s {\n", rt.Path))
-		sb.WriteString(fmt.Sprintf("    proxy_pass %s;\n", rt.Upstream))
-		sb.WriteString("    proxy_set_header Host $host;\n")
-		sb.WriteString("    proxy_set_header X-Real-IP $remote_addr;\n")
-		sb.WriteString("    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
-		sb.WriteString("    proxy_set_header X-Forwarded-Proto $scheme;\n")
-		if rt.Extra != "" {
-			sb.WriteString("    " + rt.Extra + "\n")
-		}
-		sb.WriteString("}\n\n")
-	}
-
-	locPath := fmt.Sprintf("%s/%s.conf", appLocationsDir, name)
-	writeCmd := safeshell.WriteRemoteFile(locPath, sb.String(), true)
-	if _, err := r.Run(writeCmd); err != nil {
-		return "", fmt.Errorf("写入 location 配置失败")
-	}
-
-	// ensure serverhub-app-hub site exists and is enabled
-	hubAvail := "/etc/nginx/sites-available/" + appHubSiteName
-	hubEnabled := "/etc/nginx/sites-enabled/" + appHubSiteName
-	hubConf := fmt.Sprintf(`server {
-    listen 80;
-    server_name _;
-
-    include %s/*.conf;
-}`, appLocationsDir)
-
-	checkCmd := fmt.Sprintf("test -f %s", sq(hubAvail))
-	if _, err := r.Run(checkCmd); err != nil {
-		// hub doesn't exist, create it
-		createCmd := safeshell.WriteRemoteFile(hubAvail, hubConf, true)
-		if _, err := r.Run(createCmd); err != nil {
-			return "", fmt.Errorf("创建 app-hub 站点失败")
-		}
-	}
-	r.Run(fmt.Sprintf("sudo -n ln -sf %s %s", sq(hubAvail), sq(hubEnabled))) //nolint:errcheck
-
-	return r.Run("sudo -n nginx -t 2>&1 && sudo -n nginx -s reload 2>&1")
-}
-
-func applySite(r runner.Runner, name, domain string, routes []model.AppNginxRoute) (string, error) {
-	if domain == "" {
-		return "", fmt.Errorf("site 模式需要配置域名")
-	}
-	if err := safeshell.NginxValue(domain); err != nil {
-		return "", fmt.Errorf("domain 非法: %w", err)
-	}
-
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("server {\n    listen 80;\n    server_name %s;\n\n", domain))
-	for _, rt := range routes {
-		sb.WriteString(fmt.Sprintf("    location %s {\n", rt.Path))
-		sb.WriteString(fmt.Sprintf("        proxy_pass %s;\n", rt.Upstream))
-		sb.WriteString("        proxy_set_header Host $host;\n")
-		sb.WriteString("        proxy_set_header X-Real-IP $remote_addr;\n")
-		sb.WriteString("        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n")
-		sb.WriteString("        proxy_set_header X-Forwarded-Proto $scheme;\n")
-		if rt.Extra != "" {
-			sb.WriteString("        " + rt.Extra + "\n")
-		}
-		sb.WriteString("    }\n\n")
-	}
-	sb.WriteString("}\n")
-
-	sitePath := fmt.Sprintf("/etc/nginx/sites-available/%s-sh.conf", name)
-	symlinkPath := fmt.Sprintf("/etc/nginx/sites-enabled/%s-sh", name)
-
-	writeCmd := safeshell.WriteRemoteFile(sitePath, sb.String(), true)
-	if _, err := r.Run(writeCmd); err != nil {
-		return "", fmt.Errorf("写入站点配置失败")
-	}
-	r.Run(fmt.Sprintf("sudo -n ln -sf %s %s", sq(sitePath), sq(symlinkPath))) //nolint:errcheck
-
-	return r.Run("sudo -n nginx -t 2>&1 && sudo -n nginx -s reload 2>&1")
 }

@@ -27,6 +27,7 @@ import (
 	apidocker "github.com/serverhub/serverhub/api/docker"
 	apifiles "github.com/serverhub/serverhub/api/files"
 	"github.com/serverhub/serverhub/api/health"
+	apiingresses "github.com/serverhub/serverhub/api/ingresses"
 	apimetrics "github.com/serverhub/serverhub/api/metrics"
 	apilogsearch "github.com/serverhub/serverhub/api/logsearch"
 	apinginx "github.com/serverhub/serverhub/api/nginx"
@@ -210,6 +211,7 @@ func main() {
 	// Phase M3: AppReleaseSet（App 级 Release 组合 + SSE Apply/Rollback）
 	apiapprelease.RegisterRoutes(appsGroup, db, cfg)
 	apiapproutes.RegisterRoutes(appsGroup, db, cfg)
+	apiingresses.RegisterRoutes(protected.Group("/ingresses"), db, cfg)
 	apiaudit.RegisterRoutes(protected.Group("/audit"), db)
 
 	// Terminal: auth via ?token= query param (WS upgrade), no Audit middleware
