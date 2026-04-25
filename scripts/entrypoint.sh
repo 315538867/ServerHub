@@ -46,4 +46,12 @@ if [ -d /data ]; then
   fi
 fi
 
+# Privileged-mode opt-in: when /host is bind-mounted the operator has explicitly
+# wired up nsenter-driven host control (--pid=host + --privileged + -v /:/host).
+# Dropping privs to the unprivileged serverhub user there would defeat that
+# choice — nsenter would EPERM on /proc/1/ns/ipc. Stay root in that mode.
+if [ -d /host ] && [ -e /proc/1/ns/ipc ]; then
+  exec /serverhub "$@"
+fi
+
 exec gosu "$USER_NAME" /serverhub "$@"
