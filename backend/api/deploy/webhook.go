@@ -28,12 +28,13 @@ func RegisterWebhookRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) 
 //   - X-Gitlab-Token (GitLab): raw secret compared with constant-time
 //
 // Requests carrying neither header are rejected so a leaked URL alone cannot
-// trigger a deploy.
+// trigger a deploy. On auth success the Service's current Release is re-applied
+// via deployer.ApplyRelease (M3: legacy deployer.Run is gone).
 func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.Param("token")
-		var d model.Service
-		if err := db.Where("webhook_secret = ?", token).First(&d).Error; err != nil {
+		var svc model.Service
+		if err := db.Where("webhook_secret = ?", token).First(&svc).Error; err != nil {
 			resp.NotFound(c, "资源不存在")
 			return
 		}
@@ -49,12 +50,12 @@ func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		glTok := c.GetHeader("X-Gitlab-Token")
 		if ghSig == "" && glTok == "" {
 			auditq.Security("webhook", c.ClientIP(), "security:webhook_signature_failed", 401,
-				map[string]any{"deploy_id": d.ID, "reason": "missing_header"})
+				map[string]any{"service_id": svc.ID, "reason": "missing_header"})
 			resp.Fail(c, http.StatusUnauthorized, 401, "缺少签名或 Token 请求头")
 			return
 		}
 
-		secret := []byte(d.WebhookSecret)
+		secret := []byte(svc.WebhookSecret)
 
 		if ghSig != "" {
 			mac := hmac.New(sha256.New, secret)
@@ -62,20 +63,26 @@ func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			expected := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 			if !hmac.Equal([]byte(ghSig), []byte(expected)) {
 				auditq.Security("webhook", c.ClientIP(), "security:webhook_signature_failed", 401,
-					map[string]any{"deploy_id": d.ID, "provider": "github"})
+					map[string]any{"service_id": svc.ID, "provider": "github"})
 				resp.Fail(c, http.StatusUnauthorized, 401, "签名验证失败")
 				return
 			}
 		} else if glTok != "" {
 			if !hmac.Equal([]byte(glTok), secret) {
 				auditq.Security("webhook", c.ClientIP(), "security:webhook_signature_failed", 401,
-					map[string]any{"deploy_id": d.ID, "provider": "gitlab"})
+					map[string]any{"service_id": svc.ID, "provider": "gitlab"})
 				resp.Fail(c, http.StatusUnauthorized, 401, "Token 不匹配")
 				return
 			}
 		}
 
-		go deployer.Run(db, cfg, d, "webhook", nil)
-		resp.OK(c, gin.H{"triggered": true})
+		if svc.CurrentReleaseID == nil {
+			resp.Fail(c, http.StatusConflict, 409, "Service 尚未绑定 Release，请先在服务详情页创建并应用一次 Release")
+			return
+		}
+		go func(serviceID, releaseID uint) {
+			_, _ = deployer.ApplyRelease(db, cfg, serviceID, releaseID, "webhook", nil)
+		}(svc.ID, *svc.CurrentReleaseID)
+		resp.OK(c, gin.H{"triggered": true, "release_id": *svc.CurrentReleaseID})
 	}
 }

@@ -14,12 +14,21 @@ type Service struct {
 	ID       uint   `gorm:"primaryKey" json:"id"`
 	Name     string `gorm:"not null" json:"name"`
 	ServerID uint   `gorm:"not null" json:"server_id"`
-	Type     string `gorm:"default:docker-compose" json:"type"` // docker|docker-compose|native|static
+	// Deprecated: M3 起由 Release.StartSpec + Artifact.Provider 表达；保留供历史读路径与 M2 迁移脚本使用。
+	Type string `gorm:"default:docker-compose" json:"type"` // docker|docker-compose|native|static
 
 	// Application binding (nullable: floating services allowed)
 	ApplicationID *uint `gorm:"index" json:"application_id"`
 
 	// Execution config
+	//
+	// Deprecated: 以下 6 字段在 M3 起被 Release 三维模型替代，仅用于历史读路径与迁移脚本：
+	//   WorkDir      → 新链路由 Release 上下文与 Service.WorkDir 合并（Service.WorkDir 仍生效，作为默认 cwd）
+	//   ComposeFile  → Release.StartSpec["file_name"]
+	//   StartCmd     → Release.StartSpec["cmd"]
+	//   ImageName    → Artifact.Ref（provider=docker）
+	//   Runtime      → Release.StartSpec 自由键
+	//   ConfigFiles  → ConfigFileSet.Files
 	WorkDir     string `gorm:"default:''" json:"work_dir"`
 	ComposeFile string `gorm:"default:docker-compose.yml" json:"compose_file"`
 	StartCmd    string `gorm:"default:''" json:"start_cmd"`
@@ -27,13 +36,29 @@ type Service struct {
 	Runtime     string `gorm:"default:''" json:"runtime"`
 	ConfigFiles string `gorm:"default:''" json:"config_files"`
 
+	// ExposedPort 是 Service 对外提供的主端口（供 Nginx upstream 使用）。
+	// 0 表示未暴露或纯静态服务。discovery 阶段会尽量从 docker ports / compose
+	// 端口映射 / systemd env 中推断填入；用户也可以在 UI 里手工修改。
+	ExposedPort int `gorm:"default:0" json:"exposed_port"`
+
 	// Auth & secrets
+	//
+	// Deprecated: EnvVars 在 M3 起由 EnvVarSet 替代；保留用于 /panel/api/v1/services/:id/env 只读展示。
 	EnvVars       string `gorm:"default:''" json:"-"`
 	WebhookSecret string `gorm:"default:''" json:"-"`
 
 	// Version management
+	//
+	// Deprecated: 版本语义在 M3 起由 Release.Label + Service.CurrentReleaseID 表达；
+	// DesiredVersion/ActualVersion 不再参与调度，仅保留供历史读路径与迁移脚本使用。
 	DesiredVersion string `gorm:"default:''" json:"desired_version"`
 	ActualVersion  string `gorm:"default:''" json:"actual_version"`
+
+	// Release 新模型指针（Phase M1 引入，与旧 DesiredVersion/DeployVersion 并存）。
+	// 指向 releases.id；为 nil 表示 Service 还没有创建过 Release（空壳）。
+	CurrentReleaseID *uint `gorm:"index" json:"current_release_id"`
+	// 部署失败时是否自动回滚到上一条 Status=active 的 Release（默认关闭）。
+	AutoRollbackOnFail bool `gorm:"default:false" json:"auto_rollback_on_fail"`
 
 	// Reconcile loop
 	AutoSync     bool   `gorm:"default:false" json:"auto_sync"`

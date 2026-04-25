@@ -11,10 +11,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// lastReconcileAt tracks per-app last run time to respect SyncInterval
-var lastReconcileAt sync.Map // key: app.ID (uint) → time.Time
+// lastReconcileAt tracks per-service last run time to respect SyncInterval
+var lastReconcileAt sync.Map // key: svc.ID (uint) → time.Time
 
-// StartReconciler launches the background reconcile loop.
+// StartReconciler launches the background reconcile loop. In M3 the old
+// DesiredVersion ↔ ActualVersion drift check is gone; reconcile now re-applies
+// the Service's CurrentReleaseID so any out-of-band drift (manual changes on
+// the host, killed containers) is corrected on schedule.
 func StartReconciler(db *gorm.DB, cfg *config.Config) {
 	go func() {
 		reconcileAll(db, cfg) // immediate first pass
@@ -27,42 +30,41 @@ func StartReconciler(db *gorm.DB, cfg *config.Config) {
 }
 
 func reconcileAll(db *gorm.DB, cfg *config.Config) {
-	var apps []model.Service
-	db.Where("auto_sync = ? AND desired_version != ''", true).Find(&apps)
-	for _, app := range apps {
-		go reconcileOne(db, cfg, app)
+	var services []model.Service
+	db.Where("auto_sync = ? AND current_release_id IS NOT NULL", true).Find(&services)
+	for _, svc := range services {
+		go reconcileOne(db, cfg, svc)
 	}
 }
 
-func reconcileOne(db *gorm.DB, cfg *config.Config, app model.Service) {
-	// Already in sync
-	if app.DesiredVersion == app.ActualVersion {
-		if app.SyncStatus != "synced" {
-			db.Model(&app).Update("sync_status", "synced")
-		}
+func reconcileOne(db *gorm.DB, cfg *config.Config, svc model.Service) {
+	if svc.CurrentReleaseID == nil {
 		return
 	}
 
-	// Respect per-app SyncInterval
-	if app.SyncInterval > 0 {
-		if last, ok := lastReconcileAt.Load(app.ID); ok {
-			if time.Since(last.(time.Time)) < time.Duration(app.SyncInterval)*time.Second {
+	// Respect per-service SyncInterval
+	if svc.SyncInterval > 0 {
+		if last, ok := lastReconcileAt.Load(svc.ID); ok {
+			if time.Since(last.(time.Time)) < time.Duration(svc.SyncInterval)*time.Second {
 				return
 			}
 		}
 	}
-	lastReconcileAt.Store(app.ID, time.Now())
+	lastReconcileAt.Store(svc.ID, time.Now())
 
-	fmt.Printf("[reconciler] app %d (%s): %q → %q\n", app.ID, app.Name, app.ActualVersion, app.DesiredVersion)
+	fmt.Printf("[reconciler] service %d (%s) re-applying release %d\n", svc.ID, svc.Name, *svc.CurrentReleaseID)
 
 	// Atomic guard: skip if another goroutine already started syncing
-	tx := db.Model(&app).Where("sync_status != ?", "syncing").Update("sync_status", "syncing")
+	tx := db.Model(&svc).Where("sync_status != ?", "syncing").Update("sync_status", "syncing")
 	if tx.RowsAffected == 0 {
 		return
 	}
 
-	result := deployer.Run(db, cfg, app, "schedule", nil)
-	if !result.Success {
-		fmt.Printf("[reconciler] app %d failed: %s\n", app.ID, result.Output)
+	_, err := deployer.ApplyRelease(db, cfg, svc.ID, *svc.CurrentReleaseID, "schedule", nil)
+	if err != nil {
+		fmt.Printf("[reconciler] service %d apply failed: %v\n", svc.ID, err)
+		db.Model(&svc).Update("sync_status", "error")
+		return
 	}
+	db.Model(&svc).Update("sync_status", "synced")
 }
