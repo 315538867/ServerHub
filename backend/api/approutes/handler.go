@@ -131,6 +131,11 @@ func setModeHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, err.Error())
 			return
 		}
+		app.ExposeMode = body.Mode
+		// 桥接：mode 变化时全量重灌该 app 的 IngressRoute（含模式 none 的清理）。
+		if err := resyncAppRoutes(db, app); err != nil {
+			fmt.Printf("resyncAppRoutes(app=%d mode=%s): %v\n", app.ID, body.Mode, err)
+		}
 		resp.OK(c, nil)
 	}
 }
@@ -169,6 +174,10 @@ func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
 		if err := db.Create(&route).Error; err != nil {
 			resp.InternalError(c, err.Error())
 			return
+		}
+		// 桥接：同步写新 Ingress 模型。失败不影响旧链路，仅记日志。
+		if err := syncToIngress(db, app, &route); err != nil {
+			fmt.Printf("syncToIngress(create app=%d route=%d): %v\n", app.ID, route.ID, err)
 		}
 		resp.OK(c, route)
 	}
@@ -209,6 +218,9 @@ func updateRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.InternalError(c, err.Error())
 			return
 		}
+		if err := syncToIngress(db, app, &route); err != nil {
+			fmt.Printf("syncToIngress(update app=%d route=%d): %v\n", app.ID, route.ID, err)
+		}
 		resp.OK(c, route)
 	}
 }
@@ -229,6 +241,9 @@ func deleteRouteHandler(db *gorm.DB) gin.HandlerFunc {
 		if err := db.Where("id = ? AND app_id = ?", rid, app.ID).Delete(&model.AppNginxRoute{}).Error; err != nil {
 			resp.InternalError(c, err.Error())
 			return
+		}
+		if err := removeIngressRouteByLegacy(db, uint(rid)); err != nil {
+			fmt.Printf("removeIngressRouteByLegacy(app=%d route=%d): %v\n", app.ID, rid, err)
 		}
 		resp.OK(c, nil)
 	}

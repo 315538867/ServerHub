@@ -337,6 +337,22 @@ func runMigration(name string, db interface{}, aesKey string) error {
 		b, _ := json.MarshalIndent(rep, "", "  ")
 		fmt.Println(string(b))
 		return nil
+	case "m4":
+		rep, err := migration.RunM4(gdb, false)
+		if err != nil {
+			return err
+		}
+		b, _ := json.MarshalIndent(rep, "", "  ")
+		fmt.Println(string(b))
+		return nil
+	case "m4-dryrun":
+		rep, err := migration.RunM4(gdb, true)
+		if err != nil {
+			return err
+		}
+		b, _ := json.MarshalIndent(rep, "", "  ")
+		fmt.Println(string(b))
+		return nil
 	}
-	return fmt.Errorf("unknown migration: %s (want m2|m2-dryrun)", name)
+	return fmt.Errorf("unknown migration: %s (want m2|m2-dryrun|m4|m4-dryrun)", name)
 }
