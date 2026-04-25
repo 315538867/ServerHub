@@ -79,6 +79,7 @@ const router = createRouter({
             { path: 'overview', name: 'ServerOverview', component: () => import('@/views/ServerDetail/Overview.vue') },
             { path: 'services', name: 'ServerServices', component: () => import('@/views/ServerDetail/Services.vue') },
             { path: 'nginx', name: 'ServerNginx', component: () => import('@/views/ServerDetail/Nginx.vue') },
+            { path: 'ingresses', name: 'ServerIngresses', component: () => import('@/views/ServerDetail/Ingresses.vue') },
             { path: 'networks', name: 'ServerNetworks', component: () => import('@/views/ServerDetail/Networks.vue') },
             { path: 'docker', name: 'ServerDocker', component: () => import('@/views/ServerDetail/Docker.vue') },
             { path: 'system', name: 'ServerSystem', component: () => import('@/views/ServerDetail/System.vue') },
