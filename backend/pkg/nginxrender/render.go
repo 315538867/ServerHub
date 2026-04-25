@@ -87,6 +87,9 @@ func RenderHubSite() (ConfigFile, error) {
 
 // renderDomainSite 输出独占域名的 server block。
 // 字节对齐旧 applySite 的格式：8 空格缩进 location 内部，4 空格缩进 location 关键字。
+//
+// 任一 route.Protocol=="grpc" 时给 listen 加 http2 标志（nginx grpc_pass 强依赖
+// HTTP/2 over cleartext）。后续 TLS 接入后再扩展为 listen 443 ssl http2。
 func renderDomainSite(ig IngressCtx) (ConfigFile, error) {
 	if ig.FileStem == "" {
 		return ConfigFile{}, fmt.Errorf("FileStem 不可为空")
@@ -96,8 +99,12 @@ func renderDomainSite(ig IngressCtx) (ConfigFile, error) {
 	}
 
 	routes := sortedRoutes(ig.Routes)
+	listen := "listen 80;"
+	if anyGRPC(routes) {
+		listen = "listen 80 http2;"
+	}
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "server {\n    listen 80;\n    server_name %s;\n\n", ig.Domain)
+	fmt.Fprintf(&sb, "server {\n    %s\n    server_name %s;\n\n", listen, ig.Domain)
 	for _, rt := range routes {
 		writeLocation(&sb, rt, "    ")
 	}
@@ -133,9 +140,27 @@ func renderPathLocations(ig IngressCtx) (ConfigFile, error) {
 // writeLocation 渲染单个 location 块，以 indent 作为外层缩进前缀。
 // indent="" 适配 path 模式（独立 location 文件），indent="    " 适配 domain 模式
 // （内嵌于 server block）。块尾固定 "}\n\n"，与旧实现一致。
+//
+// Protocol 分支：
+//   - "grpc": 用 grpc_pass + grpc_set_header；UpstreamURL 的 http:// 前缀
+//     替换为 grpc://，scheme 缺失时直接补 grpc://
+//   - 其它（含空、"http"、"ws"）: 走 proxy_pass HTTP 链路，WebSocket=true 时
+//     额外注入 Upgrade/Connection 头
 func writeLocation(sb *strings.Builder, rt RouteCtx, indent string) {
 	body := indent + "    "
 	fmt.Fprintf(sb, "%slocation %s {\n", indent, rt.Path)
+
+	if rt.Protocol == "grpc" {
+		fmt.Fprintf(sb, "%sgrpc_pass %s;\n", body, grpcURL(rt.UpstreamURL))
+		fmt.Fprintf(sb, "%sgrpc_set_header Host $host;\n", body)
+		fmt.Fprintf(sb, "%sgrpc_set_header X-Real-IP $remote_addr;\n", body)
+		if rt.Extra != "" {
+			fmt.Fprintf(sb, "%s%s\n", body, rt.Extra)
+		}
+		fmt.Fprintf(sb, "%s}\n\n", indent)
+		return
+	}
+
 	fmt.Fprintf(sb, "%sproxy_pass %s;\n", body, rt.UpstreamURL)
 	fmt.Fprintf(sb, "%sproxy_set_header Host $host;\n", body)
 	fmt.Fprintf(sb, "%sproxy_set_header X-Real-IP $remote_addr;\n", body)
@@ -150,6 +175,36 @@ func writeLocation(sb *strings.Builder, rt RouteCtx, indent string) {
 		fmt.Fprintf(sb, "%s%s\n", body, rt.Extra)
 	}
 	fmt.Fprintf(sb, "%s}\n\n", indent)
+}
+
+// anyGRPC 判断 routes 里是否至少有一条 protocol=grpc。
+// 用于决定 server 块的 listen 是否需要 http2 标志。
+func anyGRPC(routes []RouteCtx) bool {
+	for _, r := range routes {
+		if r.Protocol == "grpc" {
+			return true
+		}
+	}
+	return false
+}
+
+// grpcURL 把上游 URL 转成 nginx grpc_pass 期望的形式：
+//   - "http://host:port"  → "grpc://host:port"
+//   - "https://host:port" → "grpcs://host:port"
+//   - 没有 scheme 的裸 host[:port] → "grpc://host[:port]"
+//
+// netresolve 永远输出 http://，但留这层保险以兼容用户在 raw 上游里手填的串。
+func grpcURL(u string) string {
+	switch {
+	case strings.HasPrefix(u, "http://"):
+		return "grpc://" + strings.TrimPrefix(u, "http://")
+	case strings.HasPrefix(u, "https://"):
+		return "grpcs://" + strings.TrimPrefix(u, "https://")
+	case strings.HasPrefix(u, "grpc://"), strings.HasPrefix(u, "grpcs://"):
+		return u
+	default:
+		return "grpc://" + u
+	}
 }
 
 // sortedRoutes 复制 routes 并按 (Sort asc, Path asc) 稳定排序，避免外部传入顺序影响输出。

@@ -280,3 +280,131 @@ func TestRenderHubSite(t *testing.T) {
 		t.Errorf("hub content missing include: %s", f.Content)
 	}
 }
+
+// ── gRPC（P2）────────────────────────────────────────────────────────────────
+
+func TestRender_GRPC_DomainAddsHTTP2(t *testing.T) {
+	files, err := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "g", MatchKind: MatchKindDomain, Domain: "g.com",
+		Routes: []RouteCtx{{
+			Path: "/", Protocol: "grpc", UpstreamURL: "http://10.0.0.5:9000",
+		}},
+	}})
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	c := files[0].Content
+	if !strings.Contains(c, "listen 80 http2;") {
+		t.Errorf("grpc 应触发 http2 listen, got:\n%s", c)
+	}
+	if !strings.Contains(c, "grpc_pass grpc://10.0.0.5:9000;") {
+		t.Errorf("应生成 grpc_pass 而不是 proxy_pass:\n%s", c)
+	}
+	if strings.Contains(c, "proxy_pass") {
+		t.Errorf("grpc 路由不应有 proxy_pass:\n%s", c)
+	}
+	if !strings.Contains(c, "grpc_set_header Host $host;") {
+		t.Errorf("缺 grpc_set_header Host:\n%s", c)
+	}
+	// X-Forwarded-* 是 HTTP/1 习惯，gRPC 路由不应注入
+	if strings.Contains(c, "X-Forwarded-For") || strings.Contains(c, "X-Forwarded-Proto") {
+		t.Errorf("grpc 路由不应注入 X-Forwarded-* 头:\n%s", c)
+	}
+}
+
+func TestRender_GRPC_HTTPSUpgrade(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "gs", MatchKind: MatchKindDomain, Domain: "gs.com",
+		Routes: []RouteCtx{{Path: "/", Protocol: "grpc", UpstreamURL: "https://up:443"}},
+	}})
+	if !strings.Contains(files[0].Content, "grpc_pass grpcs://up:443;") {
+		t.Errorf("https 上游应转 grpcs://, got:\n%s", files[0].Content)
+	}
+}
+
+func TestRender_GRPC_BareUpstream(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "gb", MatchKind: MatchKindDomain, Domain: "gb.com",
+		Routes: []RouteCtx{{Path: "/", Protocol: "grpc", UpstreamURL: "10.0.0.7:9000"}},
+	}})
+	if !strings.Contains(files[0].Content, "grpc_pass grpc://10.0.0.7:9000;") {
+		t.Errorf("裸 host:port 应自动补 grpc:// 前缀, got:\n%s", files[0].Content)
+	}
+}
+
+func TestRender_GRPC_AlreadyPrefixed(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "gp", MatchKind: MatchKindDomain, Domain: "gp.com",
+		Routes: []RouteCtx{{Path: "/", Protocol: "grpc", UpstreamURL: "grpc://up:9000"}},
+	}})
+	if !strings.Contains(files[0].Content, "grpc_pass grpc://up:9000;") {
+		t.Errorf("已经是 grpc:// 不应重复加前缀, got:\n%s", files[0].Content)
+	}
+}
+
+func TestRender_HTTPListenUnchangedWithoutGRPC(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "h", MatchKind: MatchKindDomain, Domain: "h.com",
+		Routes: []RouteCtx{{Path: "/", UpstreamURL: "http://up:80"}},
+	}})
+	if !strings.Contains(files[0].Content, "listen 80;") || strings.Contains(files[0].Content, "http2") {
+		t.Errorf("纯 HTTP 不应带 http2:\n%s", files[0].Content)
+	}
+}
+
+func TestRender_MixedHTTPAndGRPC_BothInSameServerWithHTTP2(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "m", MatchKind: MatchKindDomain, Domain: "m.com",
+		Routes: []RouteCtx{
+			{Path: "/api", UpstreamURL: "http://up:1"},
+			{Path: "/rpc", Protocol: "grpc", UpstreamURL: "http://up:2"},
+		},
+	}})
+	c := files[0].Content
+	if !strings.Contains(c, "listen 80 http2;") {
+		t.Errorf("含 grpc 即使有 http 路由也要 http2, got:\n%s", c)
+	}
+	if !strings.Contains(c, "proxy_pass http://up:1;") {
+		t.Errorf("http 路由仍走 proxy_pass:\n%s", c)
+	}
+	if !strings.Contains(c, "grpc_pass grpc://up:2;") {
+		t.Errorf("grpc 路由走 grpc_pass:\n%s", c)
+	}
+}
+
+func TestRender_GRPC_PathMode(t *testing.T) {
+	files, _ := Render([]IngressCtx{{
+		EdgeServerID: 1, FileStem: "p", MatchKind: MatchKindPath, Domain: "shared.com",
+		Routes: []RouteCtx{{Path: "/grpc", Protocol: "grpc", UpstreamURL: "http://up:9"}},
+	}})
+	// path 模式只输出 location 列表 + hub 站点，没有 listen 行
+	var loc *ConfigFile
+	for i := range files {
+		if strings.Contains(files[i].Path, "app-locations") {
+			loc = &files[i]
+			break
+		}
+	}
+	if loc == nil {
+		t.Fatalf("没找到 app-locations 文件: %+v", files)
+	}
+	if !strings.Contains(loc.Content, "grpc_pass grpc://up:9;") {
+		t.Errorf("path 模式 grpc 应渲染 grpc_pass:\n%s", loc.Content)
+	}
+}
+
+func TestGRPCURL_Helpers(t *testing.T) {
+	cases := map[string]string{
+		"http://h:1":  "grpc://h:1",
+		"https://h:2": "grpcs://h:2",
+		"grpc://h:3":  "grpc://h:3",
+		"grpcs://h:4": "grpcs://h:4",
+		"h:5":         "grpc://h:5",
+		"":            "grpc://",
+	}
+	for in, want := range cases {
+		if got := grpcURL(in); got != want {
+			t.Errorf("grpcURL(%q)=%q want %q", in, got, want)
+		}
+	}
+}
