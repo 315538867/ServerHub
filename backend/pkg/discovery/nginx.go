@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/runner"
 )
 
@@ -93,7 +94,7 @@ func ScanNginx(rn runner.Runner) ([]Candidate, error) {
 					Name:     dispName,
 					Summary:  truncate(sum, 200),
 					Suggested: SuggestedDeploy{
-						Type:    "static",
+						Type:    model.ServiceTypeStatic,
 						WorkDir: rootPath,
 					},
 					ExtraLabels: map[string]string{

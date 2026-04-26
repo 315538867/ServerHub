@@ -45,7 +45,7 @@ func Import(db *gorm.DB, serverID uint, cands []Candidate, aesKey string) Import
 		d := model.Service{
 			Name:       fallback(c.Name, c.Kind+"-"+c.SourceID),
 			ServerID:   serverID,
-			Type:       fallback(c.Suggested.Type, "native"),
+			Type:       fallback(c.Suggested.Type, model.ServiceTypeNative),
 			WorkDir:    c.Suggested.WorkDir,
 			ImageName:  c.Suggested.ImageName,
 			SourceKind: c.Kind,

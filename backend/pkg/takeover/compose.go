@@ -147,7 +147,7 @@ func runCompose(db *gorm.DB, rn runner.Runner, log *Log, server model.Server,
 	d := model.Service{
 		Name:       req.TargetName,
 		ServerID:   server.ID,
-		Type:       "docker-compose",
+		Type:       model.ServiceTypeDockerCompose,
 		WorkDir:    target,
 		SourceKind: c.Kind,
 		SourceID:   c.SourceID,

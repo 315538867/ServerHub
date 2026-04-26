@@ -3,6 +3,7 @@ package discovery
 import (
 	"strings"
 
+	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/runner"
 )
 
@@ -48,7 +49,7 @@ func ScanSystemd(rn runner.Runner) ([]Candidate, error) {
 			Name:     strings.TrimSuffix(unit, ".service"),
 			Summary:  truncate(execStart, 120),
 			Suggested: SuggestedDeploy{
-				Type:     "native",
+				Type:     model.ServiceTypeNative,
 				WorkDir:  workDir,
 				StartCmd: execStart,
 				Env:      env,

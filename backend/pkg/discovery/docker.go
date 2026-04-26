@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/runner"
 )
 
@@ -103,7 +104,7 @@ func ScanDocker(rn runner.Runner) (docker, compose []Candidate, err error) {
 			Name:     row.Names,
 			Summary:  row.Image + " (" + row.Status + ")",
 			Suggested: SuggestedDeploy{
-				Type:      "docker",
+				Type:      model.ServiceTypeDocker,
 				ImageName: row.Image,
 				Env:       env,
 			},
@@ -124,7 +125,7 @@ func ScanDocker(rn runner.Runner) (docker, compose []Candidate, err error) {
 			Name:     g.project,
 			Summary:  strings.Join(dedup(g.services), ", "),
 			Suggested: SuggestedDeploy{
-				Type:        "docker-compose",
+				Type:        model.ServiceTypeDockerCompose,
 				WorkDir:     g.workingDir,
 				ComposeFile: cf,
 				Env:         g.env,

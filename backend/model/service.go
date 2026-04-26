@@ -18,7 +18,11 @@ type Service struct {
 	// 按 Type switch 选择 docker run / docker compose / native shell / static 四套
 	// 模板组装最终 ExecStart。Release.StartSpec 表达"这次部署用什么命令"，
 	// Type 表达"这个 Service 属于哪类 runtime"，二者职责不重叠。
-	Type string `gorm:"default:docker-compose" json:"type"` // docker|docker-compose|native|static
+	//
+	// 取值见下方 ServiceType* 常量。GORM default 字符串 'docker-compose' 是
+	// 历史新装库的隐式默认,运行路径(takeover/importer/discovery)均显式指定 Type,
+	// 不会真的落到这个默认值上;改它没有迁移收益,故 P-J 只动代码字面量、不动 tag。
+	Type string `gorm:"default:docker-compose" json:"type"`
 
 	// Application binding (nullable: floating services allowed)
 	ApplicationID *uint `gorm:"index" json:"application_id"`
@@ -79,3 +83,16 @@ type Service struct {
 }
 
 func (Service) TableName() string { return "services" }
+
+// ServiceType* 是 Service.Type 的合法取值集合。任何写 Service 行的代码路径
+// (4 个 takeover、importer、4 个 discovery suggester)以及 release_apply 里
+// buildStartPart 的 switch 分支都应使用这些常量,而不是裸字符串。
+//
+// 历史 migration(migration/m2_deploy_to_release.go::buildStartSpec)故意保留
+// 字面量 —— 那里的字符串是 schema 契约的一部分,不能跟着代码常量演进。
+const (
+	ServiceTypeDocker        = "docker"
+	ServiceTypeDockerCompose = "docker-compose"
+	ServiceTypeNative        = "native"
+	ServiceTypeStatic        = "static"
+)

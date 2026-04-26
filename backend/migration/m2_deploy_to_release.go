@@ -296,6 +296,12 @@ func looksLikeJSONArray(s string) bool {
 
 // startSpecFromDV 把 legacyDeployVersion 的启动相关字段还原为对应 Service.Type
 // 的 StartSpec。导入后可立即被 buildStartPart 消费。
+//
+// 这里的字符串字面量("docker"/"docker-compose"/"native"/"static")是 schema
+// 契约的一部分,对应迁移当时 services.type 列里实际写入的取值。即使 P-J 之后
+// 引入了 model.ServiceType* 常量,这里也故意不切——历史 migration 必须冻结在
+// 撰写当日的语义,常量值若未来调整不能反向影响已发生过的数据导入。同样的冻结
+// 模式见 003 的 legacyServiceForFingerprint、022 的 legacyServiceEnvVars。
 func startSpecFromDV(dv legacyDeployVersion) map[string]any {
 	switch dv.Type {
 	case "docker":

@@ -346,7 +346,7 @@ func buildStartPart(svc model.Service, rel model.Release, art model.Artifact) (s
 	}
 
 	switch svc.Type {
-	case "docker":
+	case model.ServiceTypeDocker:
 		image := getStr("image")
 		if image == "" {
 			image = art.Ref
@@ -360,19 +360,19 @@ func buildStartPart(svc model.Service, rel model.Release, art model.Artifact) (s
 		return fmt.Sprintf(
 			"docker rm -f %s 2>/dev/null || true; docker run -d --name %s %s%s 2>&1",
 			shellQuote(name), shellQuote(name), shellQuote(image), extra), nil
-	case "docker-compose":
+	case model.ServiceTypeDockerCompose:
 		file := getStr("file_name")
 		if file == "" {
 			file = "docker-compose.yml"
 		}
 		return fmt.Sprintf("docker compose -f %s up -d --build 2>&1", shellQuote(file)), nil
-	case "native":
+	case model.ServiceTypeNative:
 		cmd := getStr("cmd")
 		if cmd == "" {
 			return "", errors.New("native start_spec.cmd required")
 		}
 		return cmd + " 2>&1", nil
-	case "static":
+	case model.ServiceTypeStatic:
 		// static 类型由 nginx 指向 workdir，无独立启动进程
 		return "echo 'static release prepared'", nil
 	}
