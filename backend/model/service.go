@@ -35,9 +35,6 @@ type Service struct {
 	ExposedPort int `gorm:"default:0" json:"exposed_port"`
 
 	// Auth & secrets
-	//
-	// Deprecated: EnvVars 在 M3 起由 EnvVarSet 替代；保留用于 /panel/api/v1/services/:id/env 只读展示。
-	EnvVars       string `gorm:"default:''" json:"-"`
 	WebhookSecret string `gorm:"default:''" json:"-"`
 
 	// Release 新模型指针（Phase M1 引入）。指向 releases.id；为 nil 表示

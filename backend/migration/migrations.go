@@ -8,7 +8,9 @@ package migration
 
 import (
 	"fmt"
+	"time"
 
+	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/discovery"
 	"gorm.io/gorm"
 )
@@ -64,6 +66,11 @@ func init() {
 		Version: "021_drop_service_version_cols",
 		Name:    "drop services.{desired_version,actual_version}",
 		Fn:      migrateDropServiceVersionCols,
+	})
+	Register(Migration{
+		Version: "022_drop_service_env_vars_col",
+		Name:    "drop services.env_vars",
+		Fn:      migrateDropServiceEnvVarsCol,
 	})
 }
 
@@ -205,6 +212,70 @@ func migrateDropServiceVersionCols(tx *gorm.DB) error {
 		if err := tx.Migrator().DropColumn("services", col); err != nil {
 			return fmt.Errorf("drop services.%s: %w", col, err)
 		}
+	}
+	return nil
+}
+
+// legacyServiceEnvVars022 冻结 022 跑 backfill 时所见的 services 列形态。
+// 与 003 同款 snapshot pattern:env_vars 列在本 migration 之后会从 model
+// 上消失,但读旧值的算法语义必须钉死。
+type legacyServiceEnvVars022 struct {
+	ID      uint
+	EnvVars string
+}
+
+// migrateDropServiceEnvVarsCol 收口 P-F:把 services.env_vars 列从物理 schema
+// 删除,删之前先把残留数据迁到 env_var_sets。
+//
+// 语义前提:
+//   - M3 起环境变量由 EnvVarSet 表达,Release 通过 EnvVarSetID 引用;
+//     /panel/api/v1/services/:id/env 只读端点早在 P-B 已删,model 注释里"保留
+//     供该端点展示"是过时描述。
+//   - P-F 同期把 importer.go 的 d.EnvVars=enc 改写为新建 EnvVarSet(Label=
+//     "imported")。本 migration 之前的新二进制不再写 env_vars。
+//
+// Backfill:m2(010) 只折算 deploy_versions.env_vars,不碰 services.env_vars。
+// 旧库里 importer 直接写在 Service 上的环境变量是孤儿,DropColumn 前必须
+// 给每个非空 services.env_vars 建一条 EnvVarSet(Label="legacy-svc-env"),
+// 否则旧装机 import 过来的 env 就会丢。Content 直接搬密文(已加密的 JSON),
+// 不解密验证 —— 即便密钥早被换掉,密文留在 EnvVarSet 里至少给运维人工恢复
+// 留个抓手,比直接 DROP 强。
+//
+// 可重入:HasColumn 守卫确保旧库 / 新装库都安全 no-op。Backfill 只挑
+// services.env_vars != '' 的行,跑过一次后该列还在但被 DropColumn 收尾;
+// schema_migrations 写过一次后整条 migration 不会再跑,无需做"已 backfill"
+// 标记。
+func migrateDropServiceEnvVarsCol(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("services") {
+		return nil
+	}
+	if !tx.Migrator().HasColumn("services", "env_vars") {
+		return nil
+	}
+	var rows []legacyServiceEnvVars022
+	if err := tx.Table("services").
+		Select("id, env_vars").
+		Where("env_vars != ''").
+		Find(&rows).Error; err != nil {
+		return fmt.Errorf("scan services.env_vars: %w", err)
+	}
+	now := time.Now()
+	for _, r := range rows {
+		es := model.EnvVarSet{
+			ServiceID: r.ID,
+			Label:     "legacy-svc-env",
+			Content:   r.EnvVars,
+			CreatedAt: now,
+		}
+		if err := tx.Create(&es).Error; err != nil {
+			return fmt.Errorf("backfill env_var_set for service#%d: %w", r.ID, err)
+		}
+	}
+	if len(rows) > 0 {
+		fmt.Printf("migration 022: backfilled %d services.env_vars rows into env_var_sets\n", len(rows))
+	}
+	if err := tx.Migrator().DropColumn("services", "env_vars"); err != nil {
+		return fmt.Errorf("drop services.env_vars: %w", err)
 	}
 	return nil
 }

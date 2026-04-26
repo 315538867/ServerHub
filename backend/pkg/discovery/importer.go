@@ -15,10 +15,16 @@ type ImportResult struct {
 	Errors   []string `json:"errors,omitempty"`
 }
 
-// Import materializes candidates into Deploy rows under the given server.
+// Import materializes candidates into Service rows under the given server.
 // Existing (server_id, source_kind, source_id) rows are left untouched.
-// aesKey is used to encrypt any discovered env vars into Deploy.EnvVars so
-// the imported service starts with the same configuration its source had.
+//
+// 发现到的环境变量在 M3 起不再写 Service.EnvVars(P-F 起字段已下线),而是落到
+// 同 ServiceID 下一条新建的 EnvVarSet,Label="imported"。语义对齐 release.go
+// 里的 createEnvSet:JSON 序列化 EnvKV → AES-GCM 加密 → 写 env_var_sets。
+// 用户随后在 Releases Tab 创建首个 Release 时即可直接选用这条 set。
+//
+// EnvVarSet 落库失败不回滚 Service 行,仅记 errors —— Service 已经接管成功,
+// 让用户重试 env 集比连服务一起回滚更友好。
 func Import(db *gorm.DB, serverID uint, cands []Candidate, aesKey string) ImportResult {
 	var res ImportResult
 	if len(cands) == 0 {
@@ -47,33 +53,37 @@ func Import(db *gorm.DB, serverID uint, cands []Candidate, aesKey string) Import
 			SyncStatus: "synced",
 			LastStatus: "success",
 		}
-		if enc, err := encryptEnv(c.Suggested.Env, aesKey); err != nil {
-			res.Errors = append(res.Errors, c.Name+": env encrypt: "+err.Error())
-			continue
-		} else {
-			d.EnvVars = enc
-		}
 		if err := db.Create(&d).Error; err != nil {
 			res.Errors = append(res.Errors, c.Name+": "+err.Error())
 			continue
+		}
+		if len(c.Suggested.Env) > 0 && aesKey != "" {
+			if err := createImportedEnvSet(db, d.ID, c.Suggested.Env, aesKey); err != nil {
+				res.Errors = append(res.Errors, c.Name+": env-set: "+err.Error())
+			}
 		}
 		res.Imported++
 	}
 	return res
 }
 
-// encryptEnv serialises the discovered env list to the same JSON shape
-// `getEnvHandler` expects ([{key,value,secret}]) and AES-encrypts it. Empty
-// list → empty string (no decryption attempt needed at read time).
-func encryptEnv(env []EnvKV, aesKey string) (string, error) {
-	if len(env) == 0 || aesKey == "" {
-		return "", nil
-	}
+// createImportedEnvSet 把候选 env 列表序列化为 release.go::createEnvSet 同款
+// JSON([{key,value,secret}])、AES-GCM 加密后写入 env_var_sets。EnvKV 与
+// release.go::envVar 字段名 + tag 完全一致,直接 Marshal 即可二进制等价。
+func createImportedEnvSet(db *gorm.DB, serviceID uint, env []EnvKV, aesKey string) error {
 	b, err := json.Marshal(env)
 	if err != nil {
-		return "", err
+		return err
 	}
-	return crypto.Encrypt(string(b), aesKey)
+	enc, err := crypto.Encrypt(string(b), aesKey)
+	if err != nil {
+		return err
+	}
+	return db.Create(&model.EnvVarSet{
+		ServiceID: serviceID,
+		Label:     "imported",
+		Content:   enc,
+	}).Error
 }
 
 func fallback(a, b string) string {
