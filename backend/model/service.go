@@ -22,19 +22,12 @@ type Service struct {
 
 	// Execution config
 	//
-	// Deprecated: 以下 6 字段在 M3 起被 Release 三维模型替代，仅用于历史读路径与迁移脚本：
-	//   WorkDir      → 新链路由 Release 上下文与 Service.WorkDir 合并（Service.WorkDir 仍生效，作为默认 cwd）
-	//   ComposeFile  → Release.StartSpec["file_name"]
-	//   StartCmd     → Release.StartSpec["cmd"]
-	//   ImageName    → Artifact.Ref（provider=docker）
-	//   Runtime      → Release.StartSpec 自由键
-	//   ConfigFiles  → ConfigFileSet.Files
-	WorkDir     string `gorm:"default:''" json:"work_dir"`
-	ComposeFile string `gorm:"default:docker-compose.yml" json:"compose_file"`
-	StartCmd    string `gorm:"default:''" json:"start_cmd"`
-	ImageName   string `gorm:"default:''" json:"image_name"`
-	Runtime     string `gorm:"default:''" json:"runtime"`
-	ConfigFiles string `gorm:"default:''" json:"config_files"`
+	// WorkDir 与 ImageName 仍参与 discovery 指纹算法（详见 pkg/discovery/fingerprint.go）
+	// 与 release 上下文默认 cwd / 历史只读展示。其余 4 字段（ComposeFile/StartCmd/
+	// Runtime/ConfigFiles）已在 P-D 阶段下沉到 Release.StartSpec/ConfigFileSet,
+	// schema 与代码中均已删除。
+	WorkDir   string `gorm:"default:''" json:"work_dir"`
+	ImageName string `gorm:"default:''" json:"image_name"`
 
 	// ExposedPort 是 Service 对外提供的主端口（供 Nginx upstream 使用）。
 	// 0 表示未暴露或纯静态服务。discovery 阶段会尽量从 docker ports / compose

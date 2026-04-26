@@ -37,18 +37,15 @@ func Import(db *gorm.DB, serverID uint, cands []Candidate, aesKey string) Import
 			continue
 		}
 		d := model.Service{
-			Name:        fallback(c.Name, c.Kind+"-"+c.SourceID),
-			ServerID:    serverID,
-			Type:        fallback(c.Suggested.Type, "native"),
-			WorkDir:     c.Suggested.WorkDir,
-			ComposeFile: c.Suggested.ComposeFile,
-			StartCmd:    c.Suggested.StartCmd,
-			ImageName:   c.Suggested.ImageName,
-			Runtime:     c.Suggested.Runtime,
-			SourceKind:  c.Kind,
-			SourceID:    c.SourceID,
-			SyncStatus:  "synced",
-			LastStatus:  "success",
+			Name:       fallback(c.Name, c.Kind+"-"+c.SourceID),
+			ServerID:   serverID,
+			Type:       fallback(c.Suggested.Type, "native"),
+			WorkDir:    c.Suggested.WorkDir,
+			ImageName:  c.Suggested.ImageName,
+			SourceKind: c.Kind,
+			SourceID:   c.SourceID,
+			SyncStatus: "synced",
+			LastStatus: "success",
 		}
 		if enc, err := encryptEnv(c.Suggested.Env, aesKey); err != nil {
 			res.Errors = append(res.Errors, c.Name+": env encrypt: "+err.Error())

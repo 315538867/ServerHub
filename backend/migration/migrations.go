@@ -9,10 +9,30 @@ package migration
 import (
 	"fmt"
 
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/discovery"
 	"gorm.io/gorm"
 )
+
+// legacyServiceForFingerprint003 冻结 003 跑 backfill 时所见的 services 列形态。
+//
+// 为什么不用 model.Service：fingerprint 算法的输入字段(ImageName/WorkDir/
+// ComposeFile)在 P-D 之后会从 model.Service 上消失,但 003 这条 migration 的
+// 历史语义必须永远成立 —— 不论运行哪个版本的二进制,只要库里还有未 backfill
+// 的旧行,算出来的 SHA1 必须与首次 backfill 时一致,否则"已接管"标记跨升级
+// 失效。把列定义钉成包内私有 struct + tx.Table("services") 即可与 model 演进
+// 解耦。
+//
+// 字段集只取算法实际读的:ID/SourceKind/SourceID 用于 query+update,
+// ImageName/WorkDir/ComposeFile 喂给 discovery.Fingerprint。
+type legacyServiceForFingerprint003 struct {
+	ID                uint
+	SourceKind        string
+	SourceID          string
+	SourceFingerprint string
+	ImageName         string
+	WorkDir           string
+	ComposeFile       string
+}
 
 func init() {
 	Register(Migration{
@@ -34,6 +54,11 @@ func init() {
 		Version: "004_backfill_application_run_server_id",
 		Name:    "backfill Application.RunServerID from ServerID",
 		Fn:      migrateBackfillRunServerID,
+	})
+	Register(Migration{
+		Version: "020_drop_deploy_versions_and_legacy_service_cols",
+		Name:    "drop deploy_versions table + services.{compose_file,start_cmd,runtime,config_files}",
+		Fn:      migrateDropLegacyDeployTables,
 	})
 }
 
@@ -69,8 +94,13 @@ func migrateDropSetupStates(tx *gorm.DB) error {
 // 重建一个最小 Candidate 喂给 discovery.Fingerprint,只填指纹算法用得到
 // 的字段。
 func migrateBackfillFingerprints(tx *gorm.DB) error {
-	var rows []model.Service
-	if err := tx.Where("source_fingerprint = '' AND source_kind != ''").Find(&rows).Error; err != nil {
+	if !tx.Migrator().HasTable("services") {
+		return nil
+	}
+	var rows []legacyServiceForFingerprint003
+	if err := tx.Table("services").
+		Where("source_fingerprint = '' AND source_kind != ''").
+		Find(&rows).Error; err != nil {
 		return err
 	}
 	for _, s := range rows {
@@ -84,7 +114,7 @@ func migrateBackfillFingerprints(tx *gorm.DB) error {
 			},
 		}
 		fp := discovery.Fingerprint(cand)
-		if err := tx.Model(&model.Service{}).Where("id = ?", s.ID).
+		if err := tx.Table("services").Where("id = ?", s.ID).
 			Update("source_fingerprint", fp).Error; err != nil {
 			return err
 		}
@@ -107,6 +137,43 @@ func migrateBackfillRunServerID(tx *gorm.DB) error {
 	}
 	if res.RowsAffected > 0 {
 		fmt.Printf("migration 004: backfilled %d applications.run_server_id rows\n", res.RowsAffected)
+	}
+	return nil
+}
+
+// migrateDropLegacyDeployTables 收口 P-D:把 deploy_versions 表与 services 上
+// 4 列(compose_file/start_cmd/runtime/config_files)从物理 schema 删除。
+//
+// 时序前提:
+//   - m2(010) 必须已 applied 或 deploy_versions 已为空 —— 真实历史快照已经
+//     全部折算成 Release/Artifact/EnvVarSet/ConfigFileSet/DeployRun。runner 按
+//     版本号升序跑,本 migration 编号 020 在 010 之后,语义上自然排在 m2 后面。
+//   - 上层代码已不再读 services.{compose_file,start_cmd,runtime,config_files}
+//     与 model.DeployVersion(P-D 已删字段/删 model)。这条 migration 之前的
+//     新二进制不会去读这些列,纯做物理收尾。
+//
+// 可重入:DropTable/DropColumn 都在缺失时 no-op;但 schema_migrations 写过
+// 一次后就不会再跑,以下分支主要是为了在残留旧库上幂等。
+func migrateDropLegacyDeployTables(tx *gorm.DB) error {
+	// 索引在 SQLite 上随表 drop,但保险起见显式删一次,避免新装库被早期版本
+	// 残留索引名拌住。
+	if err := tx.Exec("DROP INDEX IF EXISTS idx_deploy_ver_deploy_created").Error; err != nil {
+		return fmt.Errorf("drop idx_deploy_ver_deploy_created: %w", err)
+	}
+	if tx.Migrator().HasTable("deploy_versions") {
+		if err := tx.Migrator().DropTable("deploy_versions"); err != nil {
+			return fmt.Errorf("drop deploy_versions: %w", err)
+		}
+	}
+	if tx.Migrator().HasTable("services") {
+		for _, col := range []string{"compose_file", "start_cmd", "runtime", "config_files"} {
+			if !tx.Migrator().HasColumn("services", col) {
+				continue
+			}
+			if err := tx.Migrator().DropColumn("services", col); err != nil {
+				return fmt.Errorf("drop services.%s: %w", col, err)
+			}
+		}
 	}
 	return nil
 }

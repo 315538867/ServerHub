@@ -101,28 +101,9 @@
 
             <transition name="fade-step">
               <div v-if="deployType" class="deploy-type-fields">
-                <div class="form-grid">
-                  <div class="form-field">
-                    <label class="form-label">工作目录</label>
-                    <NInput v-model:value="deployForm.work_dir" :placeholder="form.base_dir || '/srv/apps/...'" />
-                  </div>
-                  <template v-if="deployType === 'docker-compose'">
-                    <div class="form-field">
-                      <label class="form-label">Compose 文件名</label>
-                      <NInput v-model:value="deployForm.compose_file" placeholder="docker-compose.yml" />
-                    </div>
-                    <div class="form-field">
-                      <label class="form-label">镜像名（可选）</label>
-                      <NInput v-model:value="deployForm.image_name" placeholder="例如：nginx:latest" />
-                    </div>
-                  </template>
-                  <template v-if="deployType === 'docker'">
-                    <div class="form-field">
-                      <label class="form-label">镜像名 <span class="form-required">*</span></label>
-                      <NInput v-model:value="deployForm.image_name" placeholder="例如：nginx:latest" />
-                    </div>
-                  </template>
-                </div>
+                <NAlert type="info" title="部署细节移到 Releases Tab" class="step-alert">
+                  M3 起部署参数（工作目录 / 启动命令 / 镜像 / Compose 文件）由 Release 表达，请在创建应用后于「Releases」Tab 创建首个 Release。
+                </NAlert>
               </div>
               <NAlert v-else type="info" title="暂不配置部署？" class="step-alert">
                 可点「完成创建」直接建好应用，稍后随时在「部署」Tab 配置。
@@ -202,7 +183,6 @@ const deployTypes = [
 type DeployTypeVal = typeof deployTypes[number]['value']
 
 const deployType = ref<DeployTypeVal | ''>('')
-const deployForm = reactive({ work_dir: '', compose_file: 'docker-compose.yml', image_name: '', start_cmd: '' })
 
 const serverOptions = computed(() => serverStore.servers.map(s => ({
   label: `${s.name} · ${s.host}`, value: s.id,
@@ -213,9 +193,6 @@ watch(() => form.name, (name, oldName) => {
   if (!form.base_dir || form.base_dir === autoOld) {
     form.base_dir = name ? `/srv/apps/${name}` : ''
   }
-})
-watch(() => form.base_dir, (dir) => {
-  if (!deployForm.work_dir) deployForm.work_dir = dir
 })
 
 const serverName = computed(() => {
@@ -236,7 +213,6 @@ const canNext = computed(() => {
   return true
 })
 const canCreate = computed(() => {
-  if (deployType.value === 'docker' && !deployForm.image_name) return false
   return true
 })
 

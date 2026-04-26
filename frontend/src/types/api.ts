@@ -99,22 +99,13 @@ export interface ServerService {
   last_status?: string
 }
 
-export interface ConfigFile {
-  name: string
-  content: string
-}
-
 export interface Deploy {
   id: number
   name: string
   server_id: number
   type: 'docker' | 'docker-compose' | 'native' | 'static'
   work_dir: string
-  compose_file: string
-  start_cmd: string
   image_name: string
-  runtime: string
-  config_files: string // JSON string of ConfigFile[]
   // version management
   desired_version: string
   actual_version: string
@@ -137,14 +128,10 @@ export interface DeployForm {
   server_id: number | null
   type: 'docker' | 'docker-compose' | 'native' | 'static'
   work_dir: string
-  compose_file?: string
-  start_cmd?: string
   image_name?: string
   desired_version?: string
   auto_sync?: boolean
   sync_interval?: number
-  runtime?: string
-  config_files?: string // JSON string of ConfigFile[]
 }
 
 export interface DeployLog {
@@ -208,22 +195,4 @@ export interface ApplicationForm {
   expose_mode: 'none' | 'path' | 'site'
   deploy_id: number | null
   db_conn_id: number | null
-}
-
-export interface DeployVersion {
-  id: number
-  deploy_id: number
-  version: string
-  status: 'success' | 'failed'
-  trigger_source: 'manual' | 'webhook' | 'schedule' | 'api' | 'rollback'
-  type: string
-  work_dir: string
-  compose_file: string
-  start_cmd: string
-  image_name: string
-  runtime: string
-  config_files: string
-  deploy_log_id: number
-  note: string
-  created_at: string
 }

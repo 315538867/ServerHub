@@ -10,6 +10,11 @@
 //
 // 旧 settings 表里的 `migration.m2.done` 标记由 runner.importLegacyM2Marker
 // 翻译为 schema_migrations 行,翻译完后旧标记被删除。
+//
+// 为什么不用 model.DeployVersion:从 P-D 起 deploy_versions 表与 model 都被
+// 删除,但本 migration 仍要在"残留旧库"上跑得动 —— 把列形态冻结成包内私有
+// struct legacyDeployVersion,绑定 tx.Table("deploy_versions"),与未来 model
+// 演进彻底解耦。
 package migration
 
 import (
@@ -29,6 +34,32 @@ const migrationM2DoneKey = "migration.m2.done"
 // M2Version 是 m2 在 schema_migrations 里的版本号,留在常量是为了让
 // database.Init 的注册点和 runner.importLegacyM2Marker 共享同一个字面量。
 const M2Version = "010_m2_deploy_to_release"
+
+// legacyDeployVersion 是 deploy_versions 表在 v0.3.7 之前的列形态快照。
+// model.DeployVersion 在 P-D 被删,但本 migration 仍要能在残留 deploy_versions
+// 表上跑;把列定义钉在这里,与 model 演进解耦。
+//
+// 字段集与原 model.DeployVersion 一一对应,只是去掉 GORM tag,因为 m2 走
+// tx.Table("deploy_versions").Find(&[]legacyDeployVersion) 而非 ORM Model。
+type legacyDeployVersion struct {
+	ID            uint
+	DeployID      uint
+	Version       string
+	Status        string
+	TriggerSource string
+	Type          string
+	WorkDir       string
+	ComposeFile   string
+	StartCmd      string
+	ImageName     string
+	Runtime       string
+	ConfigFiles   string
+	EnvVars       string
+	DeployLogID   uint
+	Note          string
+	CreatedAt     time.Time
+	ArchivedAt    *time.Time
+}
 
 // M2Report 聚合一次迁移的写入计数,dry-run/real 共用。
 type M2Report struct {
@@ -80,11 +111,19 @@ func RunM2Dryrun(db *gorm.DB, aesKey string) (*M2Report, error) {
 
 // m2Core 是 M2 迁移的真正实现。dryRun=true 仅统计;dryRun=false 直接在
 // 传入的 tx 上写 —— 调用方负责事务边界(runner 包了一层事务)。
+//
+// 在 deploy_versions 表不存在的全新空库上,直接 no-op 返回空报告 —— P-D 之后
+// 新装库压根不会出现这张表。
 func m2Core(tx *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 	rep := &M2Report{DryRun: dryRun, Skipped: []string{}}
 
-	var dvs []model.DeployVersion
-	if err := tx.Order("deploy_id asc, created_at asc").Find(&dvs).Error; err != nil {
+	if !tx.Migrator().HasTable("deploy_versions") {
+		return rep, nil
+	}
+
+	var dvs []legacyDeployVersion
+	if err := tx.Table("deploy_versions").
+		Order("deploy_id asc, created_at asc").Find(&dvs).Error; err != nil {
 		return nil, fmt.Errorf("load deploy_versions: %w", err)
 	}
 	rep.DeployVersionsSeen = len(dvs)
@@ -255,9 +294,9 @@ func looksLikeJSONArray(s string) bool {
 	return false
 }
 
-// startSpecFromDV 把 DeployVersion 的启动相关字段还原为对应 Service.Type 的
-// StartSpec。导入后可立即被 buildStartPart 消费。
-func startSpecFromDV(dv model.DeployVersion) map[string]any {
+// startSpecFromDV 把 legacyDeployVersion 的启动相关字段还原为对应 Service.Type
+// 的 StartSpec。导入后可立即被 buildStartPart 消费。
+func startSpecFromDV(dv legacyDeployVersion) map[string]any {
 	switch dv.Type {
 	case "docker":
 		return map[string]any{"type": "docker", "image": dv.ImageName, "cmd": dv.StartCmd}
