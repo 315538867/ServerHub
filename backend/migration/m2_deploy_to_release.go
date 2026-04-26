@@ -1,14 +1,15 @@
-// Package migration 承载跨版本数据迁移脚本。
+// m2_deploy_to_release.go 实现 M2 数据迁移:把老 deploy_versions 表按时间顺序
+// 拆成 Artifact(provider=imported) + EnvVarSet + ConfigFileSet + Release +
+// DeployRun。
 //
-// M2 数据迁移：把老 deploy_versions 表按时间顺序拆成
-// Artifact(provider=imported) + EnvVarSet + ConfigFileSet + Release + DeployRun。
+// 调用面有两条:
+//   1. 正常启动时由 runner.go 在事务里调 m2Core(tx, aesKey, false),
+//      version="010_m2_deploy_to_release"。已 applied 自动跳过。
+//   2. CLI `-migrate=m2-dryrun -config ...` 走 RunM2Dryrun,只统计不写库,
+//      不进 schema_migrations。
 //
-// 调用方式：
-//
-//	serverhub -migrate=m2-dryrun -config ...   只打印报告不写库
-//	serverhub -migrate=m2        -config ...   正式执行（带幂等标记）
-//
-// 幂等保证：执行成功后在 settings 表写入 key=migration.m2.done，再次运行立即返回 skipped。
+// 旧 settings 表里的 `migration.m2.done` 标记由 runner.importLegacyM2Marker
+// 翻译为 schema_migrations 行,翻译完后旧标记被删除。
 package migration
 
 import (
@@ -21,9 +22,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// migrationM2DoneKey 仅 importLegacyM2Marker 里读一次老标记 —— 新 runner 不
+// 再写它。
 const migrationM2DoneKey = "migration.m2.done"
 
-// M2Report 聚合一次迁移的写入计数，dry-run/real 共用。
+// M2Version 是 m2 在 schema_migrations 里的版本号,留在常量是为了让
+// database.Init 的注册点和 runner.importLegacyM2Marker 共享同一个字面量。
+const M2Version = "010_m2_deploy_to_release"
+
+// M2Report 聚合一次迁移的写入计数,dry-run/real 共用。
 type M2Report struct {
 	DryRun             bool     `json:"dry_run"`
 	AlreadyDone        bool     `json:"already_done"`
@@ -38,34 +45,53 @@ type M2Report struct {
 	Skipped            []string `json:"skipped"`
 }
 
-// RunM2 执行 M2 迁移。dryRun=true 只统计，不写库。
-// aesKey 用来判定 env_vars 旧密文是否仍能解密（不能就跳过并登记 Skipped）。
-func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
+// lastM2Report 捕获最近一次 m2 真跑(非 dryrun)的报告,供 CLI `-migrate=m2`
+// 在 runner.Run 跑完后取出打印。runner 的 Fn 签名只有 error,无法直接回吐
+// 报告;这里用包级 var 兜底。
+//
+// 不是线程安全的 —— 但 m2 只在启动期/单次 CLI 调用时跑,没有并发场景。
+var lastM2Report *M2Report
+
+// LastM2Report 返回最近一次 m2 真跑的报告(若有)。CLI 用,业务层不该读。
+func LastM2Report() *M2Report { return lastM2Report }
+
+// RegisterM2 把 M2 注册进 runner。在 main 启动早期、Run 之前调用 —— 因为
+// m2 的 Fn 需要解密旧密文,无法在包 init() 静态注册。
+func RegisterM2(aesKey string) {
+	Register(Migration{
+		Version: M2Version,
+		Name:    "m2 deploy_versions → release model",
+		Fn: func(tx *gorm.DB) error {
+			rep, err := m2Core(tx, aesKey, false)
+			if err != nil {
+				return err
+			}
+			lastM2Report = rep
+			return nil
+		},
+	})
+}
+
+// RunM2Dryrun 是 CLI `-migrate=m2-dryrun` 的入口。只统计、不写库、不进
+// schema_migrations。
+func RunM2Dryrun(db *gorm.DB, aesKey string) (*M2Report, error) {
+	return m2Core(db, aesKey, true)
+}
+
+// m2Core 是 M2 迁移的真正实现。dryRun=true 仅统计;dryRun=false 直接在
+// 传入的 tx 上写 —— 调用方负责事务边界(runner 包了一层事务)。
+func m2Core(tx *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 	rep := &M2Report{DryRun: dryRun, Skipped: []string{}}
 
-	// 已完成标记：正式 run 不重复；dry-run 允许多次。
-	if !dryRun {
-		var s model.Setting
-		if err := db.Where("key = ?", migrationM2DoneKey).First(&s).Error; err == nil {
-			rep.AlreadyDone = true
-			return rep, nil
-		}
-	}
-
 	var dvs []model.DeployVersion
-	if err := db.Order("deploy_id asc, created_at asc").Find(&dvs).Error; err != nil {
+	if err := tx.Order("deploy_id asc, created_at asc").Find(&dvs).Error; err != nil {
 		return nil, fmt.Errorf("load deploy_versions: %w", err)
 	}
 	rep.DeployVersionsSeen = len(dvs)
 	if len(dvs) == 0 {
-		if !dryRun {
-			markDone(db, rep)
-		}
 		return rep, nil
 	}
 
-	// 按 service 分组逐条迁移；latestReleaseByService 记录每个 service
-	// 时间最晚的那条 Release.ID，用于 T42 回指。
 	type migrated struct {
 		releaseID uint
 		createdAt time.Time
@@ -73,24 +99,10 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 	latestByService := map[uint]migrated{}
 	serviceSeen := map[uint]struct{}{}
 
-	tx := db
-	if !dryRun {
-		tx = db.Begin()
-		if tx.Error != nil {
-			return nil, tx.Error
-		}
-		defer func() {
-			if r := recover(); r != nil {
-				tx.Rollback()
-				panic(r)
-			}
-		}()
-	}
-
 	for _, dv := range dvs {
 		serviceSeen[dv.DeployID] = struct{}{}
 
-		// ── Artifact：provider=imported，ref=version（占位，不可再部署）
+		// ── Artifact:provider=imported,ref=version(占位,不可再部署)
 		art := model.Artifact{
 			ServiceID: dv.DeployID,
 			Provider:  model.ArtifactProviderImported,
@@ -99,15 +111,14 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 		}
 		if !dryRun {
 			if err := tx.Create(&art).Error; err != nil {
-				return rollback(tx, rep, err)
+				return nil, err
 			}
 		}
 		rep.ArtifactsCreated++
 
-		// ── EnvVarSet：仅当 dv.EnvVars 非空
+		// ── EnvVarSet:仅当 dv.EnvVars 非空且能解密
 		var envSetID *uint
 		if dv.EnvVars != "" {
-			// 校验旧密文仍可解密（否则跳过写 Skipped，避免带着烂数据走）
 			if _, err := crypto.Decrypt(dv.EnvVars, aesKey); err != nil {
 				rep.Skipped = append(rep.Skipped,
 					fmt.Sprintf("dv#%d env_vars decrypt failed: %v", dv.ID, err))
@@ -115,12 +126,12 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 				es := model.EnvVarSet{
 					ServiceID: dv.DeployID,
 					Label:     "imported-v" + art.Ref,
-					Content:   dv.EnvVars, // 保持原密文直接复用
+					Content:   dv.EnvVars,
 					CreatedAt: dv.CreatedAt,
 				}
 				if !dryRun {
 					if err := tx.Create(&es).Error; err != nil {
-						return rollback(tx, rep, err)
+						return nil, err
 					}
 					envSetID = &es.ID
 				} else {
@@ -131,7 +142,7 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 			}
 		}
 
-		// ── ConfigFileSet：仅当 dv.ConfigFiles 是合法 JSON 数组
+		// ── ConfigFileSet:仅当 dv.ConfigFiles 是合法 JSON 数组
 		var cfgSetID *uint
 		if dv.ConfigFiles != "" && looksLikeJSONArray(dv.ConfigFiles) {
 			cs := model.ConfigFileSet{
@@ -142,7 +153,7 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 			}
 			if !dryRun {
 				if err := tx.Create(&cs).Error; err != nil {
-					return rollback(tx, rep, err)
+					return nil, err
 				}
 				cfgSetID = &cs.ID
 			} else {
@@ -152,10 +163,10 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 			rep.ConfigSetsCreated++
 		}
 
-		// ── StartSpec：按 dv.Type 还原最小结构
+		// ── StartSpec:按 dv.Type 还原最小结构
 		startSpec, _ := json.Marshal(startSpecFromDV(dv))
 
-		// ── Release：导入态一律先建 archived，最新一条在 T42 改 active
+		// ── Release:导入态先建 archived,最新一条在 T42 改 active
 		rel := model.Release{
 			ServiceID:   dv.DeployID,
 			Label:       art.Ref,
@@ -171,12 +182,12 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 		}
 		if !dryRun {
 			if err := tx.Create(&rel).Error; err != nil {
-				return rollback(tx, rep, err)
+				return nil, err
 			}
 		}
 		rep.ReleasesCreated++
 
-		// ── DeployRun：迁移一条成功 run 做历史留痕（finished_at = created_at）
+		// ── DeployRun:迁移一条成功 run 做历史留痕
 		finished := dv.CreatedAt
 		run := model.DeployRun{
 			ServiceID:     dv.DeployID,
@@ -191,12 +202,11 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 		}
 		if !dryRun {
 			if err := tx.Create(&run).Error; err != nil {
-				return rollback(tx, rep, err)
+				return nil, err
 			}
 		}
 		rep.DeployRunsCreated++
 
-		// 记录每个 service 的最新 Release
 		prev, ok := latestByService[dv.DeployID]
 		if !ok || dv.CreatedAt.After(prev.createdAt) {
 			latestByService[dv.DeployID] = migrated{releaseID: rel.ID, createdAt: dv.CreatedAt}
@@ -204,7 +214,7 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 	}
 	rep.ServicesTouched = len(serviceSeen)
 
-	// ── T42：把 service.current_release_id 指向最新 Release，并把该 Release 置 active
+	// ── T42:把 service.current_release_id 指向最新 Release,该 Release 置 active
 	for sid, m := range latestByService {
 		if dryRun {
 			rep.CurrentReleaseSet++
@@ -213,22 +223,16 @@ func RunM2(db *gorm.DB, aesKey string, dryRun bool) (*M2Report, error) {
 		if err := tx.Model(&model.Service{}).
 			Where("id = ?", sid).
 			Update("current_release_id", m.releaseID).Error; err != nil {
-			return rollback(tx, rep, err)
+			return nil, err
 		}
 		if err := tx.Model(&model.Release{}).
 			Where("id = ?", m.releaseID).
 			Update("status", model.ReleaseStatusActive).Error; err != nil {
-			return rollback(tx, rep, err)
+			return nil, err
 		}
 		rep.CurrentReleaseSet++
 	}
 
-	if !dryRun {
-		if err := tx.Commit().Error; err != nil {
-			return nil, err
-		}
-		markDone(db, rep)
-	}
 	return rep, nil
 }
 
@@ -251,8 +255,8 @@ func looksLikeJSONArray(s string) bool {
 	return false
 }
 
-// startSpecFromDV 把 DeployVersion 的启动相关字段还原为对应 Service.Type 的 StartSpec。
-// 导入后可立即被 buildStartPart 消费。
+// startSpecFromDV 把 DeployVersion 的启动相关字段还原为对应 Service.Type 的
+// StartSpec。导入后可立即被 buildStartPart 消费。
 func startSpecFromDV(dv model.DeployVersion) map[string]any {
 	switch dv.Type {
 	case "docker":
@@ -264,7 +268,6 @@ func startSpecFromDV(dv model.DeployVersion) map[string]any {
 	case "static":
 		return map[string]any{"type": "static"}
 	}
-	// 未知 type：保留 raw，执行器会在 buildStartPart 里报错
 	return map[string]any{"type": dv.Type, "cmd": dv.StartCmd, "image": dv.ImageName}
 }
 
@@ -277,19 +280,4 @@ func mapDVStatus(s string) string {
 		return model.DeployRunStatusFailed
 	}
 	return model.DeployRunStatusSuccess
-}
-
-func markDone(db *gorm.DB, rep *M2Report) {
-	payload, _ := json.Marshal(rep)
-	db.Save(&model.Setting{
-		Key:       migrationM2DoneKey,
-		Value:     string(payload),
-		UpdatedAt: time.Now(),
-	})
-}
-
-// rollback 统一处理事务回滚并返回错误。仅事务对象有效；dry-run 不会走到这里。
-func rollback(tx *gorm.DB, rep *M2Report, err error) (*M2Report, error) {
-	_ = tx.Rollback()
-	return rep, err
 }

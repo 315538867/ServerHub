@@ -8,7 +8,6 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
-	"github.com/serverhub/serverhub/pkg/discovery"
 	"github.com/serverhub/serverhub/pkg/sysinfo"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -45,6 +44,11 @@ func Init(cfg *config.Config) *gorm.DB {
 	// but an upgraded binary will find the old "deploys" table from a prior
 	// release. AutoMigrate otherwise silently creates an empty "services"
 	// table alongside the old one, stranding data.
+	//
+	// 这条必须发生在 AutoMigrate 之前——否则 GORM 会先建空 services 再让我们
+	// 改名,旧数据被孤立。所以这条 schema 操作物理上留在这里,但
+	// migration/migrations.go 的 001 版本号也注册了同样的 Fn(幂等),走 runner
+	// 仅做"已 applied"审计,真正起效的是这次 RenameTable。
 	if db.Migrator().HasTable("deploys") && !db.Migrator().HasTable("services") {
 		if err := db.Migrator().RenameTable("deploys", "services"); err != nil {
 			panic(fmt.Sprintf("rename deploys→services failed: %v", err))
@@ -87,18 +91,11 @@ func Init(cfg *config.Config) *gorm.DB {
 		panic(fmt.Sprintf("migration failed: %v", err))
 	}
 
-	// 历史 setup_states 表（首次引导 SSH 自管的临时密钥行）已弃用：v0.3.7-beta.16
-	// 起 setup 向导只创建管理员，不再生成本机 SSH 凭据。drop 干净以避免遗留
-	// 加密数据残留。
-	db.Exec("DROP TABLE IF EXISTS setup_states")
-
 	ensureIndexes(db)
 
 	seedSettings(db)
 	seedAdminUser(db, cfg)
 	seedLocalServer(db)
-	backfillFingerprints(db)
-	backfillRunServerID(db)
 
 	return db
 }
@@ -292,50 +289,4 @@ func mergeLocalAliases(db *gorm.DB, keptID uint, hosts, names []string) {
 		})
 	}
 	fmt.Printf("mergeLocalAliases: %d 条 ssh 本机别名已合并到 server_id=%d\n", len(aliases), keptID)
-}
-
-// backfillFingerprints fills SourceFingerprint for legacy Service rows that
-// were imported before discovery.Fingerprint existed. Without this, the
-// "已接管" 标记在升级后第一次扫描会全部丢失。
-//
-// 我们重建一个最小化的 discovery.Candidate（只填 Fingerprint 用得到的字段），
-// 仅当 SourceKind/SourceID 非空且 Fingerprint 为空时才回填。
-func backfillFingerprints(db *gorm.DB) {
-	var rows []model.Service
-	if err := db.Where("source_fingerprint = '' AND source_kind != ''").Find(&rows).Error; err != nil {
-		return
-	}
-	for _, s := range rows {
-		cand := discovery.Candidate{
-			Kind:     s.SourceKind,
-			SourceID: s.SourceID,
-			Suggested: discovery.SuggestedDeploy{
-				ImageName:   s.ImageName,
-				WorkDir:     s.WorkDir,
-				ComposeFile: s.ComposeFile,
-			},
-		}
-		fp := discovery.Fingerprint(cand)
-		db.Model(&model.Service{}).Where("id = ?", s.ID).Update("source_fingerprint", fp)
-	}
-	if len(rows) > 0 {
-		fmt.Printf("backfillFingerprints: %d 条已回填\n", len(rows))
-	}
-}
-
-// backfillRunServerID 把 applications.run_server_id=0 的旧行用 server_id 回填，
-// 用于 Nginx-P0 引入 RunServerID 字段后的平滑升级。每次启动跑一次，幂等：旧行
-// 一次性回填后，后续 BeforeSave 钩子保证 RunServerID 永远非零。
-//
-// 注意：直接走 Exec 而非 Update，避免触发 BeforeSave 钩子（钩子假设至少一边非
-// 零，回填阶段两边可能都为 0 但实际是干净库，没必要走钩子）。
-func backfillRunServerID(db *gorm.DB) {
-	res := db.Exec("UPDATE applications SET run_server_id = server_id WHERE run_server_id = 0 AND server_id != 0")
-	if res.Error != nil {
-		fmt.Printf("backfillRunServerID: %v\n", res.Error)
-		return
-	}
-	if res.RowsAffected > 0 {
-		fmt.Printf("backfillRunServerID: %d 条已回填\n", res.RowsAffected)
-	}
 }

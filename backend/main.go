@@ -101,13 +101,26 @@ func main() {
 
 	db := database.Init(cfg)
 
-	// 一次性迁移命令：跑完立即退出，不起 HTTP 服务
+	// 版本化数据迁移收口:把 v0.3.7 之前散落在 db.Init 的"启动期一次性补丁"
+	// (drop setup_states / backfill fingerprints / backfill run_server_id /
+	// M2 deploy_versions→release) 全部交给 migration runner,以
+	// schema_migrations 表为单一事实源。每条 migration 在事务里跑且仅跑一次。
+	migration.RegisterM2(cfg.Security.AESKey)
+
+	// 一次性迁移命令:跑完立即退出,不起 HTTP 服务。
+	// m2-dryrun 走独立 core,不写库不进 schema_migrations;m2 等价于普通启动
+	// 的 runner 阶段(会一并跑 001-004 schema 补丁),跑完打印 m2 报告退出。
 	if *migrateCmd != "" {
 		if err := runMigration(*migrateCmd, db, cfg.Security.AESKey); err != nil {
 			fmt.Fprintf(os.Stderr, "migration failed: %v\n", err)
 			os.Exit(1)
 		}
 		os.Exit(0)
+	}
+
+	if err := migration.Run(db); err != nil {
+		fmt.Fprintf(os.Stderr, "schema migration failed: %v\n", err)
+		os.Exit(1)
 	}
 
 	sshpool.SetHostKeyStore(sshpool.NewGormHostKeyStore(db))
@@ -321,15 +334,21 @@ func runMigration(name string, db interface{}, aesKey string) error {
 	}
 	switch name {
 	case "m2":
-		rep, err := migration.RunM2(gdb, aesKey, false)
-		if err != nil {
+		// 走 runner 主通道 —— 跟普通启动同一条路径,schema_migrations 唯一事实源。
+		// 已 applied 时 Fn 不会再跑,lastM2Report 为 nil,提示已完成即可。
+		if err := migration.Run(gdb); err != nil {
 			return err
+		}
+		rep := migration.LastM2Report()
+		if rep == nil {
+			fmt.Println(`{"already_done": true}`)
+			return nil
 		}
 		b, _ := json.MarshalIndent(rep, "", "  ")
 		fmt.Println(string(b))
 		return nil
 	case "m2-dryrun":
-		rep, err := migration.RunM2(gdb, aesKey, true)
+		rep, err := migration.RunM2Dryrun(gdb, aesKey)
 		if err != nil {
 			return err
 		}
