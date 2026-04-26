@@ -38,9 +38,12 @@ const router = createRouter({
             {
               path: 'network',
               component: () => import('@/views/Apps/Network.vue'),
-              redirect: (to) => `${to.path}/domain`,
+              // ingresses 反向视图对所有 app 都有意义(无 site_name 也能用),
+              // 而 domain 子页仅在 app.site_name 存在时才有内容,因此默认跳 ingresses。
+              redirect: (to) => `${to.path}/ingresses`,
               children: [
                 { path: 'domain', name: 'AppNetworkDomain', component: () => import('@/views/Apps/Domain.vue') },
+                { path: 'ingresses', name: 'AppNetworkIngresses', component: () => import('@/views/Apps/Ingresses.vue') },
               ],
             },
             {
@@ -96,6 +99,9 @@ const router = createRouter({
         { path: 'database', name: 'Database', component: () => import('@/views/Database/index.vue') },
 
         // ── 全局 ──
+        // /ingresses 是跨 Edge 总览(只读),编辑入口仍在 /servers/:id/ingresses,
+        // 因为 apply 必须按 Edge 走(每台 nginx 独立 reload),没法在总览里安全批量。
+        { path: 'ingresses', name: 'Ingresses', component: () => import('@/views/Ingresses/index.vue') },
         { path: 'notifications', name: 'Notifications', component: () => import('@/views/Notifications/index.vue') },
         { path: 'settings', name: 'Settings', component: () => import('@/views/Settings/index.vue') },
       ],

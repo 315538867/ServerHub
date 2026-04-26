@@ -29,6 +29,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.GET("/:id/services", listServicesHandler(db))
 	r.POST("/:id/services/:sid/attach", attachServiceHandler(db))
 	r.DELETE("/:id/services/:sid/attach", detachServiceHandler(db))
+	r.GET("/:id/ingresses", listAppIngressesHandler(db))
 }
 
 type appReq struct {
@@ -580,6 +581,101 @@ func parsePercent(s string) float64 {
 		return 0
 	}
 	return f
+}
+
+// listAppIngressesHandler 反向视图:返回引用了本 app 任一 Service 的所有 Ingress,
+// 每条 Ingress 附带 EdgeServerName + MatchingRoutes(只命中本 app 的那些子路由,
+// 因为同一 Ingress 可能既路由到本 app 又路由到其它 app/raw,前端反向视图只关心
+// 本 app 的部分)。
+//
+// 实现思路:Upstream 是 JSON text 列,直接 SQL 查 service_id 不可靠。两步走:
+//   1) services WHERE application_id=? → service_id 集合
+//   2) ingress_routes 全表扫(GORM 反序列化 Upstream),内存过滤 type=service &&
+//      service_id ∈ 集合,聚到 ingress_id;再回拉 Ingress + Server.Name。
+//
+// 数据量评估:Ingress 是低频实体(一台 edge 几十条上限),全表扫可接受;后续若涨到
+// 千级,可改为 SQL JSON 函数(SQLite/PG 都支持)或新建反向索引列。
+func listAppIngressesHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil || id <= 0 {
+			resp.BadRequest(c, "无效 ID")
+			return
+		}
+		var serviceIDs []uint
+		if err := db.Model(&model.Service{}).
+			Where("application_id = ?", id).
+			Pluck("id", &serviceIDs).Error; err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
+		type appIngressDTO struct {
+			model.Ingress
+			EdgeServerName string               `json:"edge_server_name"`
+			MatchingRoutes []model.IngressRoute `json:"matching_routes"`
+		}
+		if len(serviceIDs) == 0 {
+			resp.OK(c, []appIngressDTO{})
+			return
+		}
+		sidSet := make(map[uint]struct{}, len(serviceIDs))
+		for _, s := range serviceIDs {
+			sidSet[s] = struct{}{}
+		}
+		var routes []model.IngressRoute
+		if err := db.Order("ingress_id, sort, id").Find(&routes).Error; err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
+		routesByIngress := map[uint][]model.IngressRoute{}
+		for _, rt := range routes {
+			if rt.Upstream.Type != "service" || rt.Upstream.ServiceID == nil {
+				continue
+			}
+			if _, ok := sidSet[*rt.Upstream.ServiceID]; !ok {
+				continue
+			}
+			routesByIngress[rt.IngressID] = append(routesByIngress[rt.IngressID], rt)
+		}
+		if len(routesByIngress) == 0 {
+			resp.OK(c, []appIngressDTO{})
+			return
+		}
+		ingressIDs := make([]uint, 0, len(routesByIngress))
+		for id := range routesByIngress {
+			ingressIDs = append(ingressIDs, id)
+		}
+		var ingresses []model.Ingress
+		if err := db.Where("id IN ?", ingressIDs).Order("id").Find(&ingresses).Error; err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
+		serverIDSet := map[uint]struct{}{}
+		for _, ig := range ingresses {
+			serverIDSet[ig.EdgeServerID] = struct{}{}
+		}
+		nameByID := map[uint]string{}
+		if len(serverIDSet) > 0 {
+			sids := make([]uint, 0, len(serverIDSet))
+			for id := range serverIDSet {
+				sids = append(sids, id)
+			}
+			var servers []model.Server
+			db.Select("id, name").Where("id IN ?", sids).Find(&servers)
+			for _, s := range servers {
+				nameByID[s.ID] = s.Name
+			}
+		}
+		out := make([]appIngressDTO, 0, len(ingresses))
+		for _, ig := range ingresses {
+			out = append(out, appIngressDTO{
+				Ingress:        ig,
+				EdgeServerName: nameByID[ig.EdgeServerID],
+				MatchingRoutes: routesByIngress[ig.ID],
+			})
+		}
+		resp.OK(c, out)
+	}
 }
 
 func atoiSafe(s string) int {

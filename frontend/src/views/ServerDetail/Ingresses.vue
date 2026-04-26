@@ -30,23 +30,7 @@
 
     <UiSection v-if="diffChanges.length || lastApply" title="最近一次操作">
       <UiCard padding="md">
-        <div v-if="lastApply" class="ig-applyhead">
-          <UiBadge :tone="lastApply.rolled_back ? 'danger' : (lastApply.no_op ? 'neutral' : 'success')">
-            {{ lastApply.rolled_back ? '已回滚' : (lastApply.no_op ? '无变更' : '已应用') }}
-          </UiBadge>
-          <span class="ig-muted">audit #{{ lastApply.audit_id }}</span>
-        </div>
-        <div v-if="diffChanges.length" class="ig-diff">
-          <div v-for="c in diffChanges" :key="c.path" class="ig-diff__row" :data-kind="c.kind">
-            <span class="ig-diff__sign">{{ kindSign(c.kind) }}</span>
-            <code class="ig-diff__path">{{ c.path }}</code>
-            <span v-if="c.kind === 'update'" class="ig-diff__hash">
-              {{ (c.old_hash ?? '').slice(0, 8) }} → {{ (c.new_hash ?? '').slice(0, 8) }}
-            </span>
-            <span v-else-if="c.kind === 'add'" class="ig-diff__hash">{{ (c.new_hash ?? '').slice(0, 8) }}</span>
-          </div>
-        </div>
-        <LogOutput v-if="lastApply?.output" :content="lastApply.output" tone="dark" style="margin-top: var(--space-3)" />
+        <DiffPreview :changes="diffChanges" :apply-result="lastApply" />
       </UiCard>
     </UiSection>
 
@@ -253,7 +237,7 @@ import {
 } from '@/api/ingresses'
 import type {
   Ingress, IngressDetail, IngressRoute, IngressMatchKind,
-  ApplyResult, IngressChange, AuditApply, ServiceOpt, ChangeKind,
+  ApplyResult, IngressChange, AuditApply, ServiceOpt,
   NetworkPref, IngressUpstream,
 } from '@/api/ingresses'
 import { listCerts, type SSLCert } from '@/api/ssl'
@@ -262,6 +246,7 @@ import UiCard from '@/components/ui/UiCard.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
 import LogOutput from '@/components/ui/LogOutput.vue'
+import DiffPreview from '@/components/nginx/DiffPreview.vue'
 
 const route = useRoute()
 const message = useMessage()
@@ -852,10 +837,6 @@ function openAuditDetail(row: AuditApply) {
   auditDetailVisible.value = true
 }
 
-function kindSign(k: ChangeKind): string {
-  return k === 'add' ? '+' : k === 'delete' ? '-' : '~'
-}
-
 function formatDate(s: string | null): string {
   if (!s) return '—'
   try { return new Date(s).toLocaleString() } catch { return s }
@@ -874,15 +855,6 @@ onMounted(loadAll)
 .ig-route__sort { color: var(--ui-fg-4); font-size: var(--fs-xs); width: 36px; }
 .ig-route__ops { margin-left: auto; display: inline-flex; gap: var(--space-1); }
 .ig-arrow { color: var(--ui-fg-4); }
-.ig-applyhead { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
-.ig-diff { display: flex; flex-direction: column; gap: 4px; font-size: var(--fs-sm); }
-.ig-diff__row { display: flex; align-items: center; gap: var(--space-2); }
-.ig-diff__row[data-kind="add"] .ig-diff__sign { color: var(--ui-success-fg); }
-.ig-diff__row[data-kind="delete"] .ig-diff__sign { color: var(--ui-danger-fg); }
-.ig-diff__row[data-kind="update"] .ig-diff__sign { color: var(--ui-brand); }
-.ig-diff__sign { font-family: var(--font-mono); font-weight: var(--fw-semibold); width: 12px; }
-.ig-diff__path { font-family: var(--font-mono); }
-.ig-diff__hash { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--ui-fg-4); }
 
 :deep(.ig-mono) {
   font-family: var(--font-mono); font-size: var(--fs-xs);

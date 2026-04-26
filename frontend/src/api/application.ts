@@ -71,3 +71,15 @@ export function detachServiceFromApp(appId: number, serviceId: number) {
   return request.delete(`/apps/${appId}/services/${serviceId}/attach`)
 }
 
+// 反向视图:返回引用了本 app 任一 Service 的所有 Ingress。
+//   - matching_routes 仅包含命中本 app 的子路由(同一 Ingress 可能多 app 共享)
+//   - edge_server_name 后端注入,免前端再查一次
+import type { Ingress, IngressRoute } from './ingresses'
+export interface AppIngress extends Ingress {
+  edge_server_name: string
+  matching_routes: IngressRoute[]
+}
+export function listAppIngresses(id: number) {
+  return request.get<never, AppIngress[]>(`/apps/${id}/ingresses`)
+}
+

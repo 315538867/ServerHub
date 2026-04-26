@@ -67,6 +67,9 @@
         </NavLink>
 
         <div v-show="!collapsed" class="nav__group">管理</div>
+        <NavLink to="/ingresses" label="Ingress 总览" :collapsed="collapsed">
+          <template #icon><Globe :size="16" /></template>
+        </NavLink>
         <NavLink to="/notifications" label="通知" :collapsed="collapsed" :badge="unreadCount || undefined">
           <template #icon><Bell :size="16" /></template>
         </NavLink>
@@ -137,7 +140,7 @@ import { computed, ref, watch, onMounted, h } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { NDropdown } from 'naive-ui'
 import {
-  LayoutDashboard, Plus, Bell, Settings,
+  LayoutDashboard, Plus, Bell, Settings, Globe,
   ChevronRight, ChevronDown, ChevronLeft, Search,
 } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
@@ -249,6 +252,7 @@ const breadcrumbs = computed<Array<{ label: string; path?: string }>>(() => {
     '/notifications': '通知',
     '/settings': '设置',
     '/apps': '应用',
+    '/ingresses': 'Ingress 总览',
   }
   return topLabels[path] ? [{ label: topLabels[path] }] : []
 })
