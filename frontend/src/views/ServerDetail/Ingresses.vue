@@ -10,6 +10,9 @@
           预览/扫描漂移
         </UiButton>
         <UiButton variant="primary" size="sm" :loading="applying" @click="doApply">应用配置</UiButton>
+        <UiButton variant="secondary" size="sm" :loading="importLoading" @click="openImport">
+          从 nginx 导入
+        </UiButton>
         <UiButton variant="primary" size="sm" @click="openCreate">新建 Ingress</UiButton>
       </template>
 
@@ -181,6 +184,67 @@
       </template>
     </NModal>
 
+    <NDrawer v-model:show="importVisible" :width="720" placement="right">
+      <NDrawerContent title="从 sites-available 接管反代 vhost" closable>
+        <div class="ig-import">
+          <div class="ig-import__hint">
+            扫描结果取自 edge 上 <code>/etc/nginx/sites-enabled/</code> 与 <code>/etc/nginx/conf.d/*.conf</code>
+            内含 <code>proxy_pass</code> 的 server 块。点"导入"会按候选构建 Ingress + Routes
+            并落库（行为等价"新建 Ingress"逐条手填）。落库后请记得点应用配置完成下发。
+          </div>
+          <div v-if="importErrors.length" class="ig-import__errors">
+            <UiBadge tone="warning">扫描告警</UiBadge>
+            <pre class="ig-mono ig-import__pre">{{ importErrors.join('\n') }}</pre>
+          </div>
+          <div v-if="importLoading" class="ig-empty">扫描中…</div>
+          <div v-else-if="!importCandidates.length" class="ig-empty">
+            未发现可导入的反代 vhost。
+          </div>
+          <div v-else class="ig-import__list">
+            <UiCard
+              v-for="c in importCandidates"
+              :key="c.fingerprint"
+              padding="md"
+              class="ig-import__card"
+            >
+              <div class="ig-import__head">
+                <div>
+                  <div class="ig-import__title">{{ c.server_name || '(无 server_name)' }}</div>
+                  <div class="ig-import__meta">
+                    listen <code class="ig-mono">{{ c.listen || '—' }}</code>
+                    · {{ c.config_file }}
+                  </div>
+                </div>
+                <div class="ig-import__head-ops">
+                  <UiBadge v-if="c.already_managed" tone="warning">已接管</UiBadge>
+                  <UiButton
+                    variant="primary"
+                    size="sm"
+                    :disabled="c.already_managed || !c.server_name"
+                    :loading="importingFp === c.fingerprint"
+                    @click="confirmImport(c)"
+                  >
+                    {{ c.already_managed ? '已存在' : '导入' }}
+                  </UiButton>
+                </div>
+              </div>
+              <div class="ig-import__routes">
+                <div v-for="(rt, i) in c.routes" :key="i" class="ig-import__route">
+                  <code class="ig-mono">{{ rt.path }}</code>
+                  <span class="ig-arrow">→</span>
+                  <code class="ig-mono ig-mono--up">{{ rt.proxy_pass }}</code>
+                  <NTag v-if="rt.websocket" size="tiny" type="success">WS</NTag>
+                  <code v-if="rt.extra" class="ig-mono ig-mono--muted ig-import__extra">
+                    {{ truncateExtra(rt.extra) }}
+                  </code>
+                </div>
+              </div>
+            </UiCard>
+          </div>
+        </div>
+      </NDrawerContent>
+    </NDrawer>
+
     <NDrawer v-model:show="auditDetailVisible" :width="640" placement="right">
       <NDrawerContent :title="auditDetail ? `审计 #${auditDetail.id}` : '审计详情'" closable>
         <div v-if="auditDetail" class="ig-audit">
@@ -234,11 +298,13 @@ import {
   listIngresses, getIngress, createIngress, updateIngress, deleteIngress,
   addIngressRoute, updateIngressRoute, deleteIngressRoute,
   applyEdge, dryRunEdge, listAudit, listEdgeServices,
+  listImportCandidates,
 } from '@/api/ingresses'
 import type {
   Ingress, IngressDetail, IngressRoute, IngressMatchKind,
   ApplyResult, IngressChange, AuditApply, ServiceOpt,
   NetworkPref, IngressUpstream,
+  IngressProxyCandidate,
 } from '@/api/ingresses'
 import { listCerts, type SSLCert } from '@/api/ssl'
 import UiSection from '@/components/ui/UiSection.vue'
@@ -827,6 +893,68 @@ function summarizeChangeset(d: string): string {
     const base = path.split('/').pop() || path
     return `${sign} ${base}`
   }).join(', ')
+}
+
+// ── Phase Nginx-P3B: 反代 vhost 接管向导 ──────────────────────────────────────
+const importVisible = ref(false)
+const importLoading = ref(false)
+const importingFp = ref<string>('')
+const importCandidates = ref<IngressProxyCandidate[]>([])
+const importErrors = ref<string[]>([])
+
+async function openImport() {
+  importVisible.value = true
+  importLoading.value = true
+  importCandidates.value = []
+  importErrors.value = []
+  try {
+    const res = await listImportCandidates(serverId.value)
+    importCandidates.value = res.candidates ?? []
+    importErrors.value = res.errors ?? []
+  } catch (e: any) {
+    showApiError(e, '扫描失败')
+  } finally {
+    importLoading.value = false
+  }
+}
+
+// truncateExtra 在卡片上展示 extra 时只取前两行 + 省略号,避免一条 location
+// 的几十行 header 把卡片撑爆;落库时仍是完整内容。
+function truncateExtra(extra: string): string {
+  const lines = extra.split('\n').map((l) => l.trim()).filter(Boolean)
+  if (lines.length <= 2) return lines.join(' · ')
+  return lines.slice(0, 2).join(' · ') + ` (+${lines.length - 2} lines)`
+}
+
+async function confirmImport(c: IngressProxyCandidate) {
+  if (c.already_managed || !c.server_name) return
+  importingFp.value = c.fingerprint
+  try {
+    await createIngress({
+      edge_server_id: serverId.value,
+      match_kind: 'domain',
+      domain: c.server_name,
+      default_path: '/',
+      cert_id: null,
+      force_https: false,
+      routes: c.routes.map((r, idx) => ({
+        sort: idx * 10,
+        path: r.path,
+        protocol: r.websocket ? 'http' : 'http', // 反代站点统一 http;ws 协议交由 WebSocket=true 控制
+        websocket: r.websocket,
+        extra: r.extra,
+        upstream: { type: 'raw', raw_url: r.proxy_pass },
+      })),
+    })
+    message.success(`已导入 ${c.server_name},请点击应用配置完成下发`)
+    // 刷新候选(标记 already_managed) 与列表
+    c.already_managed = true
+    await loadIngressList()
+  } catch (e: any) {
+    showApiError(e, '导入失败')
+  } finally {
+    importingFp.value = ''
+  }
 }
 
 // ── 审计详情 Drawer ───────────────────────────────────────────────────────────

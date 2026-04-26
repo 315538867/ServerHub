@@ -41,6 +41,9 @@ func RegisterRoutes(group *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	group.GET("edges/:server_id/audit", auditHandler(db))
 
 	group.GET("services/:server_id", servicesHandler(db))
+
+	// Phase Nginx-P3B: discovery → Ingress 反代接管候选
+	RegisterImportRoutes(group, db, cfg)
 }
 
 // ── DTO ───────────────────────────────────────────────────────────────────

@@ -174,3 +174,32 @@ export function listAudit(serverId: number, limit = 50) {
 export function listEdgeServices(serverId: number) {
   return request.get<never, ServiceOpt[]>(`/ingresses/services/${serverId}`)
 }
+
+// ── Phase Nginx-P3B: 反代 vhost 接管候选 ─────────────────────────────────────
+
+export interface IngressProxyRoute {
+  path: string
+  proxy_pass: string
+  websocket: boolean
+  extra: string
+}
+
+export interface IngressProxyCandidate {
+  config_file: string
+  server_name: string
+  listen: string
+  routes: IngressProxyRoute[]
+  fingerprint: string
+  already_managed: boolean
+}
+
+export interface ImportCandidatesResp {
+  candidates: IngressProxyCandidate[]
+  errors?: string[]
+}
+
+export function listImportCandidates(serverId: number) {
+  return request.get<never, ImportCandidatesResp>(
+    `/ingresses/edges/${serverId}/import-candidates`,
+  )
+}
