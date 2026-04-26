@@ -74,7 +74,6 @@ func attachToApplication(db *gorm.DB, svc *model.Service, cand discovery.Candida
 		app := model.Application{
 			Name:     name,
 			ServerID: svc.ServerID,
-			Status:   "unknown",
 		}
 		if e := db.Create(&app).Error; e != nil {
 			return 0, e

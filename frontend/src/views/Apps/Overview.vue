@@ -130,15 +130,17 @@ const appId = computed(() => Number(route.params.appId))
 const app = computed(() => appStore.getById(appId.value))
 const server = computed(() => app.value ? serverStore.getById(app.value.server_id) : undefined)
 
+// R3 起 app.status 枚举: running | syncing | error | unknown
 const statusTone = computed<any>(() => {
   const s = app.value?.status
-  if (s === 'online') return 'success'
-  if (s === 'offline' || s === 'error') return 'danger'
+  if (s === 'running') return 'success'
+  if (s === 'syncing') return 'warning'
+  if (s === 'error') return 'danger'
   return 'neutral'
 })
 const statusText = computed(() => {
   const s = app.value?.status
-  return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string, string>)[s ?? ''] ?? (s ?? '—')
+  return ({ running: '运行中', syncing: '同步中', error: '错误', unknown: '未知' } as Record<string, string>)[s ?? ''] ?? (s ?? '—')
 })
 
 const dirs = ref<AppDirEntry[]>([])

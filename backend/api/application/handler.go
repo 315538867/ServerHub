@@ -10,13 +10,27 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/derive"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
-	"github.com/serverhub/serverhub/pkg/svcstatus"
 	"gorm.io/gorm"
 )
+
+// appResp 是 Application API 的统一响应壳:嵌入 model.Application 把全部基础字段
+// 平铺到 JSON,Status 字段从 derive.AppStatus 派生(R3 起 Application.Status 列已下线)。
+//
+// 历史兼容:JSON 字段名 "status" 与 R2 之前一致,前端 TS 类型不需要改。
+type appResp struct {
+	model.Application
+	Status string `json:"status"`
+}
+
+func toAppResp(db *gorm.DB, a model.Application) appResp {
+	m := derive.AppStatus(db, []uint{a.ID})
+	return appResp{Application: a, Status: m[a.ID].Result}
+}
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.GET("", listHandler(db))
@@ -110,75 +124,21 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 			q = q.Where("server_id = ?", sid)
 		}
 		q.Find(&apps)
-		// 聚合下属 Service 状态到 Application.Status：
-		//   任一 failed → error；任一 syncing → syncing；
-		//   全 success → running；否则保持原值
-		//
-		// P-G 起 Service 不再持有 last_status 摘要列,改从最近一条 DeployRun 派生。
-		// 无 DeployRun 的 Service(takeover 直接接管)按 "success" 处理,与历史
-		// 写入 LastStatus="success" 等价。
-		if len(apps) > 0 {
-			ids := make([]uint, 0, len(apps))
-			for _, a := range apps {
-				ids = append(ids, a.ID)
-			}
-			type stRow struct {
-				ApplicationID uint
-				ServiceID     uint
-			}
-			var rows []stRow
-			db.Model(&model.Service{}).
-				Select("application_id, id AS service_id").
-				Where("application_id IN ?", ids).
-				Scan(&rows)
-			svcIDs := make([]uint, 0, len(rows))
-			for _, r := range rows {
-				svcIDs = append(svcIDs, r.ServiceID)
-			}
-			latest := svcstatus.LatestByService(db, svcIDs)
-			grouped := map[uint][]string{}
-			for _, r := range rows {
-				// P-I 起 Entry 多字段聚合,无 DeployRun 时 Status 为空(可能 Image 非空)。
-				// "无 run = success" 是 takeover 隐含约定,这里统一兜底成 success。
-				st := latest[r.ServiceID].Status
-				if st == "" {
-					st = "success"
-				}
-				grouped[r.ApplicationID] = append(grouped[r.ApplicationID], st)
-			}
-			for i := range apps {
-				statuses, ok := grouped[apps[i].ID]
-				if !ok || len(statuses) == 0 {
-					continue
-				}
-				hasFailed, hasSyncing, allSuccess := false, false, true
-				for _, s := range statuses {
-					switch s {
-					case "failed":
-						hasFailed = true
-						allSuccess = false
-					case "syncing", "running":
-						hasSyncing = hasSyncing || s == "syncing"
-						if s != "success" {
-							allSuccess = false
-						}
-					case "success":
-						// keep
-					default:
-						allSuccess = false
-					}
-				}
-				switch {
-				case hasFailed:
-					apps[i].Status = "error"
-				case hasSyncing:
-					apps[i].Status = "syncing"
-				case allSuccess:
-					apps[i].Status = "running"
-				}
-			}
+		// R3 起 Application.Status 列已下线,改由 derive.AppStatus 派生:
+		//   任一 Service.DeployRun.Status=failed → error
+		//   任一 syncing → syncing
+		//   全 success → running
+		//   无 Service / 全 unknown → unknown
+		ids := make([]uint, len(apps))
+		for i, a := range apps {
+			ids[i] = a.ID
 		}
-		resp.OK(c, apps)
+		statusMap := derive.AppStatus(db, ids)
+		out := make([]appResp, len(apps))
+		for i, a := range apps {
+			out[i] = appResp{Application: a, Status: statusMap[a.ID].Result}
+		}
+		resp.OK(c, out)
 	}
 }
 
@@ -312,7 +272,6 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			ExposeMode:    exposeMode,
 			DeployID:      req.DeployID,
 			DBConnID:      req.DBConnID,
-			Status:        "unknown",
 		}
 		if err := db.Create(&app).Error; err != nil {
 			resp.InternalError(c, err.Error())
@@ -321,7 +280,8 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		go func() {
 			_ = initAppDirs(db, cfg, &app)
 		}()
-		resp.OK(c, app)
+		// 刚创建尚无 Service → derive 返回 unknown,无需打 DB
+		resp.OK(c, appResp{Application: app, Status: derive.AppStatusUnknown})
 	}
 }
 
@@ -339,7 +299,7 @@ func getHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.NotFound(c, "应用不存在")
 			return
 		}
-		resp.OK(c, app)
+		resp.OK(c, toAppResp(db, app))
 	}
 }
 
@@ -381,7 +341,7 @@ func updateHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.InternalError(c, err.Error())
 			return
 		}
-		resp.OK(c, app)
+		resp.OK(c, toAppResp(db, app))
 	}
 }
 

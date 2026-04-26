@@ -40,7 +40,8 @@ type Application struct {
 	DeployID *uint `gorm:"index" json:"deploy_id"`
 	DBConnID *uint `gorm:"index" json:"db_conn_id"`
 
-	Status    string    `gorm:"default:unknown" json:"status"`
+	// R3 起 Status 列已下线:application 状态由 derive.AppStatus 从下属 Service 的
+	// 最近 DeployRun.Status 聚合派生。响应 DTO 由 api 层包一层 appResp 注入 Status。
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 }

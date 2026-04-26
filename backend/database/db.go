@@ -60,6 +60,7 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.AuditLog{},
 		&model.Setting{},
 		&model.Server{},
+		&model.ServerProbe{},
 		&model.Metric{},
 		&model.Service{},
 		&model.DeployLog{},
@@ -125,6 +126,7 @@ func seedSettings(db *gorm.DB) {
 		{Key: "metrics_interval", Value: "5"},
 		{Key: "alert_cooldown_min", Value: "30"},
 		{Key: "deploy_log_keep_days", Value: "30"},
+		{Key: "server_probe_keep_days", Value: "7"},
 		{Key: "timezone", Value: "Asia/Shanghai"},
 	}
 	for _, s := range defaults {
@@ -215,39 +217,41 @@ func seedLocalServer(db *gorm.DB) {
 		Order("id asc").First(&existing).Error
 	now := time.Now()
 	remark := localRemarkFor(lc)
+	// R3 起 server.status / server.last_check_at 已下线,在线状态由 server_probes
+	// 派生。本地服务器 seed 完毕后写一条 online probe,避免首次 scheduler tick 前
+	// UI 显示 "unknown"。
 	if err == nil {
 		db.Model(&existing).Updates(map[string]any{
-			"type":          "local",
-			"name":          "本机",
-			"host":          "127.0.0.1",
-			"port":          0,
-			"username":      "local",
-			"auth_type":     "local",
-			"password":      "",
-			"private_key":   "",
-			"status":        "online",
-			"capability":    lc,
-			"remark":        remark,
-			"last_check_at": &now,
+			"type":        "local",
+			"name":        "本机",
+			"host":        "127.0.0.1",
+			"port":        0,
+			"username":    "local",
+			"auth_type":   "local",
+			"password":    "",
+			"private_key": "",
+			"capability":  lc,
+			"remark":      remark,
 		})
+		db.Create(&model.ServerProbe{ServerID: existing.ID, Result: "online", CreatedAt: now})
 		mergeLocalAliases(db, existing.ID, localHosts, localNames)
 		return
 	}
 	local := model.Server{
-		Name:        "本机",
-		Type:        "local",
-		Host:        "127.0.0.1",
-		Port:        0,
-		Username:    "local",
-		AuthType:    "local",
-		Status:      "online",
-		Capability:  lc,
-		Remark:      remark,
-		LastCheckAt: &now,
+		Name:       "本机",
+		Type:       "local",
+		Host:       "127.0.0.1",
+		Port:       0,
+		Username:   "local",
+		AuthType:   "local",
+		Capability: lc,
+		Remark:     remark,
 	}
 	if err := db.Create(&local).Error; err != nil {
 		fmt.Printf("seedLocalServer: %v\n", err)
+		return
 	}
+	db.Create(&model.ServerProbe{ServerID: local.ID, Result: "online", CreatedAt: now})
 }
 
 func localRemarkFor(cap string) string {
@@ -282,7 +286,6 @@ func mergeLocalAliases(db *gorm.DB, keptID uint, hosts, names []string) {
 		db.Model(&a).Updates(map[string]any{
 			"name":   a.Name + " [已合并到本机]",
 			"host":   "",
-			"status": "offline",
 			"remark": a.Remark + " [auto-merged into local server]",
 		})
 	}

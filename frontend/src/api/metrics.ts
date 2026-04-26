@@ -6,7 +6,8 @@ export interface ServerOverview {
   name: string
   host: string
   port: number
-  status: 'online' | 'offline' | 'unknown'
+  // R3 起与 Server 一致,新增 lagging 枚举,源自 derive.ServerStatus
+  status: 'online' | 'lagging' | 'offline' | 'unknown'
   last_check_at: string | null
   metric: Metric | null
 }

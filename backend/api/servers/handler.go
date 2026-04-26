@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/derive"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
@@ -29,6 +30,14 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.PUT("/:id/networks", updateNetworksHandler(db))
 }
 
+// serverResp 是 GET /servers 的响应 DTO。
+//
+// R3 起 Status / LastCheckAt 不再来自 model.Server(列已下线),改由 derive.ServerStatus
+// 从 server_probes 时序表派生:
+//   - Status      ← derive.ServerStatusEntry.Result(online|lagging|offline|unknown)
+//   - LastCheckAt ← derive.ServerStatusEntry.LastProbeAt (zero → null)
+//
+// 兼容性:JSON 字段名保留,前端 TS 类型不需要改;只是来源改了。
 type serverResp struct {
 	ID          uint       `json:"id"`
 	Name        string     `json:"name"`
@@ -44,13 +53,18 @@ type serverResp struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
-func toResp(s model.Server) serverResp {
-	return serverResp{
+func toResp(s model.Server, st derive.ServerStatusEntry) serverResp {
+	r := serverResp{
 		ID: s.ID, Name: s.Name, Type: s.Type, Host: s.Host, Port: s.Port,
 		Username: s.Username, AuthType: s.AuthType, Remark: s.Remark,
-		Status: s.Status, LastCheckAt: s.LastCheckAt,
+		Status:    st.Result,
 		CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
+	if !st.LastProbeAt.IsZero() {
+		t := st.LastProbeAt
+		r.LastCheckAt = &t
+	}
+	return r
 }
 
 type createReq struct {
@@ -68,9 +82,14 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var servers []model.Server
 		db.Order("id asc").Find(&servers)
+		ids := make([]uint, len(servers))
+		for i, s := range servers {
+			ids[i] = s.ID
+		}
+		statusMap := derive.ServerStatus(db, ids, 0, 0)
 		out := make([]serverResp, len(servers))
 		for i, s := range servers {
-			out[i] = toResp(s)
+			out[i] = toResp(s, statusMap[s.ID])
 		}
 		resp.OK(c, out)
 	}
@@ -105,13 +124,14 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			Name: req.Name, Host: req.Host, Port: req.Port,
 			Username: req.Username, AuthType: req.AuthType,
 			Password: encPwd, PrivateKey: encKey,
-			Remark: req.Remark, Status: "unknown",
+			Remark: req.Remark,
 		}
 		if err := db.Create(&s).Error; err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
-		c.JSON(http.StatusCreated, gin.H{"code": 0, "msg": "ok", "data": toResp(s)})
+		// 刚创建尚无 probe → unknown,无需查 derive
+		c.JSON(http.StatusCreated, gin.H{"code": 0, "msg": "ok", "data": toResp(s, derive.ServerStatusEntry{Result: derive.ServerStatusUnknown})})
 	}
 }
 
@@ -121,7 +141,8 @@ func getHandler(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		resp.OK(c, toResp(s))
+		statusMap := derive.ServerStatus(db, []uint{s.ID}, 0, 0)
+		resp.OK(c, toResp(s, statusMap[s.ID]))
 	}
 }
 
@@ -150,7 +171,7 @@ func updateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		updates := map[string]any{
 			"name": req.Name, "host": req.Host, "username": req.Username,
-			"auth_type": req.AuthType, "remark": req.Remark, "status": "unknown",
+			"auth_type": req.AuthType, "remark": req.Remark,
 		}
 		if req.Port > 0 {
 			updates["port"] = req.Port
@@ -167,7 +188,8 @@ func updateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, err.Error())
 			return
 		}
-		resp.OK(c, toResp(s))
+		statusMap := derive.ServerStatus(db, []uint{s.ID}, 0, 0)
+		resp.OK(c, toResp(s, statusMap[s.ID]))
 	}
 }
 
@@ -200,9 +222,8 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		now := time.Now()
 		if s.Type == "local" {
-			db.Model(&s).Updates(map[string]any{"status": "online", "last_check_at": now})
+			db.Create(&model.ServerProbe{ServerID: s.ID, Result: "online", CreatedAt: time.Now()})
 			resp.OK(c, gin.H{"status": "online"})
 			return
 		}
@@ -214,17 +235,23 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 
 		sshpool.Remove(s.ID)
+		start := time.Now()
 		client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
-		status := "online"
+		latencyMs := int(time.Since(start).Milliseconds())
 		if err != nil {
-			status = "offline"
-			db.Model(&s).Updates(map[string]any{"status": status, "last_check_at": now})
-			resp.OK(c, gin.H{"status": status, "error": err.Error()})
+			db.Create(&model.ServerProbe{
+				ServerID: s.ID, Result: "offline",
+				LatencyMs: latencyMs, ErrMsg: err.Error(), CreatedAt: time.Now(),
+			})
+			resp.OK(c, gin.H{"status": "offline", "error": err.Error()})
 			return
 		}
 		_ = client
-		db.Model(&s).Updates(map[string]any{"status": status, "last_check_at": now})
-		resp.OK(c, gin.H{"status": status})
+		db.Create(&model.ServerProbe{
+			ServerID: s.ID, Result: "online",
+			LatencyMs: latencyMs, CreatedAt: time.Now(),
+		})
+		resp.OK(c, gin.H{"status": "online"})
 	}
 }
 

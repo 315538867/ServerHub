@@ -1,8 +1,9 @@
 // Package retention runs daily cleanup of time-series tables (audit_logs,
-// metrics, deploy_logs) and a monthly VACUUM. Policies:
-//   - audit_logs: 90 days
-//   - metrics:    30 days
-//   - deploy_logs: from settings key "deploy_log_keep_days" (default 30)
+// metrics, deploy_logs, server_probes) and a monthly VACUUM. Policies:
+//   - audit_logs:    90 days
+//   - metrics:       30 days
+//   - deploy_logs:   from settings key "deploy_log_keep_days" (default 30)
+//   - server_probes: from settings key "server_probe_keep_days" (default 7)
 //   - VACUUM: on the 1st of each month
 package retention
 
@@ -49,6 +50,7 @@ func runAll(db *gorm.DB) {
 	cleanTable(db, "audit_logs", auditKeepDays)
 	cleanTable(db, "metrics", metricsKeepDays)
 	cleanTable(db, "deploy_logs", deployLogKeepDays(db))
+	cleanTable(db, "server_probes", serverProbeKeepDays(db))
 	// M3：旧 deploy_versions 表已只读，不再 PruneAllVersions；
 	// Release 保留 + Artifact 物理文件孤儿清理仍然生效。
 	usecase.PruneAllReleases(db, releaseKeepPerService(db))
@@ -123,6 +125,22 @@ func deployLogKeepDays(db *gorm.DB) int {
 	n, err := strconv.Atoi(s.Value)
 	if err != nil || n <= 0 {
 		return 30
+	}
+	return n
+}
+
+// serverProbeKeepDays 读 settings.server_probe_keep_days;缺省 7 天。
+//
+// 7 天默认源于 server_probes 写入频率(scheduler 每 N 秒 + 用户手测)和聚合用途
+// (派生当前在线状态 / 短周期诊断),无需保留更久;运维想看长趋势可调高这条 setting。
+func serverProbeKeepDays(db *gorm.DB) int {
+	var s model.Setting
+	if err := db.Where("key = ?", "server_probe_keep_days").First(&s).Error; err != nil {
+		return 7
+	}
+	n, err := strconv.Atoi(s.Value)
+	if err != nil || n <= 0 {
+		return 7
 	}
 	return n
 }

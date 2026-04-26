@@ -51,12 +51,17 @@ func collectOne(db *gorm.DB, cfg *config.Config, s model.Server) {
 	now := time.Now()
 	var metrics *sshpool.MetricsResult
 	var err error
+	probe := model.ServerProbe{ServerID: s.ID, Result: "online", CreatedAt: now}
 
+	// R3 起 server 在线状态由 server_probes 时序表派生:本函数不论成败都恰好 INSERT
+	// 一条 probe,显式 offline 仅由 SSH dial 失败触发(主机不可达);其它失败(指标
+	// 采集错)仍计为 online + ErrMsg,因为 dial 已经成功证明主机存活。
 	if s.Type == "local" {
 		metrics, err = sshpool.CollectLocalMetrics()
 		if err != nil {
 			fmt.Printf("[scheduler] local metrics error: %v\n", err)
-			db.Model(&s).Updates(map[string]any{"status": "online", "last_check_at": now})
+			probe.ErrMsg = err.Error()
+			db.Create(&probe)
 			return
 		}
 	} else {
@@ -64,20 +69,26 @@ func collectOne(db *gorm.DB, cfg *config.Config, s model.Server) {
 		if derr != nil {
 			return
 		}
+		dialStart := time.Now()
 		client, derr := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
+		probe.LatencyMs = int(time.Since(dialStart).Milliseconds())
 		if derr != nil {
-			db.Model(&s).Updates(map[string]any{"status": "offline", "last_check_at": now})
+			probe.Result = "offline"
+			probe.ErrMsg = derr.Error()
+			db.Create(&probe)
 			go checkAlerts(db, cfg, s.ID, 0, 0, 0, true)
 			return
 		}
 		metrics, err = sshpool.CollectMetrics(client)
 		if err != nil {
 			fmt.Printf("[scheduler] metrics error server %d: %v\n", s.ID, err)
-			db.Model(&s).Updates(map[string]any{"status": "online", "last_check_at": now})
+			probe.ErrMsg = err.Error()
+			db.Create(&probe)
 			return
 		}
 	}
 
+	db.Create(&probe)
 	db.Create(&model.Metric{
 		ServerID: s.ID,
 		CPU:      metrics.CPU,
@@ -86,7 +97,6 @@ func collectOne(db *gorm.DB, cfg *config.Config, s model.Server) {
 		Load1:    metrics.Load1,
 		Uptime:   metrics.Uptime,
 	})
-	db.Model(&s).Updates(map[string]any{"status": "online", "last_check_at": now})
 	go checkAlerts(db, cfg, s.ID, metrics.CPU, metrics.Mem, metrics.Disk, false)
 }
 

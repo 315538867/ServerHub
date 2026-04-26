@@ -3,7 +3,7 @@
     <div class="al__bar">
       <div class="al__bar-main">
         <div class="al__title-row">
-          <StatusDot :status="app?.status ?? 'unknown'" :size="10" :ring="true" :pulse="app?.status === 'online'" />
+          <StatusDot :status="app?.status ?? 'unknown'" :size="10" :ring="true" :pulse="app?.status === 'running'" />
           <h1 class="al__title">{{ app?.name ?? '加载中…' }}</h1>
           <UiBadge v-if="statusLabel" :tone="statusTone">{{ statusLabel }}</UiBadge>
           <UiBadge v-if="exposeModeLabel" tone="info" variant="soft">{{ exposeModeLabel }}</UiBadge>
@@ -60,15 +60,16 @@ const activeSub = computed(() => route.path.split('/').filter(Boolean)[3] || '')
 const isNested = computed(() => activeTab.value === 'network' || activeTab.value === 'ops')
 const isTerminal = computed(() => activeTab.value === 'ops' && activeSub.value === 'terminal')
 
+// R3 起 app.status 由后端 derive.AppStatus 派生,枚举改为 running|syncing|error|unknown。
 const statusLabel = computed(() => {
   const s = app.value?.status ?? ''
-  return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string, string>)[s] ?? ''
+  return ({ running: '运行中', syncing: '同步中', error: '错误', unknown: '未知' } as Record<string, string>)[s] ?? ''
 })
 const statusTone = computed<'success' | 'neutral' | 'danger' | 'warning'>(() => {
   const s = app.value?.status ?? ''
-  if (s === 'online') return 'success'
+  if (s === 'running') return 'success'
+  if (s === 'syncing') return 'warning'
   if (s === 'error') return 'danger'
-  if (s === 'offline') return 'neutral'
   return 'neutral'
 })
 const exposeModeLabel = computed(() => {

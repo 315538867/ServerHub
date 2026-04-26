@@ -82,6 +82,11 @@ func init() {
 		Name:    "drop services.image_name",
 		Fn:      migrateDropServiceImageNameCol,
 	})
+	Register(Migration{
+		Version: "025_server_probes_and_drop_status_cols",
+		Name:    "create server_probes + backfill last probe + drop {servers.status,servers.last_check_at,applications.status}",
+		Fn:      migrateServerProbesAndDropStatusCols,
+	})
 }
 
 // migrateRenameDeploysToServices 把 v0.2 之前的 deploys 表改名 services。
@@ -344,6 +349,84 @@ func migrateDropServiceImageNameCol(tx *gorm.DB) error {
 	}
 	if err := tx.Migrator().DropColumn("services", "image_name"); err != nil {
 		return fmt.Errorf("drop services.image_name: %w", err)
+	}
+	return nil
+}
+
+// legacyServerStatusForProbeBackfill025 冻结 025 跑 backfill 时所见的 servers
+// 列形态。同 003/022 的 snapshot pattern:status / last_check_at 列在本 migration
+// 之后会从 model.Server 上消失,backfill 算法读到的旧值必须钉死,不依赖 model 演进。
+type legacyServerStatusForProbeBackfill025 struct {
+	ID          uint
+	Status      string
+	LastCheckAt *time.Time
+}
+
+// migrateServerProbesAndDropStatusCols 收口 R3 方案 D:
+//  1. AutoMigrate 已建好 server_probes 表(本 migration 跑在 AutoMigrate 之后,
+//     表结构由 GORM 据 model.ServerProbe 标签自动创建)
+//  2. 把每个 server 的 (status, last_check_at) 当作"最后一次探测"INSERT 一条到
+//     server_probes 兜底,保证 derive.ServerStatus 在第一次探测落库前不至于全
+//     unknown
+//  3. 物理 DropColumn:servers.status / servers.last_check_at / applications.status
+//
+// 兜底策略:
+//   - status="online" / "offline" → 直接落 result
+//   - status="unknown" 或为空 → 跳过(不入库,与 derive "缺行=unknown" 语义对齐)
+//   - last_check_at IS NULL → 跳过(没探测过,无时刻可记)
+//
+// 可重入:DropColumn 在缺列时 no-op;backfill 走 INSERT,migration 重跑会重复
+// 落数据,但 schema_migrations 写过一次后整条 migration 不会再跑,无需做"已
+// backfill"标记。
+func migrateServerProbesAndDropStatusCols(tx *gorm.DB) error {
+	// Step 1: backfill last probe (server.status / last_check_at → server_probes)
+	if tx.Migrator().HasTable("servers") &&
+		tx.Migrator().HasColumn("servers", "status") &&
+		tx.Migrator().HasColumn("servers", "last_check_at") &&
+		tx.Migrator().HasTable("server_probes") {
+		var rows []legacyServerStatusForProbeBackfill025
+		if err := tx.Table("servers").
+			Select("id, status, last_check_at").
+			Where("status IN (?) AND last_check_at IS NOT NULL", []string{"online", "offline"}).
+			Find(&rows).Error; err != nil {
+			return fmt.Errorf("scan servers for probe backfill: %w", err)
+		}
+		for _, r := range rows {
+			if r.LastCheckAt == nil {
+				continue
+			}
+			p := model.ServerProbe{
+				ServerID:  r.ID,
+				Result:    r.Status,
+				CreatedAt: *r.LastCheckAt,
+			}
+			if err := tx.Create(&p).Error; err != nil {
+				return fmt.Errorf("backfill server_probe for server#%d: %w", r.ID, err)
+			}
+		}
+		if len(rows) > 0 {
+			fmt.Printf("migration 025: backfilled %d server_probes rows from servers.{status,last_check_at}\n", len(rows))
+		}
+	}
+
+	// Step 2: drop servers.{status, last_check_at}
+	if tx.Migrator().HasTable("servers") {
+		for _, col := range []string{"status", "last_check_at"} {
+			if !tx.Migrator().HasColumn("servers", col) {
+				continue
+			}
+			if err := tx.Migrator().DropColumn("servers", col); err != nil {
+				return fmt.Errorf("drop servers.%s: %w", col, err)
+			}
+		}
+	}
+
+	// Step 3: drop applications.status
+	if tx.Migrator().HasTable("applications") &&
+		tx.Migrator().HasColumn("applications", "status") {
+		if err := tx.Migrator().DropColumn("applications", "status"); err != nil {
+			return fmt.Errorf("drop applications.status: %w", err)
+		}
 	}
 	return nil
 }

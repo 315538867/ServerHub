@@ -44,7 +44,10 @@ export interface Server {
   username: string
   auth_type: 'password' | 'key'
   remark: string
-  status: 'online' | 'offline' | 'unknown'
+  // R3 起 status / last_check_at 由后端 derive.ServerStatus 从 server_probes 派生
+  // (而不再是 servers 列上的真值)。新增 'lagging' 枚举:阈值内有 probe 但已超
+  // lagging_after,表示主机活着但心跳变稀。
+  status: 'online' | 'lagging' | 'offline' | 'unknown'
   last_check_at: string | null
   created_at: string
   updated_at: string
@@ -152,7 +155,13 @@ export interface Application {
   deploy_id: number | null
   db_conn_id: number | null
   expose_mode: 'none' | 'path' | 'site'
-  status: 'online' | 'offline' | 'unknown' | 'error'
+  // R3 起 status 由后端 derive.AppStatus 从下属 Service 的最近 DeployRun.Status
+  // 聚合派生(不再是 applications 列上的真值)。枚举跟着派生层语义对齐:
+  //   - error:任一 Service 最新 DeployRun.Status=failed
+  //   - syncing:任一 Service 最新 DeployRun.Status=syncing
+  //   - running:全部 Service success(无 DeployRun 视作 success)
+  //   - unknown:无 Service 或全 unknown
+  status: 'running' | 'syncing' | 'error' | 'unknown'
   created_at: string
   updated_at: string
 }

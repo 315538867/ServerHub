@@ -7,19 +7,22 @@ import (
 	"gorm.io/gorm"
 )
 
+// Server 是受管主机的真值实体。
+//
+// R3 起 Status / LastCheckAt 列已下线:在线状态不是真值,而是 server_probes 时序表
+// 的最近一条 probe 经阈值套用得到的派生量。读端走 derive.ServerStatus,写端走
+// db.Create(&model.ServerProbe{...})。handler 不再读/写 Status / LastCheckAt 列。
 type Server struct {
-	ID          uint       `gorm:"primaryKey" json:"id"`
-	Name        string     `gorm:"not null" json:"name"`
-	Type        string     `gorm:"default:ssh" json:"type"` // "ssh" | "local"
-	Host        string     `gorm:"not null" json:"host"`
-	Port        int        `gorm:"default:22" json:"port"`
-	Username    string     `gorm:"not null" json:"username"`
-	AuthType    string     `gorm:"default:password" json:"auth_type"` // "password" | "key" | "local"
-	Password    string     `gorm:"default:''" json:"-"`               // AES-GCM encrypted
-	PrivateKey  string     `gorm:"default:''" json:"-"`               // AES-GCM encrypted
-	Remark      string     `gorm:"default:''" json:"remark"`
-	Status      string     `gorm:"default:unknown" json:"status"` // "online"|"offline"|"unknown"
-	LastCheckAt *time.Time `json:"last_check_at"`
+	ID         uint   `gorm:"primaryKey" json:"id"`
+	Name       string `gorm:"not null" json:"name"`
+	Type       string `gorm:"default:ssh" json:"type"` // "ssh" | "local"
+	Host       string `gorm:"not null" json:"host"`
+	Port       int    `gorm:"default:22" json:"port"`
+	Username   string `gorm:"not null" json:"username"`
+	AuthType   string `gorm:"default:password" json:"auth_type"` // "password" | "key" | "local"
+	Password   string `gorm:"default:''" json:"-"`               // AES-GCM encrypted
+	PrivateKey string `gorm:"default:''" json:"-"`               // AES-GCM encrypted
+	Remark     string `gorm:"default:''" json:"remark"`
 	// HostKeyFP stores the pinned SSH host-key fingerprint (SHA256:base64,
 	// matching ssh.FingerprintSHA256). Populated on first successful dial
 	// (TOFU). Later dials must match; mismatches abort the connection.

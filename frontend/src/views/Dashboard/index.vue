@@ -147,20 +147,22 @@ const total   = computed(() => overview.value.length)
 const online  = computed(() => overview.value.filter(s => s.status === 'online').length)
 const offline = computed(() => overview.value.filter(s => s.status === 'offline').length)
 const onlinePct = computed(() => total.value ? Math.round(online.value / total.value * 100) : 0)
-const appsOnline  = computed(() => appStore.apps.filter(a => a.status === 'online').length)
-const appsOffline = computed(() => appStore.apps.filter(a => a.status === 'offline' || a.status === 'error').length)
+// R3 起 app.status 枚举: running | syncing | error | unknown
+const appsOnline  = computed(() => appStore.apps.filter(a => a.status === 'running').length)
+const appsOffline = computed(() => appStore.apps.filter(a => a.status === 'error').length)
 
 function appStatusTone(s: string): any {
-  return ({ online: 'success', offline: 'danger', error: 'danger' } as Record<string,string>)[s] ?? 'neutral'
+  return ({ running: 'success', syncing: 'warning', error: 'danger' } as Record<string,string>)[s] ?? 'neutral'
 }
 function appStatusText(s: string) {
-  return ({ online: '在线', offline: '离线', error: '错误', unknown: '未知' } as Record<string,string>)[s] ?? s
+  return ({ running: '运行中', syncing: '同步中', error: '错误', unknown: '未知' } as Record<string,string>)[s] ?? s
 }
+// R3 起 server.status 枚举: online | lagging | offline | unknown
 function statusTone(s: string): any {
-  return ({ online: 'success', offline: 'danger' } as Record<string,string>)[s] ?? 'neutral'
+  return ({ online: 'success', lagging: 'warning', offline: 'danger' } as Record<string,string>)[s] ?? 'neutral'
 }
 function statusText(s: string) {
-  return ({ online: '在线', offline: '离线', unknown: '未知' } as Record<string,string>)[s] ?? s
+  return ({ online: '在线', lagging: '心跳延迟', offline: '离线', unknown: '未知' } as Record<string,string>)[s] ?? s
 }
 function round(n: number) { return Math.round(n) }
 function formatUptime(sec: number) {

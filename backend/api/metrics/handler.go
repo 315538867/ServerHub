@@ -1,7 +1,10 @@
 package metrics
 
 import (
+	"time"
+
 	"github.com/gin-gonic/gin"
+	"github.com/serverhub/serverhub/derive"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"gorm.io/gorm"
@@ -11,13 +14,17 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB) {
 	r.GET("/overview", overviewHandler(db))
 }
 
+// serverOverview 是 /api/metrics/overview 的列表项。
+//
+// R3 起 Status / LastCheckAt 不再来自 model.Server(列已下线),改由 derive.ServerStatus
+// 从 server_probes 时序表派生。JSON 字段名保持向前兼容。
 type serverOverview struct {
 	ID          uint          `json:"id"`
 	Name        string        `json:"name"`
 	Host        string        `json:"host"`
 	Port        int           `json:"port"`
 	Status      string        `json:"status"`
-	LastCheckAt interface{}   `json:"last_check_at"`
+	LastCheckAt *time.Time    `json:"last_check_at"`
 	Metric      *model.Metric `json:"metric"`
 }
 
@@ -39,17 +46,28 @@ func overviewHandler(db *gorm.DB) gin.HandlerFunc {
 			byServer[latest[i].ServerID] = &latest[i]
 		}
 
+		ids := make([]uint, len(servers))
+		for i, s := range servers {
+			ids[i] = s.ID
+		}
+		statusMap := derive.ServerStatus(db, ids, 0, 0)
+
 		result := make([]serverOverview, len(servers))
 		for i, s := range servers {
-			result[i] = serverOverview{
-				ID:          s.ID,
-				Name:        s.Name,
-				Host:        s.Host,
-				Port:        s.Port,
-				Status:      s.Status,
-				LastCheckAt: s.LastCheckAt,
-				Metric:      byServer[s.ID],
+			st := statusMap[s.ID]
+			ov := serverOverview{
+				ID:     s.ID,
+				Name:   s.Name,
+				Host:   s.Host,
+				Port:   s.Port,
+				Status: st.Result,
+				Metric: byServer[s.ID],
 			}
+			if !st.LastProbeAt.IsZero() {
+				t := st.LastProbeAt
+				ov.LastCheckAt = &t
+			}
+			result[i] = ov
 		}
 		resp.OK(c, result)
 	}

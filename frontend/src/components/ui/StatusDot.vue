@@ -31,8 +31,8 @@ const resolved = computed(() => {
   if (['online', 'running', 'active', 'ok', 'success', 'healthy'].includes(s)) return 'online'
   if (['offline', 'stopped', 'inactive'].includes(s)) return 'offline'
   if (['error', 'failed', 'fail', 'danger'].includes(s)) return 'error'
-  if (['warning', 'warn', 'degraded'].includes(s)) return 'warning'
-  if (['pending', 'deploying', 'loading', 'starting'].includes(s)) return 'pending'
+  if (['warning', 'warn', 'degraded', 'lagging'].includes(s)) return 'warning'
+  if (['pending', 'deploying', 'loading', 'starting', 'syncing'].includes(s)) return 'pending'
   return 'unknown'
 })
 </script>
