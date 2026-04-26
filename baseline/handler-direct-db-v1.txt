@@ -1,0 +1,166 @@
+api/alerts/handler.go:43:		db.Order("id asc").Limit(500).Find(&rules)
+api/alerts/handler.go:71:		db.Create(&rule)
+api/alerts/handler.go:80:		if err := db.First(&rule, id).Error; err != nil {
+api/alerts/handler.go:106:		db.Save(&rule)
+api/alerts/handler.go:114:		db.Delete(&model.AlertRule{}, id)
+api/alerts/handler.go:133:		db.Model(&model.AlertEvent{}).Count(&total)
+api/alerts/handler.go:134:		db.Order("sent_at desc").Offset((page - 1) * size).Limit(size).Find(&events)
+api/alerts/handler.go:141:		db.Where("sent_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&model.AlertEvent{})
+api/alerts/handler.go:160:		db.Order("id asc").Limit(500).Find(&channels)
+api/alerts/handler.go:193:		db.Create(&ch)
+api/alerts/handler.go:203:		if err := db.First(&ch, id).Error; err != nil {
+api/alerts/handler.go:236:		db.Save(&ch)
+api/alerts/handler.go:245:		db.Delete(&model.NotifyChannel{}, id)
+api/alerts/handler.go:254:		if err := db.First(&ch, id).Error; err != nil {
+api/application/handler.go:53:	if err := db.First(&s, serverID).Error; err != nil {
+api/application/handler.go:108:		q := db.Order("id asc")
+api/application/handler.go:130:			db.Model(&model.Service{}).
+api/application/handler.go:195:		db.Where("application_id = ?", id).Order("id asc").Find(&services)
+api/application/handler.go:213:		if err := db.First(&app, appID).Error; err != nil {
+api/application/handler.go:218:		if err := db.First(&svc, sid).Error; err != nil {
+api/application/handler.go:228:		if err := db.Save(&svc).Error; err != nil {
+api/application/handler.go:234:			db.Model(&app).Update("primary_service_id", svcID)
+api/application/handler.go:253:		if err := db.First(&svc, sid).Error; err != nil {
+api/application/handler.go:262:		if err := db.Save(&svc).Error; err != nil {
+api/application/handler.go:267:		db.Model(&model.Application{}).
+api/application/handler.go:288:		if err := db.First(&server, req.ServerID).Error; err != nil {
+api/application/handler.go:317:		if err := db.Create(&app).Error; err != nil {
+api/application/handler.go:338:		if err := db.First(&app, id).Error; err != nil {
+api/application/handler.go:356:		if err := db.First(&app, id).Error; err != nil {
+api/application/handler.go:380:		if err := db.Save(&app).Error; err != nil {
+api/application/handler.go:397:		if err := db.Delete(&model.Application{}, id).Error; err != nil {
+api/application/handler.go:423:		if err := db.First(&app, id).Error; err != nil {
+api/application/handler.go:486:		if err := db.First(&app, id).Error; err != nil {
+api/application/handler.go:539:		if err := db.First(&app, id).Error; err != nil {
+api/application/handler.go:622:		if err := db.Model(&model.Service{}).
+api/application/handler.go:642:		if err := db.Order("ingress_id, sort, id").Find(&routes).Error; err != nil {
+api/application/handler.go:665:		if err := db.Where("id IN ?", ingressIDs).Order("id").Find(&ingresses).Error; err != nil {
+api/apprelease/handler.go:44:		if err := db.Where("application_id = ?", appID).
+api/apprelease/handler.go:66:		if err := db.Where("id = ? AND application_id = ?", rsID, appID).
+api/apprelease/handler.go:142:	if err := db.Where("id = ? AND application_id = ?", rsID, appID).
+api/apprelease/service.go:54:	db.Model(&model.AppReleaseSet{}).
+api/apprelease/service.go:66:	if err := db.Where("application_id = ?", appID).Find(&svcs).Error; err != nil {
+api/apprelease/service.go:93:	if err := db.Create(set).Error; err != nil {
+api/apprelease/service.go:168:	if err := db.Model(&model.AppReleaseSet{}).Where("id = ?", setID).
+api/apprelease/service.go:214:	if err := db.First(&set, setID).Error; err != nil {
+api/apprelease/service.go:247:	res := db.Model(&model.AppReleaseSet{}).
+api/apprelease/service.go:282:	if err := db.First(&set, setID).Error; err != nil {
+api/apprelease/service.go:379:	err := db.Where("service_id = ? AND id < ? AND status IN ?",
+api/audit/handler.go:27:		q := db.Model(&model.AuditLog{})
+api/auth/handler.go:57:		if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
+api/auth/handler.go:93:		db.Model(&user).Updates(model.User{LastLogin: &now, LastIP: c.ClientIP()})
+api/auth/handler.go:107:		if err := db.First(&user, claims.UserID).Error; err != nil {
+api/auth/handler.go:135:		if err := db.First(&user, claims.UserID).Error; err != nil {
+api/auth/handler.go:148:			db.Model(&model.User{}).Where("username = ? AND id != ?", req.NewUsername, user.ID).Count(&count)
+api/auth/handler.go:165:			if err := db.Model(&user).Updates(updates).Error; err != nil {
+api/auth/handler.go:171:		db.First(&user, claims.UserID)
+api/auth/totp.go:59:		db.Model(&model.User{}).Where("id = ?", claims.UserID).Updates(map[string]any{
+api/auth/totp.go:74:		db.Model(&model.User{}).Where("id = ?", claims.UserID).Updates(map[string]any{
+api/auth/totp.go:100:		if err := db.First(&user, claims.UserID).Error; err != nil {
+api/auth/totp.go:121:		res := db.Model(&user).
+api/auth/totp.go:137:		db.Model(&user).Updates(model.User{LastLogin: &now, LastIP: c.ClientIP()})
+api/database/handler.go:61:	if err := db.First(&conn, id).Error; err != nil {
+api/database/handler.go:74:	if err := db.First(&srv, conn.ServerID).Error; err != nil {
+api/database/handler.go:135:		q := db.Model(&model.DBConn{})
+api/database/handler.go:204:		if err := db.Create(&conn).Error; err != nil {
+api/database/handler.go:216:		if err := db.First(&conn, id).Error; err != nil {
+api/database/handler.go:231:		if err := db.First(&conn, id).Error; err != nil {
+api/database/handler.go:270:		db.Save(&conn)
+api/database/handler.go:278:		db.Delete(&model.DBConn{}, id)
+api/discovery/handler.go:51:	db.Model(&model.Service{}).
+api/discovery/handler.go:141:	if err := db.First(&s, id).Error; err != nil {
+api/docker/handler.go:66:	if err := db.First(&s, id).Error; err != nil {
+api/files/handler.go:52:	if err := db.First(&s, sid).Error; err != nil {
+api/ingresses/handler.go:149:	if err := db.First(&ig, id).Error; err != nil {
+api/ingresses/handler.go:168:		q := db.Model(&model.IngressRoute{}).
+api/ingresses/handler.go:185:		if err := db.Model(&model.Ingress{}).
+api/ingresses/handler.go:193:		q := db.Model(&model.IngressRoute{}).
+api/ingresses/handler.go:226:	if err := db.First(&cert, *certID).Error; err != nil {
+api/ingresses/handler.go:239:		q := db.Model(&model.Ingress{})
+api/ingresses/handler.go:272:		db.Where("ingress_id = ?", id).Order("sort, id").Find(&routes)
+api/ingresses/handler.go:294:		err := db.Where("edge_server_id = ? AND domain = ?", req.EdgeServerID, req.Domain).First(&existing).Error
+api/ingresses/handler.go:412:		if err := db.Model(ig).Updates(updates).Error; err != nil {
+api/ingresses/handler.go:416:		_ = db.First(ig, id).Error
+api/ingresses/handler.go:479:		if err := db.Create(&ir).Error; err != nil {
+api/ingresses/handler.go:483:		_ = db.Model(&model.Ingress{}).Where("id = ?", igID).Update("status", "pending").Error
+api/ingresses/handler.go:499:		if err := db.Where("id = ? AND ingress_id = ?", rid, igID).First(&ir).Error; err != nil {
+api/ingresses/handler.go:539:		if err := db.Save(&ir).Error; err != nil {
+api/ingresses/handler.go:543:		_ = db.Model(&model.Ingress{}).Where("id = ?", igID).Update("status", "pending").Error
+api/ingresses/handler.go:558:		if err := db.Where("id = ? AND ingress_id = ?", rid, igID).Delete(&model.IngressRoute{}).Error; err != nil {
+api/ingresses/handler.go:562:		_ = db.Model(&model.Ingress{}).Where("id = ?", igID).Update("status", "pending").Error
+api/ingresses/handler.go:637:		if err := db.Where("edge_server_id = ?", edgeID).
+api/ingresses/handler.go:690:		if err := db.Where("server_id = ?", serverID).Order("name").Find(&rows).Error; err != nil {
+api/ingresses/import_handler.go:64:		if err := db.First(&s, edgeID).Error; err != nil {
+api/ingresses/import_handler.go:83:			db.Model(&model.Ingress{}).
+api/ingresses/import_handler.go:114:	if err := db.Find(&servers).Error; err != nil {
+api/ingresses/import_handler.go:253:		if err := db.First(&s, edgeID).Error; err != nil {
+api/ingresses/import_handler.go:260:		db.Model(&model.Ingress{}).
+api/ingresses/import_handler.go:362:		if err := db.First(&s, ig.EdgeServerID).Error; err != nil {
+api/logsearch/handler.go:73:	if err := db.First(&s, id).Error; err != nil {
+api/metrics/handler.go:27:		db.Order("id asc").Find(&servers)
+api/metrics/handler.go:32:		db.Where("id IN (?)",
+api/metrics/handler.go:33:			db.Model(&model.Metric{}).
+api/nginx/handler.go:44:	if err := db.First(&s, id).Error; err != nil {
+api/nginx/handler.go:63:	if err := db.First(&s, id).Error; err != nil {
+api/nginx/profile_handler.go:73:	err := db.Where("edge_server_id = ?", edgeID).First(&np).Error
+api/nginx/profile_handler.go:133:		if err := db.First(&s, edgeID).Error; err != nil {
+api/nginx/profile_handler.go:203:		if err := db.First(&s, edgeID).Error; err != nil {
+api/nginx/profile_handler.go:218:		err := db.Where("edge_server_id = ?", edgeID).First(&np).Error
+api/nginx/profile_handler.go:238:			if err := db.Create(&np).Error; err != nil {
+api/nginx/profile_handler.go:244:			if err := db.Model(&np).Updates(map[string]any{
+api/nginx/profile_handler.go:280:		if err := db.First(&s, edgeID).Error; err != nil {
+api/nginx/profile_handler.go:300:		ferr := db.Where("edge_server_id = ?", edgeID).First(&np).Error
+api/nginx/profile_handler.go:312:			if err := db.Create(&np).Error; err != nil {
+api/nginx/profile_handler.go:320:			if err := db.Model(&np).Updates(map[string]any{
+api/release/handler.go:86:	if err := db.First(&s, id).Error; err != nil {
+api/release/handler.go:97:		db.Order("id asc").Find(&services)
+api/release/handler.go:136:		db.Where("service_id = ?", sid).Order("id desc").Find(&rows)
+api/release/handler.go:157:		if err := db.Where("id = ? AND service_id = ?", req.ArtifactID, sid).First(&art).Error; err != nil {
+api/release/handler.go:180:		if err := db.Create(&rel).Error; err != nil {
+api/release/handler.go:192:	db.Model(&model.Release{}).Where("service_id = ? AND label LIKE ?", sid, today+"-%").Count(&n)
+api/release/handler.go:242:		db.Where("service_id = ?", sid).Order("id desc").Find(&rows)
+api/release/handler.go:292:		if err := db.Create(&art).Error; err != nil {
+api/release/handler.go:358:	if err := db.Create(&art).Error; err != nil {
+api/release/handler.go:419:		if err := db.Create(&row).Error; err != nil {
+api/release/handler.go:446:		db.Where("service_id = ?", sid).Order("id desc").Find(&rows)
+api/release/handler.go:464:		if err := db.Create(&row).Error; err != nil {
+api/release/handler.go:481:		db.Where("service_id = ?", sid).Order("id desc").Limit(200).Find(&rows)
+api/release/handler.go:498:		if err := db.Where("id = ? AND service_id = ?", rid, sid).First(&row).Error; err != nil {
+api/release/handler.go:523:		if err := db.Model(&model.Service{}).Where("id = ?", sid).
+api/release/webhook.go:37:		if err := db.Where("webhook_secret = ?", token).First(&svc).Error; err != nil {
+api/servers/handler.go:70:		db.Order("id asc").Find(&servers)
+api/servers/handler.go:110:		if err := db.Create(&s).Error; err != nil {
+api/servers/handler.go:166:		if err := db.Model(&s).Updates(updates).Error; err != nil {
+api/servers/handler.go:185:		db.Delete(&s)
+api/servers/handler.go:187:		db.Where("server_id = ?", sid).Delete(&model.Metric{})
+api/servers/handler.go:188:		db.Where("server_id = ?", sid).Delete(&model.Service{})
+api/servers/handler.go:189:		db.Where("server_id = ?", sid).Delete(&model.DBConn{})
+api/servers/handler.go:190:		db.Where("server_id = ?", sid).Delete(&model.AlertRule{})
+api/servers/handler.go:191:		db.Where("server_id = ?", sid).Delete(&model.AlertEvent{})
+api/servers/handler.go:192:		db.Where("server_id = ?", sid).Delete(&model.SSLCert{})
+api/servers/handler.go:205:			db.Model(&s).Updates(map[string]any{"status": "online", "last_check_at": now})
+api/servers/handler.go:221:			db.Model(&s).Updates(map[string]any{"status": status, "last_check_at": now})
+api/servers/handler.go:226:		db.Model(&s).Updates(map[string]any{"status": status, "last_check_at": now})
+api/servers/handler.go:265:		db.Create(&m)
+api/servers/handler.go:285:		db.Where("server_id = ?", s.ID).Order("created_at desc").Limit(limit).Find(&metrics)
+api/servers/handler.go:310:		db.Where("server_id = ?", s.ID).Order("id asc").Find(&svcs)
+api/servers/handler.go:324:			db.Where("id IN ?", appIDs).Find(&apps)
+api/servers/handler.go:373:	if err := db.First(&s, id).Error; err != nil {
+api/servers/networks.go:22:		if err := db.First(&s, id).Error; err != nil {
+api/servers/networks.go:54:		if err := db.First(&s, id).Error; err != nil {
+api/servers/networks.go:77:		if err := db.Save(&s).Error; err != nil {
+api/servers/networks.go:83:		db.First(&fresh, id)
+api/settings/handler.go:20:		db.Find(&settings)
+api/setup/handler.go:44:		db.Model(&model.User{}).Count(&userCount)
+api/setup/handler.go:71:		db.Model(&model.User{}).Count(&count)
+api/setup/handler.go:90:		if err := db.Create(&user).Error; err != nil {
+api/ssl/handler.go:48:	if err := db.First(&s, id).Error; err != nil {
+api/ssl/handler.go:156:	err = db.Where("server_id = ? AND domain = ?", serverID, domain).First(&existing).Error
+api/ssl/handler.go:159:		return db.Model(&existing).Updates(updates).Error
+api/ssl/handler.go:175:		return db.Create(&cert).Error
+api/ssl/handler.go:234:		q := db.Where("server_id = ?", id)
+api/ssl/handler.go:350:		if err := db.Where("server_id = ? AND id = ?", s.ID, cid).First(&cert).Error; err != nil {
+api/ssl/handler.go:385:		if err := db.Delete(&model.SSLCert{}, cid).Error; err != nil {
+api/system/handler.go:50:	if err := db.First(&s, id).Error; err != nil {
+api/system/handler.go:505:		if err := db.First(&s, id).Error; err != nil {
+api/terminal/handler.go:78:		if err := db.First(&s, id).Error; err != nil {

@@ -1,0 +1,4 @@
+PASS
+ok  	github.com/serverhub/serverhub/pkg/svcstatus	0.190s
+PASS
+ok  	github.com/serverhub/serverhub/pkg/nginxrender	0.142s
