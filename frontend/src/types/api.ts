@@ -107,12 +107,12 @@ export interface Deploy {
   work_dir: string
   image_name: string
   // reconcile
+  // sync_status 'drifted' 枚举随 P-D DesiredVersion 漂移检测一起退役;
+  // last_status / last_run_at 在 P-G 后由 deploy_runs 派生,/services/:id 端点
+  // 不再返回这两个字段(只在 GET /servers/:id/services 列表里通过 ServerService.last_status 派生展示)。
   auto_sync: boolean
   sync_interval: number
-  sync_status: '' | 'synced' | 'drifted' | 'syncing' | 'error'
-  // status
-  last_run_at: string | null
-  last_status: '' | 'running' | 'success' | 'failed'
+  sync_status: '' | 'synced' | 'syncing' | 'error'
   // Release 三维模型（Phase M1）
   current_release_id?: number | null
   auto_rollback_on_fail?: boolean

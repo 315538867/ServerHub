@@ -10,11 +10,6 @@
       </div>
 
       <div class="hero-meta">
-        <span v-if="deploy.last_run_at" class="meta-item">
-          <span class="meta-cap">最近运行</span>
-          <span class="meta-val">{{ formatTimeAgo(deploy.last_run_at) }}</span>
-        </span>
-        <UiBadge v-if="deploy.last_status" :tone="lastStatusTone">{{ lastStatusLabel }}</UiBadge>
         <UiBadge v-if="deploy.auto_sync" tone="brand">自动同步 · {{ deploy.sync_interval || 30 }}s</UiBadge>
       </div>
     </div>
@@ -53,8 +48,6 @@ import type { Deploy } from '@/types/api'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
 
-type Tone = 'brand' | 'success' | 'warning' | 'danger' | 'neutral'
-
 const props = defineProps<{
   deploy: Deploy
   running: boolean
@@ -67,12 +60,13 @@ defineEmits<{
   stop: []
 }>()
 
-const isDrift = computed(() => props.deploy.sync_status === 'drifted' || props.deploy.sync_status === 'error')
+// 'drifted' 分支随 P-D DesiredVersion 漂移检测一起退役 —— 后端 reconciler 早已
+// 不写该值,这里一并删掉死分支。错误态仍保留 hero--drift 红色样式以示区别。
+const isError = computed(() => props.deploy.sync_status === 'error')
 
 const syncLabel = computed(() => {
   switch (props.deploy.sync_status) {
     case 'synced': return '已同步'
-    case 'drifted': return '版本漂移'
     case 'syncing': return '同步中'
     case 'error': return '同步失败'
     default: return '未同步'
@@ -82,7 +76,6 @@ const syncLabel = computed(() => {
 const syncSubText = computed(() => {
   switch (props.deploy.sync_status) {
     case 'synced': return '当前版本与期望版本一致'
-    case 'drifted': return '检测到版本不匹配，建议执行部署'
     case 'syncing': return '正在拉取镜像并重启服务'
     case 'error': return '上次部署失败，请检查日志'
     default: return '尚未运行过部署'
@@ -92,7 +85,6 @@ const syncSubText = computed(() => {
 const syncDotClass = computed(() => {
   switch (props.deploy.sync_status) {
     case 'synced': return 'dot--ok'
-    case 'drifted': return 'dot--warn'
     case 'syncing': return 'dot--info'
     case 'error': return 'dot--err'
     default: return 'dot--idle'
@@ -101,40 +93,9 @@ const syncDotClass = computed(() => {
 
 const heroClass = computed(() => ({
   'deploy-hero--ok': props.deploy.sync_status === 'synced',
-  'deploy-hero--drift': isDrift.value,
+  'deploy-hero--drift': isError.value,
   'deploy-hero--running': props.running,
 }))
-
-const lastStatusLabel = computed(() => {
-  switch (props.deploy.last_status) {
-    case 'success': return '上次成功'
-    case 'failed': return '上次失败'
-    case 'running': return '执行中'
-    default: return props.deploy.last_status || '—'
-  }
-})
-const lastStatusTone = computed<Tone>(() => {
-  switch (props.deploy.last_status) {
-    case 'success': return 'success'
-    case 'failed': return 'danger'
-    case 'running': return 'warning'
-    default: return 'neutral'
-  }
-})
-
-function formatTimeAgo(iso: string): string {
-  const t = new Date(iso).getTime()
-  if (!t) return '—'
-  const diff = Date.now() - t
-  const min = Math.floor(diff / 60000)
-  if (min < 1) return '刚刚'
-  if (min < 60) return `${min} 分钟前`
-  const hr = Math.floor(min / 60)
-  if (hr < 24) return `${hr} 小时前`
-  const day = Math.floor(hr / 24)
-  if (day < 30) return `${day} 天前`
-  return new Date(iso).toLocaleDateString('zh-CN')
-}
 </script>
 
 <style scoped>

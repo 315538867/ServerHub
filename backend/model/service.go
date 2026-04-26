@@ -48,6 +48,18 @@ type Service struct {
 	AutoRollbackOnFail bool `gorm:"default:false" json:"auto_rollback_on_fail"`
 
 	// Reconcile loop
+	//
+	// SyncStatus 取值 ''(初始,从未参与 reconcile) | 'synced' | 'syncing' | 'error'。
+	// 历史曾经存在 'drifted' 枚举,对应 P-D 之前 DesiredVersion ↔ ActualVersion
+	// 漂移检测的语义,M3 起 reconciler 改为"无条件重放 CurrentReleaseID",漂移
+	// 概念整体退役,该值已不再写入。
+	//
+	// 写入侧分两类:
+	//   - reconciler(pkg/scheduler/reconciler.go):syncing → synced/error,
+	//     "syncing" 同时充当原子守卫(Where sync_status != 'syncing' Update),
+	//     防止同一 Service 被并发 schedule 触发两次 ApplyRelease。
+	//   - 接管入口(pkg/takeover/* + pkg/discovery/importer.go):直写 'synced'
+	//     表达"已对齐"初值,不参与 reconciler 的状态机。
 	AutoSync     bool   `gorm:"default:false" json:"auto_sync"`
 	SyncInterval int    `gorm:"default:60" json:"sync_interval"`
 	SyncStatus   string `gorm:"default:''" json:"sync_status"`
