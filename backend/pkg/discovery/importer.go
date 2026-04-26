@@ -47,7 +47,6 @@ func Import(db *gorm.DB, serverID uint, cands []Candidate, aesKey string) Import
 			ServerID:   serverID,
 			Type:       fallback(c.Suggested.Type, model.ServiceTypeNative),
 			WorkDir:    c.Suggested.WorkDir,
-			ImageName:  c.Suggested.ImageName,
 			SourceKind: c.Kind,
 			SourceID:   c.SourceID,
 			SyncStatus: "synced",

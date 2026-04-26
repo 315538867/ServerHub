@@ -327,21 +327,28 @@ func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		// LastStatus 派生:最近一条 DeployRun 的 Status;无 run 视作 takeover 接管,
+		// 派生区:LastStatus 取最近一条 DeployRun.Status,无 run 视作 takeover 接管,
 		// 默认 "success" 与 P-G 之前的写入语义对齐,避免前端从有值变 "—" 的 UX 退步。
+		// ImageName 从 P-I 起也走派生:Service.CurrentReleaseID → Release.StartSpec.image,
+		// 真值跟 buildStartPart 实际启动用的镜像对齐(而非历史 takeover 一次性快照)。
+		//
+		// 注意:Entry 现在多字段聚合,某 Service 可能只有 Image(还没部署过 → 没 DeployRun)
+		// 或只有 Status(StartSpec 不是 docker 类型 → 没 image)。所以两个字段各自判断,
+		// 不能用 ok-check 做"是否有 entry"的统一开关。
 		latest := svcstatus.LatestByService(db, svcIDs)
 
 		out := make([]svcItem, len(svcs))
 		for i, sv := range svcs {
-			status := "success"
-			if e, ok := latest[sv.ID]; ok {
-				status = e.Status
+			e := latest[sv.ID]
+			status := e.Status
+			if status == "" {
+				status = "success"
 			}
 			it := svcItem{
 				ID: sv.ID, Name: sv.Name, Type: sv.Type,
 				ApplicationID: sv.ApplicationID,
 				ExposedPort:   sv.ExposedPort,
-				ImageName:     sv.ImageName,
+				ImageName:     e.Image,
 				WorkDir:       sv.WorkDir,
 				LastStatus:    status,
 			}

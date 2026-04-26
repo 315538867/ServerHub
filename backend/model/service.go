@@ -29,12 +29,20 @@ type Service struct {
 
 	// Execution config
 	//
-	// WorkDir 与 ImageName 仍参与 discovery 指纹算法（详见 pkg/discovery/fingerprint.go）
-	// 与 release 上下文默认 cwd / 历史只读展示。其余 4 字段（ComposeFile/StartCmd/
-	// Runtime/ConfigFiles）已在 P-D 阶段下沉到 Release.StartSpec/ConfigFileSet,
-	// schema 与代码中均已删除。
-	WorkDir   string `gorm:"default:''" json:"work_dir"`
-	ImageName string `gorm:"default:''" json:"image_name"`
+	// WorkDir 是真值字段:
+	//   - release_apply.go::buildReleaseCmd 在启动每个 Release 前 mkdir -p && cd
+	//     这里(为空时退化为 /tmp/serverhub-svc-<id>);所以改 WorkDir 立刻影响下一次
+	//     reconcile 的实际工作目录,不必新建 Release。
+	//   - discovery.Fingerprint(docker / nginx kind)把它纳入指纹算子,改 WorkDir 会让
+	//     下次扫描视为"新候选" → 用户被迫再接管一次。生产中不要轻易改。
+	//   - 前端展示用,Service 列表/详情都直读这个值。
+	//
+	// ImageName 在 P-I 起已下线 —— 字段从 schema 移除,真值由 Service.CurrentReleaseID
+	// 指向的 Release.StartSpec.image 派生(见 pkg/svcstatus.LatestByService)。这样
+	// 跟 buildStartPart 实际启动用的镜像对齐,而不是 takeover 一次性快照下来后
+	// 永不更新的死值。Discovery 指纹仍读 Candidate.Suggested.ImageName(那是扫描
+	// 当下从 docker inspect 拿的活值,与 Service 行无关)。
+	WorkDir string `gorm:"default:''" json:"work_dir"`
 
 	// ExposedPort 是 Service 对外提供的主端口（供 Nginx upstream 使用）。
 	// 0 表示未暴露或纯静态服务。discovery 阶段会尽量从 docker ports / compose

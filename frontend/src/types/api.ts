@@ -105,11 +105,13 @@ export interface Deploy {
   server_id: number
   type: 'docker' | 'docker-compose' | 'native' | 'static'
   work_dir: string
-  image_name: string
   // reconcile
   // sync_status 'drifted' 枚举随 P-D DesiredVersion 漂移检测一起退役;
   // last_status / last_run_at 在 P-G 后由 deploy_runs 派生,/services/:id 端点
   // 不再返回这两个字段(只在 GET /servers/:id/services 列表里通过 ServerService.last_status 派生展示)。
+  // image_name P-I 起从 Service 表下线,真值由 Service.CurrentReleaseID 指向的
+  // Release.StartSpec.image 派生(同样仅在 ServerService 列表派生展示);单条
+  // /services/:id 不再返回该字段。
   auto_sync: boolean
   sync_interval: number
   sync_status: '' | 'synced' | 'syncing' | 'error'
@@ -125,7 +127,6 @@ export interface DeployForm {
   server_id: number | null
   type: 'docker' | 'docker-compose' | 'native' | 'static'
   work_dir: string
-  image_name?: string
   auto_sync?: boolean
   sync_interval?: number
 }

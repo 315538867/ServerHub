@@ -77,6 +77,11 @@ func init() {
 		Name:    "drop services.{last_status,last_run_at}",
 		Fn:      migrateDropServiceLastStatusCols,
 	})
+	Register(Migration{
+		Version: "024_drop_service_image_name_col",
+		Name:    "drop services.image_name",
+		Fn:      migrateDropServiceImageNameCol,
+	})
 }
 
 // migrateRenameDeploysToServices 把 v0.2 之前的 deploys 表改名 services。
@@ -308,6 +313,37 @@ func migrateDropServiceLastStatusCols(tx *gorm.DB) error {
 		if err := tx.Migrator().DropColumn("services", col); err != nil {
 			return fmt.Errorf("drop services.%s: %w", col, err)
 		}
+	}
+	return nil
+}
+
+// migrateDropServiceImageNameCol 收口 P-I:把 services.image_name 列从物理 schema
+// 删除。
+//
+// 语义前提:
+//   - P-I 起 Service.ImageName 模型字段下线,前端展示由 Service.CurrentReleaseID
+//     指向的 Release.StartSpec.image 派生(实现见 pkg/svcstatus.LatestByService)。
+//     这与 buildStartPart 实际启动用的镜像对齐,而非 takeover 一次性快照。
+//   - 历史值不需要 backfill 到 Release.StartSpec:每个有 CurrentReleaseID 的 Service
+//     已经有对应 Release 行,StartSpec 在 m2_deploy_to_release.go 的迁移期就从
+//     legacyDeployVersion 还原过 image。CurrentReleaseID=NULL 的 Service 是空壳
+//     (从未部署),image_name 即便有值也无 release 上下文,丢就丢。
+//   - Discovery 指纹算的是 Candidate.Suggested.ImageName(扫描当下 docker inspect
+//     拿的活值),与 Service 表上的列无关,不受此 migration 影响。003 历史 backfill
+//     已用快照 struct legacyServiceForFingerprint003 接住了,本 migration 之后
+//     services.image_name 不存在,但 003 在已升级库里早已写过 schema_migrations,
+//     不会再跑;新装库 003 也不会找到 source_fingerprint='' 的旧行,正常 no-op。
+//
+// 可重入:HasColumn 守卫确保旧库 / 新装库都安全 no-op。
+func migrateDropServiceImageNameCol(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("services") {
+		return nil
+	}
+	if !tx.Migrator().HasColumn("services", "image_name") {
+		return nil
+	}
+	if err := tx.Migrator().DropColumn("services", "image_name"); err != nil {
+		return fmt.Errorf("drop services.image_name: %w", err)
 	}
 	return nil
 }

@@ -138,9 +138,11 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 			latest := svcstatus.LatestByService(db, svcIDs)
 			grouped := map[uint][]string{}
 			for _, r := range rows {
-				st := "success"
-				if e, ok := latest[r.ServiceID]; ok {
-					st = e.Status
+				// P-I 起 Entry 多字段聚合,无 DeployRun 时 Status 为空(可能 Image 非空)。
+				// "无 run = success" 是 takeover 隐含约定,这里统一兜底成 success。
+				st := latest[r.ServiceID].Status
+				if st == "" {
+					st = "success"
 				}
 				grouped[r.ApplicationID] = append(grouped[r.ApplicationID], st)
 			}
