@@ -165,8 +165,9 @@ func extractIngressProxyCandidate(block string) (IngressProxyCandidate, bool) {
 
 	// 一次 pass 同时收集顶层杂项行 + 每个 location 块的范围。
 	type loc struct {
-		prefix string
-		body   string
+		prefix    string
+		body      string
+		proxyPass string
 	}
 	var locs []loc
 	var topLines []string
@@ -175,10 +176,15 @@ func extractIngressProxyCandidate(block string) (IngressProxyCandidate, bool) {
 
 	lines := strings.Split(block, "\n")
 	depth := 0
+	// frame 用结构体字段而不是 body 里的字符串哨兵承载 proxy_pass:之前的写法是
+	// 把 "__PROXY_PASS__=..." 行写进 body 后再在外层 split 抠出来,典型的"带内
+	// 编码"——结构化承载之后,parser 的输出语义自洽,任何调用方拿到 frame 就能
+	// 直接读 ProxyPass,不再依赖一个魔法前缀。
 	type frame struct {
-		prefix  string
-		body    strings.Builder
-		started bool
+		prefix     string
+		body       strings.Builder
+		proxyPass  string
+		started    bool
 	}
 	var stack []*frame
 	for _, line := range lines {
@@ -206,10 +212,10 @@ func extractIngressProxyCandidate(block string) (IngressProxyCandidate, bool) {
 				topWS = true
 			}
 		} else if cur != nil {
-			// 在 location 内：body 累积；proxy_pass 单独抓出，不写进 body。
+			// 在 location 内：body 累积；proxy_pass 单独存到帧字段,不入 body。
+			// 同一 location 多条 proxy_pass 取最后一条(nginx 实际行为也是后者覆盖)。
 			if m := ingressProxyPassRe.FindStringSubmatch(line); m != nil {
-				// proxy_pass 不入 body，但要记到该帧（取最后一条作为 ProxyPass）
-				cur.body.WriteString("__PROXY_PASS__=" + strings.TrimSpace(m[1]) + "\n")
+				cur.proxyPass = strings.TrimSpace(m[1])
 			} else if !strings.HasPrefix(trimmed, "location") || cur.started {
 				// 第一条 `location ... {` 也别写进 body（已经被作为帧 prefix 消化）
 				if trimmed != "" {
@@ -237,7 +243,11 @@ func extractIngressProxyCandidate(block string) (IngressProxyCandidate, bool) {
 					top := stack[len(stack)-1]
 					stack = stack[:len(stack)-1]
 					if top != nil && depth == 0 {
-						locs = append(locs, loc{prefix: top.prefix, body: top.body.String()})
+						locs = append(locs, loc{
+							prefix:    top.prefix,
+							body:      top.body.String(),
+							proxyPass: top.proxyPass,
+						})
 					}
 				}
 			}
@@ -245,31 +255,20 @@ func extractIngressProxyCandidate(block string) (IngressProxyCandidate, bool) {
 	}
 
 	for _, l := range locs {
+		if l.proxyPass == "" {
+			continue
+		}
 		path := l.prefix
 		if path == "" {
 			path = "/"
 		}
-		body := l.body
-		// 抽出 location 帧里我们临时编码的 __PROXY_PASS__ 行
-		var pp string
-		var rest strings.Builder
-		for _, ln := range strings.Split(body, "\n") {
-			if strings.HasPrefix(ln, "__PROXY_PASS__=") {
-				pp = strings.TrimPrefix(ln, "__PROXY_PASS__=")
-				continue
-			}
-			rest.WriteString(ln + "\n")
-		}
-		if pp == "" {
-			continue
-		}
-		ws := ingressUpgradeHeaderRe.MatchString(rest.String()) ||
-			ingressConnHeaderRe.MatchString(rest.String())
+		ws := ingressUpgradeHeaderRe.MatchString(l.body) ||
+			ingressConnHeaderRe.MatchString(l.body)
 		cand.Routes = append(cand.Routes, IngressProxyRoute{
 			Path:      path,
-			ProxyPass: pp,
+			ProxyPass: l.proxyPass,
 			WebSocket: ws,
-			Extra:     strings.TrimRight(rest.String(), "\n"),
+			Extra:     strings.TrimRight(l.body, "\n"),
 		})
 	}
 

@@ -20,40 +20,16 @@ import (
 
 var upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096}
 
+// 站点 CRUD 已由 Ingress 模型(POST /api/v1/ingresses)接管,nginx 包只剩
+// reload/restart/日志/profile 四类"实例级"操作。任何 site 路由都不在此注册——
+// 客户端命中老路径直接 404,这就是层架构表达"已下架"的写法。
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	upgrader.CheckOrigin = middleware.WSCheckOrigin(cfg)
-	// Phase Nginx-P3F: legacy 站点 CRUD 全部下架,替换为 410 Gone。
-	// Ingress 模型(POST /api/v1/ingresses)已经覆盖反代/静态站点的全部能力,
-	// 旧端点保留只会让前端误调用 + 与 Ingress 渲染产物冲突。这里返回 410 而
-	// 不是 404,是为了让仍跑老前端的客户端能从响应里直接看到迁移指引,而不
-	// 是单纯"找不到"。
-	r.GET("/:id/nginx/sites", legacySiteGoneHandler())
-	r.POST("/:id/nginx/sites", legacySiteGoneHandler())
-	r.GET("/:id/nginx/sites/:name/config", legacySiteGoneHandler())
-	r.PUT("/:id/nginx/sites/:name/config", legacySiteGoneHandler())
-	r.DELETE("/:id/nginx/sites/:name", legacySiteGoneHandler())
-	r.POST("/:id/nginx/sites/:name/enable", legacySiteGoneHandler())
-	r.POST("/:id/nginx/sites/:name/disable", legacySiteGoneHandler())
-
 	r.POST("/:id/nginx/reload", reloadHandler(db, cfg))
 	r.POST("/:id/nginx/restart", restartHandler(db, cfg))
 	r.GET("/:id/nginx/logs/access", accessLogsHandler(db, cfg))
 	r.GET("/:id/nginx/logs/error", errorLogsHandler(db, cfg))
-	// Phase Nginx-P3: 多实例 profile 与 nginx -V probe
 	RegisterProfileRoutes(r, db, cfg)
-}
-
-// legacySiteGoneHandler 把 Phase Nginx-P3F 下架的 7 个 site CRUD 路由统一回吐
-// 410 Gone。带 RFC 8594 的 Deprecation/Sunset/Link 头,客户端可据此自动切到
-// /api/v1/ingresses。Body 里的中文 message 是给人看的迁移提示。
-func legacySiteGoneHandler() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.Header("Deprecation", "true")
-		c.Header("Sunset", "Wed, 01 Jul 2026 00:00:00 GMT")
-		c.Header("Link", `</api/v1/ingresses>; rel="successor-version"`)
-		resp.Fail(c, http.StatusGone, 4100,
-			"该接口已下线,请改用 /api/v1/ingresses(Ingress 模型已覆盖站点反代/静态托管)")
-	}
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────

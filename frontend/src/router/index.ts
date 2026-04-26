@@ -1,6 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getSetupStatus } from '@/api/setup'
+import {
+  appLegacyRedirects,
+  appNetworkLegacyRedirects,
+  serverLegacyRedirects,
+} from './legacy-redirects'
 
 const router = createRouter({
   history: createWebHistory('/panel/'),
@@ -43,9 +48,7 @@ const router = createRouter({
               redirect: (to) => `${to.path}/ingresses`,
               children: [
                 { path: 'ingresses', name: 'AppNetworkIngresses', component: () => import('@/views/Apps/Ingresses.vue') },
-                // Phase Nginx-P3F: 旧 site-name 视图(Domain.vue)随 legacy site CRUD 一并下架,
-                // 永久跳到 ingresses 子页 —— 反代/静态站点能力全部由 Ingress 模型承担。
-                { path: 'domain', redirect: (to) => `/apps/${to.params.appId}/network/ingresses` },
+                ...appNetworkLegacyRedirects,
               ],
             },
             {
@@ -60,16 +63,7 @@ const router = createRouter({
             },
             { path: 'data', name: 'AppData', component: () => import('@/views/Apps/Database.vue') },
 
-            // ── 旧 URL 向后兼容（永久重定向，保护书签/历史链接） ──
-            { path: 'nginx', redirect: (to) => `/apps/${to.params.appId}/network/routes` },
-            { path: 'domain', redirect: (to) => `/apps/${to.params.appId}/network/domain` },
-            { path: 'service', redirect: (to) => `/apps/${to.params.appId}/ops/service` },
-            { path: 'logs', redirect: (to) => `/apps/${to.params.appId}/ops/logs` },
-            { path: 'terminal', redirect: (to) => `/apps/${to.params.appId}/ops/terminal` },
-            { path: 'database', redirect: (to) => `/apps/${to.params.appId}/data` },
-            // M3: /apps/:id/deploy 已退役，统一跳到 Releases Tab
-            { path: 'deploy', redirect: (to) => `/apps/${to.params.appId}/releases` },
-            { path: 'env', redirect: (to) => `/apps/${to.params.appId}/releases` },
+            ...appLegacyRedirects,
           ],
         },
 
@@ -82,7 +76,6 @@ const router = createRouter({
           children: [
             { path: 'overview', name: 'ServerOverview', component: () => import('@/views/ServerDetail/Overview.vue') },
             { path: 'services', name: 'ServerServices', component: () => import('@/views/ServerDetail/Services.vue') },
-            { path: 'nginx', redirect: (to) => `/servers/${to.params.serverId}/ingresses` },
             { path: 'ingresses', name: 'ServerIngresses', component: () => import('@/views/ServerDetail/Ingresses.vue') },
             { path: 'networks', name: 'ServerNetworks', component: () => import('@/views/ServerDetail/Networks.vue') },
             { path: 'docker', name: 'ServerDocker', component: () => import('@/views/ServerDetail/Docker.vue') },
@@ -91,6 +84,8 @@ const router = createRouter({
             { path: 'files', name: 'ServerFiles', component: () => import('@/views/ServerDetail/Files.vue') },
             { path: 'terminal', name: 'ServerTerminal', component: () => import('@/views/ServerDetail/Terminal.vue') },
             { path: 'discover', name: 'ServerDiscover', component: () => import('@/views/ServerDetail/Discover.vue') },
+
+            ...serverLegacyRedirects,
           ],
         },
 
