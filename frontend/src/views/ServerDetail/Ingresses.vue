@@ -6,7 +6,9 @@
           <template #icon><RefreshCw :size="14" /></template>
           刷新
         </UiButton>
-        <UiButton variant="secondary" size="sm" :loading="dryRunning" @click="doDryRun">预览变更</UiButton>
+        <UiButton variant="secondary" size="sm" :loading="dryRunning" @click="doDryRun">
+          预览/扫描漂移
+        </UiButton>
         <UiButton variant="primary" size="sm" :loading="applying" @click="doApply">应用配置</UiButton>
         <UiButton variant="primary" size="sm" @click="openCreate">新建 Ingress</UiButton>
       </template>
@@ -194,6 +196,43 @@
         </div>
       </template>
     </NModal>
+
+    <NDrawer v-model:show="auditDetailVisible" :width="640" placement="right">
+      <NDrawerContent :title="auditDetail ? `审计 #${auditDetail.id}` : '审计详情'" closable>
+        <div v-if="auditDetail" class="ig-audit">
+          <div class="ig-audit__head">
+            <UiBadge :tone="auditDetail.rolled_back ? 'danger' : 'success'">
+              {{ auditDetail.rolled_back ? '已回滚' : '已应用' }}
+            </UiBadge>
+            <span class="ig-muted">{{ formatDate(auditDetail.created_at) }}</span>
+            <span class="ig-muted">{{ auditDetail.duration_ms ? `${auditDetail.duration_ms} ms` : '' }}</span>
+            <span v-if="auditDetail.actor_username" class="ig-muted">by {{ auditDetail.actor_username }}</span>
+          </div>
+
+          <div class="ig-audit__field">
+            <div class="ig-audit__label">变更集</div>
+            <pre v-if="auditDetail.changeset_diff" class="ig-audit__pre">{{ auditDetail.changeset_diff }}</pre>
+            <div v-else class="ig-muted">(无变更)</div>
+          </div>
+
+          <div class="ig-audit__field">
+            <div class="ig-audit__label">nginx -t / reload 输出</div>
+            <LogOutput
+              v-if="auditDetail.nginx_t_output"
+              :content="auditDetail.nginx_t_output"
+              tone="dark"
+            />
+            <div v-else class="ig-muted">(无输出)</div>
+          </div>
+
+          <div class="ig-audit__field">
+            <div class="ig-audit__label">备份路径</div>
+            <code v-if="auditDetail.backup_path" class="ig-mono">{{ auditDetail.backup_path }}</code>
+            <span v-else class="ig-muted">—</span>
+          </div>
+        </div>
+      </NDrawerContent>
+    </NDrawer>
   </div>
 </template>
 
@@ -201,7 +240,7 @@
 import { ref, computed, h, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  NDataTable, NModal, NForm, NFormItem, NInput, NInputNumber, NSelect,
+  NDataTable, NModal, NDrawer, NDrawerContent, NForm, NFormItem, NInput, NInputNumber, NSelect,
   NRadioGroup, NRadioButton, NSwitch, NPopconfirm, NTag, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns, SelectOption } from 'naive-ui'
@@ -579,7 +618,13 @@ async function doDryRun() {
     const r = await dryRunEdge(serverId.value)
     diffChanges.value = r.changes ?? []
     lastApply.value = null
-    if (!diffChanges.value.length) message.success('当前实际配置已与期望一致,无变更')
+    if (!diffChanges.value.length) {
+      message.success('当前实际配置已与期望一致,无变更')
+    } else {
+      message.warning(`检出 ${diffChanges.value.length} 条漂移`)
+    }
+    // dry-run 同时回写 ingress.status (applied/drift),刷新列表以反映最新状态
+    await loadIngressList()
   } catch (e: any) {
     showApiError(e, '预览失败')
   } finally {
@@ -615,8 +660,21 @@ function statusTone(status: string): 'success' | 'neutral' | 'warning' | 'danger
   switch (status) {
     case 'applied': return 'success'
     case 'pending': return 'warning'
+    case 'drift': return 'warning'
+    case 'broken':
     case 'failed': return 'danger'
     default: return 'neutral'
+  }
+}
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case 'applied': return '已生效'
+    case 'pending': return '待应用'
+    case 'drift': return '漂移'
+    case 'broken': return '异常'
+    case 'failed': return '失败'
+    default: return status || '—'
   }
 }
 
@@ -638,7 +696,7 @@ const ingressColumns = computed<DataTableColumns<Ingress>>(() => [
   { title: '默认路径', key: 'default_path', width: 140, ellipsis: { tooltip: true } },
   {
     title: '状态', key: 'status', width: 90,
-    render: (row) => h(UiBadge, { tone: statusTone(row.status) }, () => row.status || '—'),
+    render: (row) => h(UiBadge, { tone: statusTone(row.status) }, () => statusLabel(row.status)),
   },
   {
     title: '最近应用', key: 'last_applied_at', width: 180,
@@ -729,14 +787,47 @@ function renderUpstreamHints(rt: IngressRoute) {
 const auditColumns: DataTableColumns<AuditApply> = [
   { title: 'ID', key: 'id', width: 70 },
   { title: '时间', key: 'created_at', width: 180, render: (row) => formatDate(row.created_at) },
-  { title: '操作人', key: 'actor_username', width: 140 },
+  { title: '操作人', key: 'actor_username', width: 140, render: (row) => row.actor_username || '—' },
   {
     title: '结果', key: 'rolled_back', width: 100,
     render: (row) => h(UiBadge, { tone: row.rolled_back ? 'danger' : 'success' },
       () => row.rolled_back ? '已回滚' : '已应用'),
   },
-  { title: '变更', key: 'changeset', ellipsis: { tooltip: true } },
+  { title: '耗时', key: 'duration_ms', width: 90, render: (row) => row.duration_ms ? `${row.duration_ms} ms` : '—' },
+  {
+    title: '变更', key: 'changeset_diff', ellipsis: { tooltip: true },
+    render: (row) => row.changeset_diff
+      ? h('code', { class: 'ig-mono ig-mono--muted' }, summarizeChangeset(row.changeset_diff))
+      : '—',
+  },
+  {
+    title: '操作', key: 'ops', width: 90, fixed: 'right' as const,
+    render: (row) => h(UiButton, {
+      variant: 'ghost', size: 'sm', onClick: () => openAuditDetail(row),
+    }, () => '查看'),
+  },
 ]
+
+// summarizeChangeset 把多行 diff 压成 "+ a, ~ b, - c" 一行预览,详情交给 Drawer。
+function summarizeChangeset(d: string): string {
+  const lines = d.split('\n').filter((l) => l.trim() !== '')
+  return lines.map((l) => {
+    const sp = l.indexOf(' ')
+    if (sp <= 0) return l
+    const sign = l.slice(0, sp)
+    const path = l.slice(sp + 1).split(' ')[0]
+    const base = path.split('/').pop() || path
+    return `${sign} ${base}`
+  }).join(', ')
+}
+
+// ── 审计详情 Drawer ───────────────────────────────────────────────────────────
+const auditDetailVisible = ref(false)
+const auditDetail = ref<AuditApply | null>(null)
+function openAuditDetail(row: AuditApply) {
+  auditDetail.value = row
+  auditDetailVisible.value = true
+}
 
 function kindSign(k: ChangeKind): string {
   return k === 'add' ? '+' : k === 'delete' ? '-' : '~'
@@ -780,4 +871,16 @@ onMounted(loadAll)
 :deep(.ig-mono--muted) { color: var(--ui-fg-3); }
 :deep(.ig-ops) { display: inline-flex; gap: var(--space-1); }
 :deep(.ig-danger) { color: var(--ui-danger-fg); }
+
+.ig-audit { display: flex; flex-direction: column; gap: var(--space-4); }
+.ig-audit__head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ig-audit__field { display: flex; flex-direction: column; gap: var(--space-1); }
+.ig-audit__label { color: var(--ui-fg-3); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em; }
+.ig-audit__pre {
+  font-family: var(--font-mono); font-size: var(--fs-xs);
+  background: var(--ui-bg-2); border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
+  white-space: pre-wrap; word-break: break-all; margin: 0;
+  color: var(--ui-fg-2); max-height: 320px; overflow: auto;
+}
 </style>

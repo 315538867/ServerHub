@@ -502,6 +502,13 @@ func dryRunHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
+// auditDTO 在 model.AuditApply 基础上加 ActorUsername,前端审计列表/详情
+// 抽屉展示用,避免每次都去 join users。
+type auditDTO struct {
+	model.AuditApply
+	ActorUsername string `json:"actor_username"`
+}
+
 func auditHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		edgeID, ok := parseUintParam(c, "server_id")
@@ -520,10 +527,36 @@ func auditHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.InternalError(c, err.Error())
 			return
 		}
-		if rows == nil {
-			rows = []model.AuditApply{}
+		// 二步法取 username:把 audit 行里出现过的非空 actor_user_id 一次 IN 查出来,
+		// 用 map 拼回 DTO。1+1 查询,避免 N+1。
+		userIDSet := map[uint]struct{}{}
+		for _, r := range rows {
+			if r.ActorUserID != nil {
+				userIDSet[*r.ActorUserID] = struct{}{}
+			}
 		}
-		resp.OK(c, rows)
+		nameByID := map[uint]string{}
+		if len(userIDSet) > 0 {
+			ids := make([]uint, 0, len(userIDSet))
+			for id := range userIDSet {
+				ids = append(ids, id)
+			}
+			var users []model.User
+			if err := db.Select("id, username").Where("id IN ?", ids).Find(&users).Error; err == nil {
+				for _, u := range users {
+					nameByID[u.ID] = u.Username
+				}
+			}
+		}
+		out := make([]auditDTO, 0, len(rows))
+		for _, r := range rows {
+			name := ""
+			if r.ActorUserID != nil {
+				name = nameByID[*r.ActorUserID]
+			}
+			out = append(out, auditDTO{AuditApply: r, ActorUsername: name})
+		}
+		resp.OK(c, out)
 	}
 }
 

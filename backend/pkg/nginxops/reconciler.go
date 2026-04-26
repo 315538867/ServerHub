@@ -153,7 +153,12 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 }
 
 // DryRun 走与 Apply 同样的渲染 / Inspect / Diff 流程，但不写盘也不 reload，
-// 仅返回 changeset 给 UI 预览。亦不写 audit。
+// 仅返回 changeset 给 UI 预览。不写 audit。
+//
+// 副作用：把比对结果回写到 ingress.status —— 空 changes 表示数据库期望与远端
+// 一致，所有 ingress 标 applied；非空 changes 表示存在漂移，所有 ingress 标
+// drift。这样"预览变更"按钮顺便完成了漂移扫描，状态字段反映最近一次扫描的
+// 真相，而不仅仅是上次 Apply 的结果。
 func DryRun(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint) ([]Change, error) {
 	var edge model.Server
 	if err := db.First(&edge, edgeID).Error; err != nil {
@@ -177,7 +182,23 @@ func DryRun(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint) (
 	if err != nil {
 		return nil, err
 	}
-	return Diff(desired, actual), nil
+	changes := Diff(desired, actual)
+	_ = writeDriftStatus(db, edgeID, len(changes) == 0)
+	return changes, nil
+}
+
+// writeDriftStatus 把 edge 上所有 ingress 的 status 翻成 applied 或 drift。
+//   - inSync=true → applied（同时记录 last_applied_at=now，与 Apply 的语义对齐）
+//   - inSync=false → drift（last_applied_at 不动，便于排查"上次成功 apply 后多久开始漂移"）
+//
+// 错误吞掉：drift 扫描是辅助信息，不能因为状态写失败让用户拿不到 changes。
+func writeDriftStatus(db *gorm.DB, edgeID uint, inSync bool) error {
+	if inSync {
+		return updateIngressStatus(db, edgeID)
+	}
+	return db.Model(&model.Ingress{}).
+		Where("edge_server_id = ?", edgeID).
+		Update("status", "drift").Error
 }
 
 // writeChanges 把 Diff 的 add/update/delete 落盘到远端。

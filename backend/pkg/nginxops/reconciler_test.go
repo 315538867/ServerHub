@@ -230,6 +230,51 @@ func TestApply_DryRun_DoesNotWrite(t *testing.T) {
 			t.Errorf("DryRun 不应写盘 / 备份: %s", c)
 		}
 	}
+	// 副作用:有差异时 ingress.status 应翻成 drift,且 last_applied_at 不动
+	var got model.Ingress
+	db.First(&got, ig.ID)
+	if got.Status != "drift" {
+		t.Errorf("DryRun 检出差异时应回写 status=drift,实得 %q", got.Status)
+	}
+	if got.LastAppliedAt != nil {
+		t.Errorf("drift 时 last_applied_at 不应被刷新")
+	}
+}
+
+// 没有差异时,DryRun 应把 status 校准回 applied(以防之前是 drift/pending)。
+// 这样"扫描漂移"按钮可以双向同步状态字段,而不是只在 Apply 后才有 applied。
+func TestDryRun_InSync_FlipsStatusToApplied(t *testing.T) {
+	db := newTestDB(t)
+	edge := model.Server{Name: "e"}
+	db.Create(&edge)
+	// 没有 ingress 时 desired 为空,远端也无文件 → 0 changes
+	ig := model.Ingress{
+		EdgeServerID: edge.ID, MatchKind: nginxrender.MatchKindDomain,
+		Domain: "noop.com", Status: "drift", // 故意先标 drift
+	}
+	db.Create(&ig)
+	// 删掉路由让 desired 为空,避免命中渲染产生 add
+	db.Where("ingress_id = ?", ig.ID).Delete(&model.IngressRoute{})
+
+	fr := newFakeRunner()
+	fr.onContains("base64", "", nil) // 远端也是空
+	installFakeRunner(t, fr)
+
+	changes, err := DryRun(context.Background(), db, &config.Config{}, edge.ID)
+	if err != nil {
+		t.Fatalf("dryrun: %v", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("空 desired + 空 actual 应 0 changes,得 %+v", changes)
+	}
+	var got model.Ingress
+	db.First(&got, ig.ID)
+	if got.Status != "applied" {
+		t.Errorf("无差异时应翻成 applied,实得 %q", got.Status)
+	}
+	if got.LastAppliedAt == nil {
+		t.Errorf("applied 状态应同步 last_applied_at")
+	}
 }
 
 func TestLoadDesired_RawUpstream(t *testing.T) {

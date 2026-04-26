@@ -29,7 +29,7 @@ func setup(t *testing.T) (*gin.Engine, *gorm.DB) {
 		t.Fatalf("open db: %v", err)
 	}
 	if err := db.AutoMigrate(
-		&model.Server{}, &model.Service{},
+		&model.Server{}, &model.Service{}, &model.User{},
 		&model.Ingress{}, &model.IngressRoute{}, &model.AuditApply{},
 		&model.SSLCert{},
 	); err != nil {
@@ -337,6 +337,34 @@ func TestAudit_ListByEdge(t *testing.T) {
 	rows := body["data"].([]any)
 	if len(rows) != 2 {
 		t.Errorf("仅返回该 edge 的审计行: want 2 got %d", len(rows))
+	}
+}
+
+func TestAudit_JoinsActorUsername(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	u := model.User{Username: "alice", Password: "x"}
+	db.Create(&u)
+	uid := u.ID
+	db.Create(&model.AuditApply{EdgeServerID: edge, ActorUserID: &uid, ChangesetDiff: "+ /a"})
+	db.Create(&model.AuditApply{EdgeServerID: edge, ChangesetDiff: "+ /b"}) // actor_user_id=nil → 系统触发
+
+	w, body := do(t, r, "GET", "/ingresses/edges/"+uintToStr(edge)+"/audit", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d", w.Code)
+	}
+	rows := body["data"].([]any)
+	if len(rows) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(rows))
+	}
+	// 按 id DESC 排序:第一条是 nil actor,第二条是 alice
+	first := rows[0].(map[string]any)
+	second := rows[1].(map[string]any)
+	if got := first["actor_username"]; got != "" {
+		t.Errorf("无 actor 行 username 应为空,得 %q", got)
+	}
+	if got := second["actor_username"]; got != "alice" {
+		t.Errorf("有 actor 行应回填 alice,得 %v", got)
 	}
 }
 

@@ -70,16 +70,20 @@ export interface ApplyResult {
   rolled_back: boolean
 }
 
+// AuditApply 与后端 model.AuditApply + auditDTO 对齐：
+//   - changeset_diff: Reconciler 把每条 Change 压成的人类可读 diff
+//   - nginx_t_output: nginx -t / reload 输出合并后的全部 stdout/stderr
+//   - actor_username: 后端 1+1 join users 后注入的展示名
 export interface AuditApply {
   id: number
   edge_server_id: number
   actor_user_id?: number | null
   actor_username: string
-  changeset: string
+  changeset_diff: string
   rolled_back: boolean
   nginx_t_output: string
-  reload_output: string
   backup_path: string
+  duration_ms: number
   created_at: string
 }
 
