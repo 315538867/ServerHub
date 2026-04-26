@@ -14,7 +14,6 @@
 package usecase
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -252,6 +251,5 @@ func execStreaming(rn runner.Runner, cmd string, onLine func(string)) (string, e
 			onLine(line)
 		}
 	}
-	_ = context.TODO()
 	return out, err
 }
