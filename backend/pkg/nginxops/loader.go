@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/netresolve"
 	"github.com/serverhub/serverhub/pkg/nginxrender"
 )
@@ -19,9 +20,14 @@ import (
 //   2. 对每条 ingress：SELECT routes ORDER BY sort, id
 //   3. 对每条 route：service 类型 → netresolve.Resolve；raw 类型 → 直接用
 //   4. 拼装 FileStem（path 模式以 ingress.id 入名避免同 domain 冲突）
+//   5. 解析 cert：DB PEM 优先（解密回填到 IngressCtx 由 reconciler 落盘），
+//      否则回退到 SSLCert.CertPath/KeyPath（旧 letsencrypt 模式）
+//
+// aesKey 是 cfg.Security.AESKey；用来解 SSLCert.CertPEM/KeyPEM。空字符串
+// 表示禁用 PEM 解密（仅供单测且 DB 里没 PEM 数据时）。
 //
 // 返回 nil error 即使无 ingress（空切片合法，触发"清空 edge"语义）。
-func LoadDesired(db *gorm.DB, edge *model.Server) ([]nginxrender.IngressCtx, error) {
+func LoadDesired(db *gorm.DB, edge *model.Server, aesKey string) ([]nginxrender.IngressCtx, error) {
 	var ingresses []model.Ingress
 	if err := db.Where("edge_server_id = ?", edge.ID).Order("id").Find(&ingresses).Error; err != nil {
 		return nil, fmt.Errorf("加载 ingress 失败: %w", err)
@@ -56,20 +62,22 @@ func LoadDesired(db *gorm.DB, edge *model.Server) ([]nginxrender.IngressCtx, err
 			})
 		}
 
-		certPath, keyPath, err := loadCertPaths(db, edge, ig.CertID)
+		certPath, keyPath, certPEM, keyPEM, err := loadCertPaths(db, edge, ig.CertID, aesKey)
 		if err != nil {
 			return nil, err
 		}
 
 		out = append(out, nginxrender.IngressCtx{
-			EdgeServerID: ig.EdgeServerID,
-			FileStem:     fileStem(ig),
-			MatchKind:    ig.MatchKind,
-			Domain:       ig.Domain,
-			Routes:       ctxRoutes,
-			TLSCertPath:  certPath,
-			TLSKeyPath:   keyPath,
-			ForceHTTPS:   ig.ForceHTTPS,
+			EdgeServerID:   ig.EdgeServerID,
+			FileStem:       fileStem(ig),
+			MatchKind:      ig.MatchKind,
+			Domain:         ig.Domain,
+			Routes:         ctxRoutes,
+			TLSCertPath:    certPath,
+			TLSKeyPath:     keyPath,
+			TLSCertContent: certPEM,
+			TLSKeyContent:  keyPEM,
+			ForceHTTPS:     ig.ForceHTTPS,
 		})
 	}
 	return out, nil
@@ -153,23 +161,47 @@ func resolveUpstream(db *gorm.DB, edge *model.Server, rt *model.IngressRoute) (s
 	}
 }
 
-// loadCertPaths 把 Ingress.CertID 解析成本机绝对路径。
-//   - certID == nil → 返回空串（renderer 视为不启用 TLS）
+// loadCertPaths 把 Ingress.CertID 解析成 TLS 落盘所需的 4 元组：
+//
+//   path,  key,  certPEM,  keyPEM
+//
+//   - certID == nil → 全空串（renderer 视为不启用 TLS）
 //   - cert.ServerID 必须等于 edge.ID（API 层在写入时已强校验，这里防御式再查一次）
-//   - 找不到 / 跨机引用 / 路径残缺 → 返回错误，由 Reconciler 把错误冒到 audit
-func loadCertPaths(db *gorm.DB, edge *model.Server, certID *uint) (string, string, error) {
+//   - cert.CertPEM 非空（新版 P2 加密入库）→ 解密成 PEM 文本，path 改写到
+//     CertDir 下的 canonical 路径，让 reconciler 据此落盘
+//   - cert.CertPEM 为空且 cert.CertPath 存在 → 兼容旧 letsencrypt 模式：
+//     直接引用远端已存在的路径，PEM 内容空（reconciler 不写盘）
+//   - 既无 PEM 又无路径 → 错误，让 audit 看到根因
+func loadCertPaths(db *gorm.DB, edge *model.Server, certID *uint, aesKey string) (string, string, string, string, error) {
 	if certID == nil {
-		return "", "", nil
+		return "", "", "", "", nil
 	}
 	var cert model.SSLCert
 	if err := db.First(&cert, *certID).Error; err != nil {
-		return "", "", fmt.Errorf("加载 cert id=%d: %w", *certID, err)
+		return "", "", "", "", fmt.Errorf("加载 cert id=%d: %w", *certID, err)
 	}
 	if cert.ServerID != edge.ID {
-		return "", "", fmt.Errorf("cert id=%d 属于 server=%d，与 edge=%d 不匹配", cert.ID, cert.ServerID, edge.ID)
+		return "", "", "", "", fmt.Errorf("cert id=%d 属于 server=%d，与 edge=%d 不匹配", cert.ID, cert.ServerID, edge.ID)
 	}
+
+	if cert.CertPEM != "" && cert.KeyPEM != "" {
+		if aesKey == "" {
+			return "", "", "", "", fmt.Errorf("cert id=%d 已加密入库但缺 aes key（loader 未传 cfg）", cert.ID)
+		}
+		certText, err := crypto.Decrypt(cert.CertPEM, aesKey)
+		if err != nil {
+			return "", "", "", "", fmt.Errorf("cert id=%d 解密 cert_pem 失败: %w", cert.ID, err)
+		}
+		keyText, err := crypto.Decrypt(cert.KeyPEM, aesKey)
+		if err != nil {
+			return "", "", "", "", fmt.Errorf("cert id=%d 解密 key_pem 失败: %w", cert.ID, err)
+		}
+		cp, kp := nginxrender.CertCanonicalPaths(cert.Domain)
+		return cp, kp, certText, keyText, nil
+	}
+
 	if cert.CertPath == "" || cert.KeyPath == "" {
-		return "", "", fmt.Errorf("cert id=%d 缺 cert_path/key_path", cert.ID)
+		return "", "", "", "", fmt.Errorf("cert id=%d 缺 cert_pem 也缺 cert_path/key_path", cert.ID)
 	}
-	return cert.CertPath, cert.KeyPath, nil
+	return cert.CertPath, cert.KeyPath, "", "", nil
 }

@@ -80,7 +80,7 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 		_ = db.Save(&audit).Error // 审计写入失败也不掩盖主流程错误
 	}()
 
-	desiredCtxs, err := LoadDesired(db, &edge)
+	desiredCtxs, err := LoadDesired(db, &edge, cfg.Security.AESKey)
 	if err != nil {
 		return res, err
 	}
@@ -94,6 +94,13 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 		return res, err
 	}
 	res.BackupPath = backupPath
+
+	// cert 落盘必须在 Snapshot 之后（保证回滚有快照可用），但在 Inspect/Diff
+	// 之前——避免反复 reload。证书内容由 IngressCtx 携带，写盘是幂等的（base64
+	// tee），所以即使 PEM 没变也只是 noop 写入，不会扰动 nginx。
+	if err := syncCerts(r, desiredCtxs); err != nil {
+		return res, fmt.Errorf("证书落盘失败: %w", err)
+	}
 
 	actual, err := Inspect(r)
 	if err != nil {
@@ -172,7 +179,7 @@ func DryRun(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint) (
 	}
 	defer r.Close()
 
-	desiredCtxs, err := LoadDesired(db, &edge)
+	desiredCtxs, err := LoadDesired(db, &edge, cfg.Security.AESKey)
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +194,50 @@ func DryRun(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint) (
 	changes := Diff(desired, actual)
 	_ = writeDriftStatus(db, edgeID, len(changes) == 0)
 	return changes, nil
+}
+
+// syncCerts 把 IngressCtx 携带的 PEM 内容写到 canonical 路径。
+//
+// 仅处理 TLSCertContent 与 TLSKeyContent 都非空的 ctx——空内容意味着 cert 由
+// 外部维护（例如 letsencrypt live 路径），reconciler 不能也不应改写。
+//
+// 同 (CertPath, KeyPath) 可能被多个 ingress 共享同域名引用，做去重避免重复
+// 写盘；底层 tee + base64 已经幂等，去重只是省一次 RTT。
+//
+// privkey 用 0600 权限（chmod 单独跟一刀），fullchain 默认 0644 即可。
+func syncCerts(r runner.Runner, ctxs []nginxrender.IngressCtx) error {
+	type item struct{ path, content string; mode string }
+	seen := make(map[string]struct{})
+	var items []item
+	for _, ig := range ctxs {
+		if ig.TLSCertContent == "" || ig.TLSKeyContent == "" {
+			continue
+		}
+		if ig.TLSCertPath == "" || ig.TLSKeyPath == "" {
+			return fmt.Errorf("ingress edge=%d domain=%q TLS PEM 非空但路径为空", ig.EdgeServerID, ig.Domain)
+		}
+		if _, ok := seen[ig.TLSCertPath]; !ok {
+			seen[ig.TLSCertPath] = struct{}{}
+			items = append(items, item{ig.TLSCertPath, ig.TLSCertContent, "0644"})
+		}
+		if _, ok := seen[ig.TLSKeyPath]; !ok {
+			seen[ig.TLSKeyPath] = struct{}{}
+			items = append(items, item{ig.TLSKeyPath, ig.TLSKeyContent, "0600"})
+		}
+	}
+	for _, it := range items {
+		if err := ensureParentDir(r, it.path); err != nil {
+			return err
+		}
+		cmd := safeshell.WriteRemoteFile(it.path, it.content, true)
+		if out, err := r.Run(cmd); err != nil {
+			return fmt.Errorf("写入 %s 失败: %s: %w", it.path, strings.TrimSpace(out), err)
+		}
+		if out, err := r.Run("sudo -n chmod " + it.mode + " " + safeshell.Quote(it.path)); err != nil {
+			return fmt.Errorf("chmod %s 失败: %s: %w", it.path, strings.TrimSpace(out), err)
+		}
+	}
+	return nil
 }
 
 // writeDriftStatus 把 edge 上所有 ingress 的 status 翻成 applied 或 drift。

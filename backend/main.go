@@ -147,6 +147,7 @@ func main() {
 
 	scheduler.Start(db, cfg)
 	scheduler.StartReconciler(db, cfg)
+	scheduler.StartCertRenewer(db, cfg)
 	retention.Start(db)
 
 	if cfg.DevMode {

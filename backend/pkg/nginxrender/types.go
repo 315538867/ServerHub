@@ -50,6 +50,11 @@ type IngressCtx struct {
 	// path 上的证书/私钥文件由 ssl 模块负责落盘到目标机，本包仅引用绝对路径。
 	TLSCertPath string
 	TLSKeyPath  string
+	// TLSCertContent / TLSKeyContent 为空表示 cert 已由外部维护（旧 letsencrypt
+	// 路径，Reconciler 不写盘）；非空表示 PEM 已从 DB 解密到位，Reconciler 在
+	// nginx -t 之前把它们写到 TLSCertPath / TLSKeyPath 对应的 canonical 路径。
+	TLSCertContent string
+	TLSKeyContent  string
 	// ForceHTTPS=true 时再额外生成 listen 80 → 301 https 跳转 server 块；
 	// 仅在 TLSCertPath 非空时有意义（renderer 在两者同时为 false/false 时退化为纯 HTTP）。
 	ForceHTTPS bool

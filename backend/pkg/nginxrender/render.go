@@ -16,7 +16,20 @@ const (
 	// nginx.conf 顶层 include，因此独立成文件，由 Reconciler 在 nginx.conf 写入
 	// 幂等的 include。
 	StreamsConf = "/etc/nginx/streams.conf"
+	// CertDir 是 SSLCert 落盘的统一根目录，按域名分子目录：
+	//   /etc/nginx/cert/<domain>/fullchain.pem
+	//   /etc/nginx/cert/<domain>/privkey.pem
+	// loader.go 负责把 DB AES 加密 PEM 解密成 IngressCtx.TLSCertContent，
+	// reconciler 负责落盘到下面这两个 canonical 路径。
+	CertDir = "/etc/nginx/cert"
 )
+
+// CertCanonicalPaths 返回某域名在 CertDir 下的 fullchain / privkey 绝对路径。
+// 调用方用它给 IngressCtx.TLSCertPath / TLSKeyPath 赋值，与 reconciler 写盘保持一致。
+func CertCanonicalPaths(domain string) (cert, key string) {
+	return CertDir + "/" + domain + "/fullchain.pem",
+		CertDir + "/" + domain + "/privkey.pem"
+}
 
 // MatchKind 常量。
 const (

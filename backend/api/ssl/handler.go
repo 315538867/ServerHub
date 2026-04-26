@@ -14,6 +14,9 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/pkg/acme"
+	"github.com/serverhub/serverhub/pkg/crypto"
+	"github.com/serverhub/serverhub/pkg/nginxrender"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/sftppool"
@@ -76,12 +79,12 @@ func getDedicatedRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner
 }
 
 // writeRemoteFile writes content to path on the target (local = os; ssh = sftp).
-func writeRemoteFile(rn runner.Runner, serverID uint, path, content string) error {
+func writeRemoteFile(rn runner.Runner, serverID uint, path, content string, mode os.FileMode) error {
 	if rn.IsLocal() {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return err
 		}
-		return os.WriteFile(path, []byte(content), 0o600)
+		return os.WriteFile(path, []byte(content), mode)
 	}
 	cli := runner.SSHClient(rn)
 	if cli == nil {
@@ -91,26 +94,133 @@ func writeRemoteFile(rn runner.Runner, serverID uint, path, content string) erro
 	if err != nil {
 		return err
 	}
+	// sftppool 创建后需要单独 Chmod；先 Create + Write 再 Chmod，最大化兼容。
 	f, err := sc.Create(path)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	_, err = f.Write([]byte(content))
-	return err
+	if _, err := f.Write([]byte(content)); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	return sc.Chmod(path, mode)
+}
+
+// persistCert 把 PEM 内容加密落库并写到 canonical 远端路径。Issuer / AutoRenew /
+// LastRenewedAt 由调用方决定，剩下的 schema 字段在这里统一计算。upload / request
+// / renew / scan 共享。
+func persistCert(
+	db *gorm.DB, rn runner.Runner, cfg *config.Config,
+	serverID uint, domain, certPEM, keyPEM, issuer string,
+	autoRenew bool, markRenew bool,
+) error {
+	encCert, err := crypto.Encrypt(certPEM, cfg.Security.AESKey)
+	if err != nil {
+		return fmt.Errorf("加密 cert: %w", err)
+	}
+	encKey, err := crypto.Encrypt(keyPEM, cfg.Security.AESKey)
+	if err != nil {
+		return fmt.Errorf("加密 key: %w", err)
+	}
+	certPath, keyPath := nginxrender.CertCanonicalPaths(domain)
+
+	// 远端先落盘——上传后立即可用，不必等下一次 apply。Reconciler 后续 apply
+	// 看到内容相同会 noop（base64 tee 幂等）。
+	if err := writeRemoteFile(rn, serverID, certPath, certPEM, 0o644); err != nil {
+		return fmt.Errorf("写入远端 cert: %w", err)
+	}
+	if err := writeRemoteFile(rn, serverID, keyPath, keyPEM, 0o600); err != nil {
+		return fmt.Errorf("写入远端 key: %w", err)
+	}
+
+	expiry, _ := parseExpiryFromPEM(certPEM)
+
+	now := time.Now()
+	updates := map[string]any{
+		"cert_path":  certPath,
+		"key_path":   keyPath,
+		"cert_pem":   encCert,
+		"key_pem":    encKey,
+		"issuer":     issuer,
+		"expires_at": expiry,
+		"auto_renew": autoRenew,
+	}
+	if markRenew {
+		updates["last_renewed_at"] = &now
+	}
+
+	var existing model.SSLCert
+	err = db.Where("server_id = ? AND domain = ?", serverID, domain).First(&existing).Error
+	switch {
+	case err == nil:
+		return db.Model(&existing).Updates(updates).Error
+	case err == gorm.ErrRecordNotFound:
+		cert := model.SSLCert{
+			ServerID:  serverID,
+			Domain:    domain,
+			CertPath:  certPath,
+			KeyPath:   keyPath,
+			CertPEM:   encCert,
+			KeyPEM:    encKey,
+			Issuer:    issuer,
+			ExpiresAt: expiry,
+			AutoRenew: autoRenew,
+		}
+		if markRenew {
+			cert.LastRenewedAt = &now
+		}
+		return db.Create(&cert).Error
+	default:
+		return err
+	}
+}
+
+// parseExpiryFromPEM 用本地 openssl 解析（不打远端，handler 拿到 PEM 文本时就算）。
+// 失败返回零值；调用方接受零值——expires_at 不是强必需字段，scheduler 续签兜底。
+func parseExpiryFromPEM(certPEM string) (time.Time, error) {
+	tmp, err := os.CreateTemp("", "sh-cert-*.pem")
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.WriteString(certPEM); err != nil {
+		_ = tmp.Close()
+		return time.Time{}, err
+	}
+	_ = tmp.Close()
+	out, err := runLocal("openssl x509 -enddate -noout -in " + shellQuote(tmp.Name()))
+	if err != nil {
+		return time.Time{}, err
+	}
+	out = strings.TrimSpace(out)
+	after, found := strings.CutPrefix(out, "notAfter=")
+	if !found {
+		return time.Time{}, fmt.Errorf("openssl 输出异常: %s", out)
+	}
+	after = strings.TrimSpace(after)
+	t, err := time.Parse("Jan  2 15:04:05 2006 GMT", after)
+	if err != nil {
+		t, err = time.Parse("Jan 2 15:04:05 2006 GMT", after)
+	}
+	return t, err
 }
 
 // ── cert list ─────────────────────────────────────────────────────────────────
 
 type certResp struct {
-	ID        uint   `json:"id"`
-	Domain    string `json:"domain"`
-	CertPath  string `json:"cert_path"`
-	KeyPath   string `json:"key_path"`
-	Issuer    string `json:"issuer"`
-	ExpiresAt string `json:"expires_at"`
-	DaysLeft  int    `json:"days_left"`
-	AutoRenew bool   `json:"auto_renew"`
+	ID            uint   `json:"id"`
+	Domain        string `json:"domain"`
+	CertPath      string `json:"cert_path"`
+	KeyPath       string `json:"key_path"`
+	Issuer        string `json:"issuer"`
+	ExpiresAt     string `json:"expires_at"`
+	DaysLeft      int    `json:"days_left"`
+	AutoRenew     bool   `json:"auto_renew"`
+	HasPEM        bool   `json:"has_pem"` // 是否已加密入库（前端用来给图标标记）
+	LastRenewedAt string `json:"last_renewed_at,omitempty"`
 }
 
 func listCertsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
@@ -129,13 +239,18 @@ func listCertsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		result := make([]certResp, len(certs))
 		for i, cert := range certs {
 			days := int(time.Until(cert.ExpiresAt).Hours() / 24)
-			result[i] = certResp{
+			r := certResp{
 				ID: cert.ID, Domain: cert.Domain,
 				CertPath: cert.CertPath, KeyPath: cert.KeyPath,
 				Issuer:    cert.Issuer,
 				ExpiresAt: cert.ExpiresAt.Format("2006-01-02"),
 				DaysLeft:  days, AutoRenew: cert.AutoRenew,
+				HasPEM: cert.CertPEM != "" && cert.KeyPEM != "",
 			}
+			if cert.LastRenewedAt != nil {
+				r.LastRenewedAt = cert.LastRenewedAt.Format("2006-01-02 15:04:05")
+			}
+			result[i] = r
 		}
 		resp.OK(c, result)
 	}
@@ -156,39 +271,29 @@ func requestCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		webroot := c.Query("webroot")
-		if webroot == "" {
-			webroot = "/var/www/html"
-		}
 		email := c.Query("email")
-		if email == "" {
-			email = "admin@" + domain
+
+		issueCmd, err := acme.IssueCmd(acme.IssueOpts{
+			Domain: domain, Webroot: webroot, Email: email,
+		})
+		if err != nil {
+			resp.BadRequest(c, err.Error())
+			return
 		}
+
 		ws, err := middleware.WSUpgrade(upgrader, c)
 		if err != nil {
 			return
 		}
 		defer ws.Close()
 
-		cmd := fmt.Sprintf(
-			"certbot certonly --webroot -w %s -d %s --email %s --agree-tos --non-interactive 2>&1",
-			shellQuote(webroot), shellQuote(domain), shellQuote(email),
-		)
-
 		go func() {
-			wsstream.Stream(ws, rn, cmd, wsstream.Opts{})
-			certPath := "/etc/letsencrypt/live/" + domain + "/fullchain.pem"
-			keyPath := "/etc/letsencrypt/live/" + domain + "/privkey.pem"
-			expiry, _ := parseCertExpiry(rn, certPath)
-			cert := model.SSLCert{
-				ServerID:  s.ID,
-				Domain:    domain,
-				CertPath:  certPath,
-				KeyPath:   keyPath,
-				Issuer:    "Let's Encrypt",
-				ExpiresAt: expiry,
-				AutoRenew: true,
+			wsstream.Stream(ws, rn, issueCmd, wsstream.Opts{})
+			pem, err := acme.ReadPEM(rn, domain)
+			if err != nil {
+				return // certbot 失败时 letsencrypt 没生成文件，跳过入库
 			}
-			db.Where(model.SSLCert{ServerID: s.ID, Domain: domain}).Assign(cert).FirstOrCreate(&cert)
+			_ = persistCert(db, rn, cfg, s.ID, domain, pem.Cert, pem.Key, "Let's Encrypt", true, true)
 		}()
 		for {
 			if _, _, err := ws.ReadMessage(); err != nil {
@@ -207,43 +312,26 @@ func uploadCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		var body struct {
-			Domain   string `json:"domain"    binding:"required"`
-			Cert     string `json:"cert"      binding:"required"`
-			Key      string `json:"key"       binding:"required"`
-			CertPath string `json:"cert_path"`
-			KeyPath  string `json:"key_path"`
+			Domain string `json:"domain" binding:"required"`
+			Cert   string `json:"cert"   binding:"required"`
+			Key    string `json:"key"    binding:"required"`
 		}
 		if err := c.ShouldBindJSON(&body); err != nil {
 			resp.BadRequest(c, "域名、证书和密钥不能为空")
 			return
 		}
-		if body.CertPath == "" {
-			body.CertPath = "/etc/ssl/certs/" + body.Domain + ".pem"
-		}
-		if body.KeyPath == "" {
-			body.KeyPath = "/etc/ssl/private/" + body.Domain + ".key"
-		}
-
-		if err := writeRemoteFile(rn, s.ID, body.CertPath, body.Cert); err != nil {
-			resp.InternalError(c, "写入证书失败: "+err.Error())
+		if !strings.Contains(body.Cert, "BEGIN CERTIFICATE") {
+			resp.BadRequest(c, "cert 不是合法 PEM")
 			return
 		}
-		if err := writeRemoteFile(rn, s.ID, body.KeyPath, body.Key); err != nil {
-			resp.InternalError(c, "写入密钥失败: "+err.Error())
+		if !strings.Contains(body.Key, "PRIVATE KEY") {
+			resp.BadRequest(c, "key 不是合法 PEM")
 			return
 		}
-
-		expiry, _ := parseCertExpiry(rn, body.CertPath)
-		cert := model.SSLCert{
-			ServerID:  s.ID,
-			Domain:    body.Domain,
-			CertPath:  body.CertPath,
-			KeyPath:   body.KeyPath,
-			Issuer:    "manual",
-			ExpiresAt: expiry,
-			AutoRenew: false,
+		if err := persistCert(db, rn, cfg, s.ID, body.Domain, body.Cert, body.Key, "manual", false, false); err != nil {
+			resp.InternalError(c, err.Error())
+			return
 		}
-		db.Where(model.SSLCert{ServerID: s.ID, Domain: body.Domain}).Assign(cert).FirstOrCreate(&cert)
 		resp.OK(c, nil)
 	}
 }
@@ -269,13 +357,17 @@ func renewCertHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		defer ws.Close()
 
-		cmd := fmt.Sprintf("certbot renew --cert-name %s --non-interactive 2>&1", shellQuote(cert.Domain))
+		renewCmd, err := acme.RenewCmd(cert.Domain)
+		if err != nil {
+			return
+		}
 		go func() {
-			wsstream.Stream(ws, rn, cmd, wsstream.Opts{})
-			expiry, _ := parseCertExpiry(rn, cert.CertPath)
-			if !expiry.IsZero() {
-				db.Model(&cert).Update("expires_at", expiry)
+			wsstream.Stream(ws, rn, renewCmd, wsstream.Opts{})
+			pem, err := acme.ReadPEM(rn, cert.Domain)
+			if err != nil {
+				return
 			}
+			_ = persistCert(db, rn, cfg, s.ID, cert.Domain, pem.Cert, pem.Key, cert.Issuer, cert.AutoRenew, true)
 		}()
 		for {
 			if _, _, err := ws.ReadMessage(); err != nil {
@@ -313,22 +405,13 @@ func scanCertsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			if domain == "" || domain == "README" {
 				continue
 			}
-			certPath := "/etc/letsencrypt/live/" + domain + "/fullchain.pem"
-			keyPath := "/etc/letsencrypt/live/" + domain + "/privkey.pem"
-			expiry, err := parseCertExpiry(rn, certPath)
+			pem, err := acme.ReadPEM(rn, domain)
 			if err != nil {
 				continue
 			}
-			cert := model.SSLCert{
-				ServerID:  s.ID,
-				Domain:    domain,
-				CertPath:  certPath,
-				KeyPath:   keyPath,
-				Issuer:    "Let's Encrypt",
-				ExpiresAt: expiry,
-				AutoRenew: true,
+			if err := persistCert(db, rn, cfg, s.ID, domain, pem.Cert, pem.Key, "Let's Encrypt", true, false); err != nil {
+				continue
 			}
-			db.Where(model.SSLCert{ServerID: s.ID, Domain: domain}).Assign(cert).FirstOrCreate(&cert)
 			imported++
 		}
 		resp.OK(c, gin.H{"imported": imported})
@@ -341,21 +424,7 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-func parseCertExpiry(rn runner.Runner, certPath string) (time.Time, error) {
-	out, err := rn.Run(fmt.Sprintf(
-		"openssl x509 -enddate -noout -in %s 2>/dev/null", shellQuote(certPath),
-	))
-	if err != nil {
-		return time.Time{}, err
-	}
-	out = strings.TrimSpace(out)
-	after, found := strings.CutPrefix(out, "notAfter=")
-	if !found {
-		return time.Time{}, fmt.Errorf("unexpected output: %s", out)
-	}
-	t, err := time.Parse("Jan  2 15:04:05 2006 GMT", strings.TrimSpace(after))
-	if err != nil {
-		t, err = time.Parse("Jan 2 15:04:05 2006 GMT", strings.TrimSpace(after))
-	}
-	return t, err
+// runLocal 给 parseExpiryFromPEM 用，本地 fork openssl 不走 runner。
+func runLocal(cmd string) (string, error) {
+	return execShell(cmd)
 }

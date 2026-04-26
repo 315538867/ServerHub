@@ -344,7 +344,7 @@ func TestLoadDesired_RawUpstream(t *testing.T) {
 	}
 	db.Create(&rt)
 
-	got, err := LoadDesired(db, &edge)
+	got, err := LoadDesired(db, &edge, "")
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestLoadDesired_ServiceMissingPortErrors(t *testing.T) {
 	rt := model.IngressRoute{IngressID: ig.ID, Path: "/", Upstream: model.IngressUpstream{Type: "service", ServiceID: &svc.ID}}
 	db.Create(&rt)
 
-	if _, err := LoadDesired(db, &edge); err == nil {
+	if _, err := LoadDesired(db, &edge, ""); err == nil {
 		t.Fatal("无 exposed_port 应报错")
 	}
 }
