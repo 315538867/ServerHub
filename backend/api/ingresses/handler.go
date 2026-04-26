@@ -20,6 +20,7 @@ import (
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/nginxops"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/pkg/safeshell"
 )
 
 // RegisterRoutes 把所有 Ingress 相关 API 挂到 group 下。
@@ -44,6 +45,8 @@ func RegisterRoutes(group *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 	// Phase Nginx-P3B: discovery → Ingress 反代接管候选
 	RegisterImportRoutes(group, db, cfg)
+	// Phase Nginx-P3C: ratelimit/cache/security 预设模板 → Extra 文本
+	RegisterPresetRoutes(group, db)
 }
 
 // ── DTO ───────────────────────────────────────────────────────────────────
@@ -104,6 +107,16 @@ func validateMatchKind(k string) error {
 		return errors.New("match_kind 必须是 domain 或 path")
 	}
 	return nil
+}
+
+// validateExtra 把 routeReq.Extra 收口到 safeshell.NginxBlock。
+//
+// 历史问题:Extra 之前是裸 string 直接写库,renderer 原样塞进 location{}。
+// 一旦用户(或被入侵的接口客户端)在 Extra 里写 `} location /admin { return 200;`
+// 就能凭空增 location;塞 ` ` `\` `$()` 也会让"渲染→base64→远端 tee"链路
+// 暴露不必要的攻击面。本校验放在 API 层,把所有写库前的 routeReq 集中收口。
+func validateExtra(extra string) error {
+	return safeshell.NginxBlock(extra)
 }
 
 // validateProtocol 限制 RouteCtx.Protocol 的取值。
@@ -303,6 +316,9 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 				if err := validateProtocol(r.Protocol, r.ListenPort); err != nil {
 					return err
 				}
+				if err := validateExtra(r.Extra); err != nil {
+					return err
+				}
 				proto := r.Protocol
 				if proto == "" {
 					proto = "http"
@@ -441,6 +457,10 @@ func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
+		if err := validateExtra(req.Extra); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
 		proto := req.Protocol
 		if proto == "" {
 			proto = "http"
@@ -486,6 +506,10 @@ func updateRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if err := validateProtocol(req.Protocol, req.ListenPort); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
+		if err := validateExtra(req.Extra); err != nil {
 			resp.BadRequest(c, err.Error())
 			return
 		}

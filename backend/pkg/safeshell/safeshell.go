@@ -103,3 +103,38 @@ func NginxValue(v string) error {
 	}
 	return nil
 }
+
+// NginxBlock 校验"多行 nginx 指令片段"——比 NginxValue 宽松得多,允许换行 / 分号
+// 与双引号(用户写 add_header X "Y" 这种是合法的),但仍然禁止以下"提权"字符:
+//
+//   - `\` 反引号或 `$(...)`：location 块本身不会被 shell 解释,但我们的
+//     Apply 链路会把整段配置 base64 后写到远端的 tee,这里防的是"渲染时
+//     有人在 Extra 里偷塞 shell 元字符再走 base64 解码"——实际不会被执行,
+//     纯属减小攻击面。
+//   - `{` `}`：用户的 Extra 内容会被插入到 location { ... } 内部。一旦
+//     允许花括号,就能提前关掉 location、注入新的 server / location 块。
+//   - 注释字符 `#`：单条 # 是 nginx 注释合法字符,但允许它会让"值末尾混
+//     注释"导致后续半行被忽略,渲染审计 diff 会变得不可读。直接禁。
+//
+// 允许 `;` 与 `\n` —— 否则就退化成 NginxValue 没法表达 ratelimit/security
+// 这种多指令组合。空字符串放行(空 Extra 是合法的,代表用户没填)。
+var nginxBlockBad = regexp.MustCompile("[{}#`\\\\]")
+
+// NginxBlock 限定上限 8 KB——超过就基本是被人塞 payload 而非真用配置。
+const nginxBlockMaxLen = 8 * 1024
+
+func NginxBlock(v string) error {
+	if v == "" {
+		return nil
+	}
+	if len(v) > nginxBlockMaxLen {
+		return fmt.Errorf("Extra 内容超过 %d 字节上限", nginxBlockMaxLen)
+	}
+	if nginxBlockBad.MatchString(v) {
+		return errors.New("Extra 不允许出现 { } # ` \\ 字符（避免提前关闭 location 块或注入 shell 元字符）")
+	}
+	if strings.Contains(v, "$(") {
+		return errors.New("Extra 不允许包含 $( 命令替换序列")
+	}
+	return nil
+}

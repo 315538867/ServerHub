@@ -165,12 +165,20 @@
           </NFormItem>
         </template>
         <NFormItem label="额外指令">
-          <NInput
-            v-model:value="routeForm.extra"
-            type="textarea"
-            :autosize="{ minRows: 2, maxRows: 6 }"
-            placeholder="可选,如 proxy_read_timeout 300;"
-          />
+          <div class="ig-extra">
+            <div class="ig-extra__presets">
+              <span class="ig-extra__presets-label">预设：</span>
+              <UiButton size="sm" variant="secondary" @click="openPreset('ratelimit')">限流</UiButton>
+              <UiButton size="sm" variant="secondary" @click="openPreset('cache')">缓存</UiButton>
+              <UiButton size="sm" variant="secondary" @click="openPreset('security')">安全头</UiButton>
+            </div>
+            <NInput
+              v-model:value="routeForm.extra"
+              type="textarea"
+              :autosize="{ minRows: 2, maxRows: 6 }"
+              placeholder="可选,如 proxy_read_timeout 300;"
+            />
+          </div>
         </NFormItem>
         <NFormItem label="排序">
           <NInputNumber v-model:value="routeForm.sort" :min="0" style="width: 100%" />
@@ -180,6 +188,105 @@
         <div class="ig-foot">
           <UiButton variant="secondary" size="sm" @click="routeVisible = false">取消</UiButton>
           <UiButton variant="primary" size="sm" :loading="routeSaving" @click="saveRoute">保存</UiButton>
+        </div>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="presetVisible" preset="card" :title="presetTitle" style="width: 520px">
+      <NForm v-if="presetKind === 'ratelimit'" label-placement="left" :label-width="120">
+        <NFormItem label="请求体上限 (KiB)">
+          <NInputNumber
+            v-model:value="presetForm.max_body_kb"
+            :min="0"
+            :max="1048576"
+            placeholder="0 = 不下发"
+            style="width: 100%"
+          />
+        </NFormItem>
+        <NFormItem label="单连接限速 (KiB/s)">
+          <NInputNumber
+            v-model:value="presetForm.rate_kbs"
+            :min="0"
+            :max="1048576"
+            placeholder="0 = 不下发"
+            style="width: 100%"
+          />
+        </NFormItem>
+        <NFormItem label="限速起点 (KiB)">
+          <NInputNumber
+            v-model:value="presetForm.rate_after_kb"
+            :min="0"
+            :max="1048576"
+            placeholder="超过此阈值后才限速"
+            style="width: 100%"
+          />
+        </NFormItem>
+      </NForm>
+      <NForm v-else-if="presetKind === 'cache'" label-placement="left" :label-width="120">
+        <div class="ig-preset__hint">
+          需要在 nginx.conf 顶层 <code>http {}</code> 内提前声明 <code>proxy_cache_path</code>，
+          本预设仅生成 location 内的引用。
+        </div>
+        <NFormItem label="zone 名">
+          <NInput v-model:value="presetForm.zone_name" placeholder="字母数字下划线，如 edge_cache" />
+        </NFormItem>
+        <NFormItem label="200 缓存 (分钟)">
+          <NInputNumber
+            v-model:value="presetForm.valid_200_mins"
+            :min="0"
+            :max="43200"
+            style="width: 100%"
+          />
+        </NFormItem>
+        <NFormItem label="404 缓存 (分钟)">
+          <NInputNumber
+            v-model:value="presetForm.valid_404_mins"
+            :min="0"
+            :max="43200"
+            style="width: 100%"
+          />
+        </NFormItem>
+        <NFormItem label="后端故障返陈旧">
+          <NSwitch v-model:value="presetForm.use_stale" />
+        </NFormItem>
+      </NForm>
+      <NForm v-else-if="presetKind === 'security'" label-placement="left" :label-width="160">
+        <NFormItem label="X-Frame-Options DENY">
+          <NSwitch v-model:value="presetForm.frame_deny" />
+        </NFormItem>
+        <NFormItem label="X-Content-Type-Options">
+          <NSwitch v-model:value="presetForm.no_sniff" />
+        </NFormItem>
+        <NFormItem label="Referrer-Policy strict">
+          <NSwitch v-model:value="presetForm.referrer_strict" />
+        </NFormItem>
+        <NFormItem label="HSTS max-age (天)">
+          <NSelect
+            v-model:value="presetForm.hsts_max_age_days"
+            :options="hstsOptions"
+            clearable
+            placeholder="0 = 不下发"
+          />
+        </NFormItem>
+        <NFormItem label="HSTS includeSubDomains">
+          <NSwitch v-model:value="presetForm.hsts_include_sub" :disabled="!presetForm.hsts_max_age_days" />
+        </NFormItem>
+        <NFormItem label="X-XSS-Protection">
+          <NSwitch v-model:value="presetForm.xss_reflected" />
+        </NFormItem>
+        <div class="ig-preset__hint">
+          HSTS 仅在 HTTPS 链路上对浏览器生效；无 cert 的 ingress 写了也无害。
+        </div>
+      </NForm>
+      <template #footer>
+        <div class="ig-foot">
+          <UiButton variant="secondary" size="sm" @click="presetVisible = false">取消</UiButton>
+          <UiButton
+            variant="primary"
+            size="sm"
+            :loading="presetLoading"
+            @click="applyPreset"
+          >追加到 Extra</UiButton>
         </div>
       </template>
     </NModal>
@@ -298,13 +405,13 @@ import {
   listIngresses, getIngress, createIngress, updateIngress, deleteIngress,
   addIngressRoute, updateIngressRoute, deleteIngressRoute,
   applyEdge, dryRunEdge, listAudit, listEdgeServices,
-  listImportCandidates,
+  listImportCandidates, renderPreset,
 } from '@/api/ingresses'
 import type {
   Ingress, IngressDetail, IngressRoute, IngressMatchKind,
   ApplyResult, IngressChange, AuditApply, ServiceOpt,
   NetworkPref, IngressUpstream,
-  IngressProxyCandidate,
+  IngressProxyCandidate, PresetKind, PresetParams,
 } from '@/api/ingresses'
 import { listCerts, type SSLCert } from '@/api/ssl'
 import UiSection from '@/components/ui/UiSection.vue'
@@ -957,6 +1064,69 @@ async function confirmImport(c: IngressProxyCandidate) {
   }
 }
 
+// ── Phase Nginx-P3C: ratelimit/cache/security 预设模板 ──────────────────────
+//
+// 设计取舍:预设产物只是"帮用户填 Extra"——不在 IngressRoute 上保留 PresetMeta,
+// 因为一旦用户编辑过文本就无法可靠回写,弱保留只是技术债。这里点确认就把
+// 后端渲染好的 nginx 片段追加到 routeForm.extra,后续完全是用户的文本。
+const presetVisible = ref(false)
+const presetLoading = ref(false)
+const presetKind = ref<PresetKind>('ratelimit')
+const presetForm = ref<Record<string, any>>({})
+
+const presetTitle = computed(() => {
+  switch (presetKind.value) {
+    case 'ratelimit': return '限流预设'
+    case 'cache': return '缓存预设'
+    case 'security': return '安全头预设'
+    default: return '预设'
+  }
+})
+
+const hstsOptions: SelectOption[] = [
+  { label: '不下发', value: 0 },
+  { label: '30 天', value: 30 },
+  { label: '90 天', value: 90 },
+  { label: '180 天', value: 180 },
+  { label: '365 天', value: 365 },
+]
+
+function openPreset(kind: PresetKind) {
+  presetKind.value = kind
+  // 每次打开都重置表单——预设是一次性追加,没有"上次值记忆"语义。
+  switch (kind) {
+    case 'ratelimit':
+      presetForm.value = { max_body_kb: 0, rate_kbs: 0, rate_after_kb: 0 }
+      break
+    case 'cache':
+      presetForm.value = { zone_name: '', valid_200_mins: 5, valid_404_mins: 0, use_stale: false }
+      break
+    case 'security':
+      presetForm.value = {
+        frame_deny: true, no_sniff: true, referrer_strict: true,
+        hsts_max_age_days: 0, hsts_include_sub: false, xss_reflected: false,
+      }
+      break
+  }
+  presetVisible.value = true
+}
+
+async function applyPreset() {
+  presetLoading.value = true
+  try {
+    const params = { ...presetForm.value } as PresetParams
+    const res = await renderPreset(presetKind.value, params)
+    const cur = routeForm.value.extra || ''
+    routeForm.value.extra = cur ? cur.trimEnd() + '\n' + res.extra : res.extra
+    presetVisible.value = false
+    message.success('已追加到 Extra')
+  } catch (e: any) {
+    showApiError(e, '生成预设失败')
+  } finally {
+    presetLoading.value = false
+  }
+}
+
 // ── 审计详情 Drawer ───────────────────────────────────────────────────────────
 const auditDetailVisible = ref(false)
 const auditDetail = ref<AuditApply | null>(null)
@@ -1005,5 +1175,15 @@ onMounted(loadAll)
   border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
   white-space: pre-wrap; word-break: break-all; margin: 0;
   color: var(--ui-fg-2); max-height: 320px; overflow: auto;
+}
+
+.ig-extra { display: flex; flex-direction: column; gap: var(--space-2); width: 100%; }
+.ig-extra__presets { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.ig-extra__presets-label { color: var(--ui-fg-3); font-size: var(--fs-xs); }
+.ig-preset__hint {
+  color: var(--ui-fg-3); font-size: var(--fs-xs); line-height: 1.5;
+  background: var(--ui-bg-2); border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-2);
 }
 </style>

@@ -203,3 +203,39 @@ export function listImportCandidates(serverId: number) {
     `/ingresses/edges/${serverId}/import-candidates`,
   )
 }
+
+// ── Phase Nginx-P3C: ratelimit/cache/security 预设模板 ───────────────────────
+
+export type PresetKind = 'ratelimit' | 'cache' | 'security'
+
+// RateLimitParams: 0 表示不下发该指令(builder 至少要求 max_body / rate 一项)
+export interface RateLimitParams {
+  max_body_kb?: number
+  rate_kbs?: number
+  rate_after_kb?: number
+}
+
+export interface CacheParams {
+  zone_name: string
+  valid_200_mins?: number
+  valid_404_mins?: number
+  use_stale?: boolean
+}
+
+export interface SecurityParams {
+  frame_deny?: boolean
+  no_sniff?: boolean
+  referrer_strict?: boolean
+  hsts_max_age_days?: number // 仅允许 0/30/90/180/365
+  hsts_include_sub?: boolean
+  xss_reflected?: boolean
+}
+
+export type PresetParams = RateLimitParams | CacheParams | SecurityParams
+
+export function renderPreset(kind: PresetKind, params: PresetParams) {
+  return request.post<never, { extra: string }>(
+    '/ingresses/presets/render',
+    { kind, params },
+  )
+}
