@@ -40,15 +40,9 @@ type Service struct {
 	EnvVars       string `gorm:"default:''" json:"-"`
 	WebhookSecret string `gorm:"default:''" json:"-"`
 
-	// Version management
-	//
-	// Deprecated: 版本语义在 M3 起由 Release.Label + Service.CurrentReleaseID 表达；
-	// DesiredVersion/ActualVersion 不再参与调度，仅保留供历史读路径与迁移脚本使用。
-	DesiredVersion string `gorm:"default:''" json:"desired_version"`
-	ActualVersion  string `gorm:"default:''" json:"actual_version"`
-
-	// Release 新模型指针（Phase M1 引入，与旧 DesiredVersion/DeployVersion 并存）。
-	// 指向 releases.id；为 nil 表示 Service 还没有创建过 Release（空壳）。
+	// Release 新模型指针（Phase M1 引入）。指向 releases.id；为 nil 表示
+	// Service 还没有创建过 Release（空壳）。版本语义从 P-E 起完全由 Release.Label
+	// 表达,旧 DesiredVersion/ActualVersion 已下线。
 	CurrentReleaseID *uint `gorm:"index" json:"current_release_id"`
 	// 部署失败时是否自动回滚到上一条 Status=active 的 Release（默认关闭）。
 	AutoRollbackOnFail bool `gorm:"default:false" json:"auto_rollback_on_fail"`

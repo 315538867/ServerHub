@@ -106,9 +106,6 @@ export interface Deploy {
   type: 'docker' | 'docker-compose' | 'native' | 'static'
   work_dir: string
   image_name: string
-  // version management
-  desired_version: string
-  actual_version: string
   // reconcile
   auto_sync: boolean
   sync_interval: number
@@ -129,7 +126,6 @@ export interface DeployForm {
   type: 'docker' | 'docker-compose' | 'native' | 'static'
   work_dir: string
   image_name?: string
-  desired_version?: string
   auto_sync?: boolean
   sync_interval?: number
 }

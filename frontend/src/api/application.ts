@@ -55,7 +55,6 @@ export interface AppService {
   type: string
   work_dir: string
   last_status: string
-  actual_version: string
   source_kind: string
 }
 

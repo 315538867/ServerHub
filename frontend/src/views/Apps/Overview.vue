@@ -192,7 +192,6 @@ const serviceColumns = computed<DataTableColumns<AppService>>(() => [
       { tone: row.last_status === 'success' ? 'success' : row.last_status === 'failed' ? 'danger' : 'neutral' },
       () => row.last_status || '—'),
   },
-  { title: '版本', key: 'actual_version', width: 140, render: (row) => h('span', { class: 'ov__time' }, row.actual_version || '—') },
   { title: '来源', key: 'source_kind', width: 100, render: (row) => row.source_kind || '—' },
   { title: '目录', key: 'work_dir', minWidth: 200, render: (row) => h('code', { class: 'ov__code' }, row.work_dir || '—') },
   {

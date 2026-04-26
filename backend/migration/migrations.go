@@ -60,6 +60,11 @@ func init() {
 		Name:    "drop deploy_versions table + services.{compose_file,start_cmd,runtime,config_files}",
 		Fn:      migrateDropLegacyDeployTables,
 	})
+	Register(Migration{
+		Version: "021_drop_service_version_cols",
+		Name:    "drop services.{desired_version,actual_version}",
+		Fn:      migrateDropServiceVersionCols,
+	})
 }
 
 // migrateRenameDeploysToServices 把 v0.2 之前的 deploys 表改名 services。
@@ -173,6 +178,32 @@ func migrateDropLegacyDeployTables(tx *gorm.DB) error {
 			if err := tx.Migrator().DropColumn("services", col); err != nil {
 				return fmt.Errorf("drop services.%s: %w", col, err)
 			}
+		}
+	}
+	return nil
+}
+
+// migrateDropServiceVersionCols 收口 P-E:把 services 上 desired_version /
+// actual_version 两列从物理 schema 删除。
+//
+// 语义前提:
+//   - M3 起版本号由 Release.Label 表达,DeployRun 记录每次部署的目标 release_id;
+//     reconciler 也已不读这两列(pkg/scheduler/reconciler.go 注释 "DesiredVersion ↔
+//     ActualVersion drift check is gone" 是历史佐证)。
+//   - 4 个 takeover 写入点 (compose/docker/static/systemd) 与上层读路径在 P-E
+//     同步删除,本 migration 之前的新二进制不会再写这两列,这里只做物理收尾。
+//
+// 可重入:HasColumn 守卫确保旧库 / 新装库都安全 no-op。
+func migrateDropServiceVersionCols(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("services") {
+		return nil
+	}
+	for _, col := range []string{"desired_version", "actual_version"} {
+		if !tx.Migrator().HasColumn("services", col) {
+			continue
+		}
+		if err := tx.Migrator().DropColumn("services", col); err != nil {
+			return fmt.Errorf("drop services.%s: %w", col, err)
 		}
 	}
 	return nil

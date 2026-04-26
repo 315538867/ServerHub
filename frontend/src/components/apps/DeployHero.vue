@@ -9,18 +9,6 @@
         </div>
       </div>
 
-      <div class="hero-versions" v-if="showVersions">
-        <div class="hero-ver-item">
-          <span class="ver-cap">期望版本</span>
-          <code class="ver-val ver-desired">{{ deploy.desired_version || '—' }}</code>
-        </div>
-        <span class="ver-arrow" :class="{ 'is-drift': isDrift }">→</span>
-        <div class="hero-ver-item">
-          <span class="ver-cap">当前版本</span>
-          <code class="ver-val ver-actual">{{ deploy.actual_version || '—' }}</code>
-        </div>
-      </div>
-
       <div class="hero-meta">
         <span v-if="deploy.last_run_at" class="meta-item">
           <span class="meta-cap">最近运行</span>
@@ -79,9 +67,6 @@ defineEmits<{
   stop: []
 }>()
 
-const showVersions = computed(() =>
-  props.deploy.type !== 'native' && (props.deploy.desired_version || props.deploy.actual_version)
-)
 const isDrift = computed(() => props.deploy.sync_status === 'drifted' || props.deploy.sync_status === 'error')
 
 const syncLabel = computed(() => {
@@ -218,42 +203,6 @@ function formatTimeAgo(iso: string): string {
   font-size: var(--fs-xs);
   color: var(--ui-fg-3);
 }
-
-.hero-versions {
-  display: flex;
-  align-items: flex-end;
-  gap: var(--space-4);
-  margin-top: var(--space-1);
-  flex-wrap: wrap;
-}
-.hero-ver-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.ver-cap {
-  font-size: var(--fs-xs);
-  color: var(--ui-fg-3);
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-.ver-val {
-  font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-  padding: 2px 6px;
-  background: var(--ui-bg-1);
-  border-radius: var(--radius-sm);
-  color: var(--ui-fg);
-}
-.ver-desired { color: var(--ui-brand-fg); font-weight: var(--fw-semibold); }
-.ver-actual  { font-weight: var(--fw-semibold); }
-.ver-prev .ver-val { opacity: 0.7; font-size: var(--fs-xs); }
-.ver-arrow {
-  font-size: var(--fs-sm);
-  color: var(--ui-fg-3);
-  margin-bottom: var(--space-1);
-}
-.ver-arrow.is-drift { color: var(--ui-warning-fg); font-weight: var(--fw-semibold); }
 
 .hero-meta {
   display: flex;
