@@ -28,14 +28,10 @@ const appId = computed(() => Number(route.params.appId))
 const app = computed(() => appStore.getById(appId.value))
 
 const subTabs = computed(() => {
-  const a = app.value
-  const list: Array<{ value: string; label: string }> = []
-  // 旧 "路由配置" 子页(NginxRoutes.vue)在 P3 已下线,
-  // 路由维护改到 /servers/:id/ingresses,但本 tab 提供反向视图(Ingresses 子页)
-  // 让用户从应用视角看到 "谁在路由我"。域名 SSL 仅在 site_name 存在时展示。
-  if (a?.site_name) list.push({ value: 'domain', label: '域名与 SSL' })
-  list.push({ value: 'ingresses', label: 'Ingress 路由' })
-  return list
+  // Phase Nginx-P3F: "域名与 SSL"子页(Domain.vue)随 legacy site CRUD 一并下架,
+  // 反代/SSL 配置统一归 Ingress 模型管;这里只保留反向视图(Ingresses 子页)
+  // 让用户从应用视角看到 "谁在路由我"。
+  return [{ value: 'ingresses', label: 'Ingress 路由' }]
 })
 
 const activeSub = computed(() => {

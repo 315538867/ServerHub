@@ -59,7 +59,6 @@ const statusTone = computed<'success' | 'neutral' | 'danger'>(() => {
 const tabs = [
   { value: 'overview',  label: '概览' },
   { value: 'services',  label: '服务' },
-  { value: 'nginx',     label: 'Nginx 网关' },
   { value: 'ingresses', label: 'Ingress' },
   { value: 'networks',  label: '网络' },
   { value: 'docker',    label: 'Docker' },

@@ -42,8 +42,10 @@ const router = createRouter({
               // 而 domain 子页仅在 app.site_name 存在时才有内容,因此默认跳 ingresses。
               redirect: (to) => `${to.path}/ingresses`,
               children: [
-                { path: 'domain', name: 'AppNetworkDomain', component: () => import('@/views/Apps/Domain.vue') },
                 { path: 'ingresses', name: 'AppNetworkIngresses', component: () => import('@/views/Apps/Ingresses.vue') },
+                // Phase Nginx-P3F: 旧 site-name 视图(Domain.vue)随 legacy site CRUD 一并下架,
+                // 永久跳到 ingresses 子页 —— 反代/静态站点能力全部由 Ingress 模型承担。
+                { path: 'domain', redirect: (to) => `/apps/${to.params.appId}/network/ingresses` },
               ],
             },
             {
@@ -80,7 +82,7 @@ const router = createRouter({
           children: [
             { path: 'overview', name: 'ServerOverview', component: () => import('@/views/ServerDetail/Overview.vue') },
             { path: 'services', name: 'ServerServices', component: () => import('@/views/ServerDetail/Services.vue') },
-            { path: 'nginx', name: 'ServerNginx', component: () => import('@/views/ServerDetail/Nginx.vue') },
+            { path: 'nginx', redirect: (to) => `/servers/${to.params.serverId}/ingresses` },
             { path: 'ingresses', name: 'ServerIngresses', component: () => import('@/views/ServerDetail/Ingresses.vue') },
             { path: 'networks', name: 'ServerNetworks', component: () => import('@/views/ServerDetail/Networks.vue') },
             { path: 'docker', name: 'ServerDocker', component: () => import('@/views/ServerDetail/Docker.vue') },

@@ -183,7 +183,7 @@ const appStore = useAppStore()
 const serverSubItems = [
   { path: 'overview', label: '概览' },
   { path: 'services', label: '服务' },
-  { path: 'nginx',    label: 'Nginx 网关' },
+  { path: 'ingresses', label: 'Ingress' },
   { path: 'docker',   label: 'Docker' },
   { path: 'system',   label: '系统' },
   { path: 'files',    label: '文件' },
