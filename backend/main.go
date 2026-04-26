@@ -21,7 +21,6 @@ import (
 	apiaudit "github.com/serverhub/serverhub/api/audit"
 	apiauth "github.com/serverhub/serverhub/api/auth"
 	apidatabase "github.com/serverhub/serverhub/api/database"
-	apideploy "github.com/serverhub/serverhub/api/deploy"
 	apidiscovery "github.com/serverhub/serverhub/api/discovery"
 	apidocker "github.com/serverhub/serverhub/api/docker"
 	apifiles "github.com/serverhub/serverhub/api/files"
@@ -200,10 +199,9 @@ func main() {
 	apilogsearch.RegisterRoutes(serversGroup, db, cfg)
 	apidatabase.RegisterRoutes(protected, db, cfg)
 	apialerts.RegisterRoutes(protected.Group("/alerts"), db, cfg)
-	apideploy.RegisterRoutes(protected.Group("/services"), db, cfg)
-	apideploy.RegisterWebhookRoutes(base.Group("/webhooks"), db, cfg)
-	// Phase M1: Release 三维模型新链路，与 apideploy 共享 /services 组
+	// Phase M3: Release 三维模型是 service 写路径的唯一来源,旧 apideploy 包已退役。
 	apirelease.RegisterRoutes(protected.Group("/services"), db, cfg)
+	apirelease.RegisterWebhookRoutes(base.Group("/webhooks"), db, cfg)
 	apimetrics.RegisterRoutes(protected.Group("/metrics"), db)
 	apisettings.RegisterRoutes(protected.Group("/settings"), db, cfg)
 	appsGroup := protected.Group("/apps")

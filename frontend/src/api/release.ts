@@ -1,4 +1,5 @@
 import request from './request'
+import type { Deploy } from '@/types/api'
 import type {
   Artifact,
   CreateArtifactPayload,
@@ -11,6 +12,13 @@ import type {
   Release,
   TriggerSource,
 } from '@/types/release'
+
+// Service 基础信息(只读)。M2 之前住在 @/api/deploy,deploy 包退役后归这里——
+// /services/:id 子树本就是 Release 链路的入口,基础查询和 Release 操作放在
+// 同一个 API 模块里语义最自洽。Deploy 类型是 Service 的历史别名,字段未变。
+export function getService(sid: number) {
+  return request.get<never, Deploy>(`/services/${sid}`)
+}
 
 // Release
 export function listReleases(sid: number) {

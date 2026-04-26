@@ -1,5 +1,5 @@
 // Package release 实现 M1 Release 三维正交模型的 HTTP 层。
-// 路由挂在 /panel/api/v1/services/:id 下，与 api/deploy 并存（子路径不冲突）：
+// 路由挂在 /panel/api/v1/services/:id 下:
 //
 //	/services/:id/releases      ── Release CRUD + Apply + Rollback
 //	/services/:id/artifacts     ── Artifact 上传/声明/Probe
@@ -7,6 +7,9 @@
 //	/services/:id/config-sets   ── ConfigFileSet CRUD
 //	/services/:id/deploy-runs   ── 部署执行历史 + 日志
 //	/services/:id/settings/auto-rollback ── 自动回滚开关
+//
+// webhook.go 还在本包里挂 /panel/api/v1/webhooks/:token —— Git provider 推送
+// 复用同一个 Release Apply 路径。
 //
 // 实际 Apply 执行逻辑在 pkg/deployer/release_apply.go。
 package release
@@ -33,6 +36,12 @@ import (
 // RegisterRoutes 挂载 Release 模型相关的子路由。
 // 调用方需把 r 传成 protected.Group("/services") 。
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+	// Service 列表 + 单条只读。M2 之前由 apideploy 包提供;现在 service 写路径
+	// 已经全部归 Release 链路,这两个只读端点也跟着收到这里——避免再起一个
+	// "服务基础信息"的小包,保持 /services/:id 子树语义内聚。
+	r.GET("", listServices(db))
+	r.GET("/:id", getService(db))
+
 	g := r.Group("/:id")
 
 	// Release
@@ -72,12 +81,38 @@ func parseServiceID(c *gin.Context) (uint, bool) {
 	return uint(v), true
 }
 
-func getService(db *gorm.DB, id uint) (*model.Service, error) {
+func loadService(db *gorm.DB, id uint) (*model.Service, error) {
 	var s model.Service
 	if err := db.First(&s, id).Error; err != nil {
 		return nil, err
 	}
 	return &s, nil
+}
+
+// listServices 返回所有 Service。M2 之前在 apideploy.listHandler 里;
+// 那个包整体退役后这条只读端点搬到这里,语义没变。
+func listServices(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var services []model.Service
+		db.Order("id asc").Find(&services)
+		resp.OK(c, services)
+	}
+}
+
+// getService 返回单条 Service。前端 ServiceDetail.vue 在用。
+func getService(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sid, ok := parseServiceID(c)
+		if !ok {
+			return
+		}
+		s, err := loadService(db, sid)
+		if err != nil {
+			resp.NotFound(c, "Service 不存在")
+			return
+		}
+		resp.OK(c, s)
+	}
 }
 
 // ── Release handlers ──────────────────────────────────────────────────────
@@ -109,7 +144,7 @@ func createRelease(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		if _, err := getService(db, sid); err != nil {
+		if _, err := loadService(db, sid); err != nil {
 			resp.NotFound(c, "service not found")
 			return
 		}
@@ -218,7 +253,7 @@ func createArtifact(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		if _, err := getService(db, sid); err != nil {
+		if _, err := loadService(db, sid); err != nil {
 			resp.NotFound(c, "service not found")
 			return
 		}

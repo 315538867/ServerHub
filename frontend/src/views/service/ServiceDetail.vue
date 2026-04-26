@@ -9,7 +9,7 @@ import DeploysTab from './tabs/DeploysTab.vue'
 import SettingsTab from './tabs/SettingsTab.vue'
 import ArtifactsTab from './tabs/ArtifactsTab.vue'
 import LogsTab from './tabs/LogsTab.vue'
-import { getDeploy } from '@/api/deploy'
+import { getService } from '@/api/release'
 import type { Deploy } from '@/types/api'
 
 const route = useRoute()
@@ -20,7 +20,7 @@ const loading = ref(false)
 async function load() {
   loading.value = true
   try {
-    svc.value = await getDeploy(sid.value)
+    svc.value = await getService(sid.value)
   } finally {
     loading.value = false
   }
