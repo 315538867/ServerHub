@@ -405,7 +405,7 @@ import {
   listIngresses, getIngress, createIngress, updateIngress, deleteIngress,
   addIngressRoute, updateIngressRoute, deleteIngressRoute,
   applyEdge, dryRunEdge, listAudit, listEdgeServices,
-  listImportCandidates, renderPreset,
+  listImportCandidates, confirmImportFromNginx, restoreIngress, renderPreset,
 } from '@/api/ingresses'
 import type {
   Ingress, IngressDetail, IngressRoute, IngressMatchKind,
@@ -839,7 +839,19 @@ function statusLabel(status: string): string {
 
 const ingressColumns = computed<DataTableColumns<Ingress>>(() => [
   { type: 'expand', key: 'id', renderExpand: (row: Ingress) => renderRoutes(row) } as any,
-  { title: '域名', key: 'domain', minWidth: 180, ellipsis: { tooltip: true } },
+  {
+    title: '域名', key: 'domain', minWidth: 220,
+    render: (row) => h('div', { class: 'ig-domain-cell' }, [
+      h('span', { class: 'ig-domain-cell__name' }, row.domain),
+      // 接管来源 = archive_path + original_config_path 同时非空。
+      // 打个 tag 让用户一眼看出"这条 Ingress 不是我新建的、是从老 nginx 接管来的",
+      // 还原按钮也只对这种行可见。
+      row.archive_path && row.original_config_path
+        ? h(NTag, { size: 'tiny', type: 'warning', class: 'ig-domain-cell__tag' },
+          { default: () => '归档来源' })
+        : null,
+    ]),
+  },
   {
     title: '匹配', key: 'match_kind', width: 100,
     render: (row) => h(NTag, { size: 'small', type: row.match_kind === 'domain' ? 'info' : 'default' },
@@ -859,19 +871,35 @@ const ingressColumns = computed<DataTableColumns<Ingress>>(() => [
     render: (row) => row.last_applied_at ? formatDate(row.last_applied_at) : '—',
   },
   {
-    title: '操作', key: 'ops', width: 240, fixed: 'right' as const,
-    render: (row) => h('div', { class: 'ig-ops' }, [
-      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openAddRoute(row) }, () => '+ 路由'),
-      h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openEditIngress(row) }, () => '编辑'),
-      h(NPopconfirm, {
+    title: '操作', key: 'ops', width: 320, fixed: 'right' as const,
+    render: (row) => {
+      const ops: ReturnType<typeof h>[] = [
+        h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openAddRoute(row) }, () => '+ 路由'),
+        h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openEditIngress(row) }, () => '编辑'),
+      ]
+      // 接管来源:把"还原"按钮放在删除前面;还原会把归档目录里的原 vhost
+      // mv 回 sites-enabled 并删 Ingress 行,等价"撤销接管"。
+      if (row.archive_path && row.original_config_path) {
+        ops.push(h(NPopconfirm, {
+          onPositiveClick: () => doRestoreIngress(row),
+          positiveText: '还原', negativeText: '取消',
+        }, {
+          trigger: () => h(UiButton, { variant: 'ghost', size: 'sm', loading: restoringId.value === row.id },
+            () => '还原'),
+          default: () => `把归档文件 mv 回 ${row.original_config_path} 并删除 Ingress?\n` +
+            `下次"应用配置"时本 Ingress 渲染产物会被自动清理。`,
+        }))
+      }
+      ops.push(h(NPopconfirm, {
         onPositiveClick: () => delIngress(row),
         positiveText: '删除', negativeText: '取消',
       }, {
         trigger: () => h(UiButton, { variant: 'ghost', size: 'sm' },
           () => h('span', { class: 'ig-danger' }, '删除')),
         default: () => `确认删除 ${row.domain}?`,
-      }),
-    ]),
+      }))
+      return h('div', { class: 'ig-ops' }, ops)
+    },
   },
 ])
 
@@ -1037,30 +1065,44 @@ async function confirmImport(c: IngressProxyCandidate) {
   if (c.already_managed || !c.server_name) return
   importingFp.value = c.fingerprint
   try {
-    await createIngress({
-      edge_server_id: serverId.value,
-      match_kind: 'domain',
-      domain: c.server_name,
-      default_path: '/',
-      cert_id: null,
-      force_https: false,
-      routes: c.routes.map((r, idx) => ({
-        sort: idx * 10,
+    // P3-D: 走 import-confirm 端点——后端会先把原 vhost mv 到归档目录,再写
+    // Ingress + Routes,落库失败时回滚 mv。比起 createIngress 多了"接管文件
+    // 不再被 nginx 加载、避免与新生成 vhost 重复 server_name 冲突"的关键一步。
+    await confirmImportFromNginx(serverId.value, {
+      config_file: c.config_file,
+      server_name: c.server_name,
+      listen: c.listen,
+      routes: c.routes.map((r) => ({
         path: r.path,
-        protocol: r.websocket ? 'http' : 'http', // 反代站点统一 http;ws 协议交由 WebSocket=true 控制
+        proxy_pass: r.proxy_pass,
         websocket: r.websocket,
         extra: r.extra,
-        upstream: { type: 'raw', raw_url: r.proxy_pass },
       })),
     })
-    message.success(`已导入 ${c.server_name},请点击应用配置完成下发`)
-    // 刷新候选(标记 already_managed) 与列表
+    message.success(`已接管 ${c.server_name},原文件已归档,请点击应用配置完成下发`)
     c.already_managed = true
     await loadIngressList()
   } catch (e: any) {
-    showApiError(e, '导入失败')
+    showApiError(e, '接管失败')
   } finally {
     importingFp.value = ''
+  }
+}
+
+// ── Phase Nginx-P3D: 一键还原(归档 mv 回 + 删 Ingress) ─────────────────────
+const restoringId = ref<number>(0)
+
+async function doRestoreIngress(row: Ingress) {
+  if (!row.archive_path || !row.original_config_path) return
+  restoringId.value = row.id
+  try {
+    const res = await restoreIngress(row.id)
+    message.success(`已还原 ${res.original_config_path},请点击应用配置触发清理`)
+    await loadIngressList()
+  } catch (e: any) {
+    showApiError(e, '还原失败')
+  } finally {
+    restoringId.value = 0
   }
 }
 
@@ -1164,6 +1206,9 @@ onMounted(loadAll)
 :deep(.ig-mono--muted) { color: var(--ui-fg-3); }
 :deep(.ig-ops) { display: inline-flex; gap: var(--space-1); }
 :deep(.ig-danger) { color: var(--ui-danger-fg); }
+:deep(.ig-domain-cell) { display: inline-flex; align-items: center; gap: var(--space-2); }
+:deep(.ig-domain-cell__name) { font-weight: 500; }
+:deep(.ig-domain-cell__tag) { flex-shrink: 0; }
 
 .ig-audit { display: flex; flex-direction: column; gap: var(--space-4); }
 .ig-audit__head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }

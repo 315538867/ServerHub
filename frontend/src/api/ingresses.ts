@@ -42,6 +42,10 @@ export interface Ingress {
   force_https: boolean
   status: string
   last_applied_at: string | null
+  // archive_path / original_config_path 同时非空 = 接管来源,前端据此渲染"归档"
+  // 标记并打开"还原"按钮;两者同时为空 = 普通新建,不显示还原入口。
+  archive_path?: string
+  original_config_path?: string
   created_at: string
   updated_at: string
 }
@@ -201,6 +205,34 @@ export interface ImportCandidatesResp {
 export function listImportCandidates(serverId: number) {
   return request.get<never, ImportCandidatesResp>(
     `/ingresses/edges/${serverId}/import-candidates`,
+  )
+}
+
+// ── Phase Nginx-P3D: 接管确认(归档原文件) / 还原 ─────────────────────────────
+
+export interface ConfirmImportBody {
+  config_file: string
+  server_name: string
+  listen?: string
+  routes: Array<{
+    path: string
+    proxy_pass: string
+    websocket?: boolean
+    extra?: string
+  }>
+}
+
+export function confirmImportFromNginx(serverId: number, body: ConfirmImportBody) {
+  return request.post<never, Ingress>(
+    `/ingresses/edges/${serverId}/import-confirm`,
+    body,
+  )
+}
+
+export function restoreIngress(id: number) {
+  return request.post<never, { restored: boolean; original_config_path: string }>(
+    `/ingresses/${id}/restore`,
+    {},
   )
 }
 

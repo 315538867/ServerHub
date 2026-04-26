@@ -24,6 +24,16 @@ type Ingress struct {
 	ForceHTTPS    bool       `gorm:"default:false;column:force_https" json:"force_https"`
 	Status        string     `gorm:"default:'pending'" json:"status"` // pending|applied|drift|broken
 	LastAppliedAt *time.Time `json:"last_applied_at"`
-	CreatedAt     time.Time  `json:"created_at"`
-	UpdatedAt     time.Time  `json:"updated_at"`
+	// ArchivePath / OriginalConfigPath 标记"本 Ingress 是从 nginx 老 vhost 接管而来"。
+	//   - ArchivePath: 远端归档目录中 mv 后的绝对路径,如
+	//                  /etc/nginx/.serverhub-archive/1714119492/api.example.com.conf
+	//   - OriginalConfigPath: 接管前的原文件路径,如 /etc/nginx/sites-enabled/api
+	//
+	// 两者同时为空 = 普通新建,POST /ingresses/:id/restore 端点拒绝处理。
+	// 同时非空 = 接管来源,可一键还原(mv 文件回 OriginalConfigPath + 删 Ingress)。
+	// 半空状态(只有一个有值) 视为脏数据,restore 端点也拒绝。
+	ArchivePath        string    `gorm:"default:''" json:"archive_path"`
+	OriginalConfigPath string    `gorm:"default:''" json:"original_config_path"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
 }
