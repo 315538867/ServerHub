@@ -324,6 +324,8 @@
                 </div>
                 <div class="ig-import__head-ops">
                   <UiBadge v-if="c.already_managed" tone="warning">已接管</UiBadge>
+                  <!-- 任一 route 跨机:卡片层贴个总标 + 提示文案,引导接管后改 service upstream -->
+                  <UiBadge v-if="hasCrossServer(c)" tone="info">含跨机 upstream</UiBadge>
                   <UiButton
                     variant="primary"
                     size="sm"
@@ -341,6 +343,15 @@
                   <span class="ig-arrow">→</span>
                   <code class="ig-mono ig-mono--up">{{ rt.proxy_pass }}</code>
                   <NTag v-if="rt.websocket" size="tiny" type="success">WS</NTag>
+                  <!-- 跨机:proxy_pass 主机命中另一台已注册 Server,提示用户接管后改 service upstream -->
+                  <NTag
+                    v-if="rt.cross_server_id"
+                    size="tiny"
+                    type="warning"
+                    :title="`目标在 ${rt.cross_server_name},接管后建议切到 service upstream 让 Resolver 选最优网络`"
+                  >
+                    跨机 → {{ rt.cross_server_name }}
+                  </NTag>
                   <code v-if="rt.extra" class="ig-mono ig-mono--muted ig-import__extra">
                     {{ truncateExtra(rt.extra) }}
                   </code>
@@ -1059,6 +1070,12 @@ function truncateExtra(extra: string): string {
   const lines = extra.split('\n').map((l) => l.trim()).filter(Boolean)
   if (lines.length <= 2) return lines.join(' · ')
   return lines.slice(0, 2).join(' · ') + ` (+${lines.length - 2} lines)`
+}
+
+// hasCrossServer:候选里任一 route 的 proxy_pass 命中其他 server 时,
+// 卡片头部贴一个总标,免得用户得展开每条 route 才发现。
+function hasCrossServer(c: IngressProxyCandidate): boolean {
+  return c.routes.some((r) => !!r.cross_server_id)
 }
 
 async function confirmImport(c: IngressProxyCandidate) {

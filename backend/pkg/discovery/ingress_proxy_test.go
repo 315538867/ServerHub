@@ -176,3 +176,26 @@ func TestScanNginxIngressProxy_FingerprintStable(t *testing.T) {
 		t.Errorf("fingerprint must differ on server_name")
 	}
 }
+
+func TestProxyPassHost(t *testing.T) {
+	cases := []struct {
+		in     string
+		host   string
+		ok     bool
+	}{
+		{"http://127.0.0.1:8080", "127.0.0.1", true},
+		{"https://10.0.0.5:8443/foo", "10.0.0.5", true},
+		{"http://api.example.com/x", "api.example.com", true},
+		{"http://upstream-pool", "upstream-pool", true},
+		{"unix:/var/run/sock", "", false},
+		{"upstream_only", "", false},
+		{"", "", false},
+		{"http://[::1]:8080", "", false}, // IPv6 暂不支持跨机匹配
+	}
+	for _, c := range cases {
+		got, ok := ProxyPassHost(c.in)
+		if ok != c.ok || got != c.host {
+			t.Errorf("ProxyPassHost(%q) = (%q,%v), want (%q,%v)", c.in, got, ok, c.host, c.ok)
+		}
+	}
+}

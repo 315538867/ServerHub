@@ -186,6 +186,10 @@ export interface IngressProxyRoute {
   proxy_pass: string
   websocket: boolean
   extra: string
+  // P3-E: 后端发现 proxy_pass 主机命中**另一台**已注册 Server 时填入,
+  // 前端用来在导入向导上贴"→ srvName(跨机)"小标。同 edge 自身永远不填。
+  cross_server_id?: number
+  cross_server_name?: string
 }
 
 export interface IngressProxyCandidate {

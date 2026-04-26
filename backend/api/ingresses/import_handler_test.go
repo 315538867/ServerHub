@@ -135,3 +135,86 @@ func TestImportCandidates_RunnerError(t *testing.T) {
 		t.Fatalf("expected 500, got %d body=%v", w.Code, out)
 	}
 }
+
+// TestImportCandidates_AnnotatesCrossServer 覆盖 P3-E:扫描出来的 proxy_pass 主机
+// 命中**另一台**注册 Server.Host(或 Networks[].Address)时,api 层把跨机 server
+// id+name 回吐到 route 上;命中当前 edge 自己 / 解析失败 / 域名不在注册列表 → 不标。
+func TestImportCandidates_AnnotatesCrossServer(t *testing.T) {
+	r, db := setup(t)
+	edgeID := mkEdge(t, db)
+
+	// 另一台 server,private 网络地址 10.0.0.7;同 host 命中也算跨机。
+	other := model.Server{
+		Name: "backend-7",
+		Host: "10.0.0.7",
+		Networks: model.Networks{
+			{Kind: model.NetworkKindPrivate, NetworkID: "lan", Address: "10.0.0.7", Priority: 10},
+		},
+	}
+	if err := db.Create(&other).Error; err != nil {
+		t.Fatalf("seed other: %v", err)
+	}
+
+	body := `
+server {
+    listen 80;
+    server_name api.example.com;
+    location / {
+        proxy_pass http://10.0.0.7:8080;
+    }
+    location /local {
+        proxy_pass http://127.0.0.1:9000;
+    }
+    location /unknown {
+        proxy_pass http://203.0.113.55:80;
+    }
+}
+`
+	rn := &stubRunner{
+		listingOut: "/etc/nginx/sites-enabled/api\n",
+		catOut:     map[string]string{"/etc/nginx/sites-enabled/api": body},
+	}
+	old := SetImportRunnerFactory(func(*model.Server, *config.Config) (runner.Runner, error) {
+		return rn, nil
+	})
+	t.Cleanup(func() { SetImportRunnerFactory(old) })
+
+	w, out := do(t, r, http.MethodGet,
+		"/ingresses/edges/"+strconv.FormatUint(uint64(edgeID), 10)+"/import-candidates", nil)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%v", w.Code, out)
+	}
+	data, _ := out["data"].(map[string]any)
+	cands, _ := data["candidates"].([]any)
+	if len(cands) != 1 {
+		t.Fatalf("expected 1 candidate, got %d", len(cands))
+	}
+	routes := cands[0].(map[string]any)["routes"].([]any)
+	if len(routes) != 3 {
+		t.Fatalf("expected 3 routes, got %d", len(routes))
+	}
+	// 按 path 找,断言只有 / 命中跨机标记。
+	for _, raw := range routes {
+		rt := raw.(map[string]any)
+		path, _ := rt["path"].(string)
+		switch path {
+		case "/":
+			if rt["cross_server_id"] != float64(other.ID) {
+				t.Errorf("/ 应标记跨机 id=%d, got %v", other.ID, rt["cross_server_id"])
+			}
+			if rt["cross_server_name"] != "backend-7" {
+				t.Errorf("/ cross_server_name=%v", rt["cross_server_name"])
+			}
+		case "/local":
+			if _, has := rt["cross_server_id"]; has {
+				t.Errorf("/local 是 loopback,不该被标跨机: %+v", rt)
+			}
+		case "/unknown":
+			if _, has := rt["cross_server_id"]; has {
+				t.Errorf("/unknown 主机未注册,不该被标跨机: %+v", rt)
+			}
+		default:
+			t.Errorf("unexpected path %q", path)
+		}
+	}
+}

@@ -21,6 +21,12 @@ type IngressProxyRoute struct {
 	ProxyPass string `json:"proxy_pass"` // proxy_pass 后面的 URL
 	WebSocket bool   `json:"websocket"`  // 检测到 Upgrade/Connection: upgrade 头
 	Extra     string `json:"extra"`      // 剩余 body 行，verbatim
+	// CrossServerID / CrossServerName 仅当 ProxyPass 主机命中**另一台**已注册 Server
+	// 时由 api 层填入,纯展示用:让用户在导入向导里一眼看见"这条路由其实指向 X 机,
+	// 接管后建议切到 service upstream 利用 Resolver 选最优网络"。同 edge 自己
+	// (loopback/private/...) 不算跨机;解析失败 / unix sock / 域名都置零保兼容。
+	CrossServerID   uint   `json:"cross_server_id,omitempty"`
+	CrossServerName string `json:"cross_server_name,omitempty"`
 }
 
 // IngressProxyCandidate 是"sites-available 里某个反代 vhost 可被接管"的一条建议。
@@ -294,4 +300,50 @@ func isHeaderDirective(line, name string) bool {
 func ingressProxyFingerprint(path, serverName string) string {
 	h := sha1.Sum([]byte(path + "|" + serverName))
 	return hex.EncodeToString(h[:8])
+}
+
+// ProxyPassHost 从 proxy_pass URL 字面量里抽出 host(不含端口)。
+// nginx 允许的形态:
+//
+//	http://127.0.0.1:8080
+//	https://10.0.0.5:8443/foo
+//	http://upstream-pool         (这是 upstream{} 名字,不解析)
+//	unix:/var/run/sock           (unix sock,无主机)
+//
+// 返回 ("", false) 表示"不是带主机的 URL,跨机检测跳过"。本函数不做 IP 校验,
+// 因为 Server.Host 也可能是域名,跨机匹配交给上层做 string equality.
+func ProxyPassHost(proxyPass string) (string, bool) {
+	pp := strings.TrimSpace(proxyPass)
+	if pp == "" {
+		return "", false
+	}
+	// unix:/path 或 unix:///path:不是 TCP 转发,跳过。
+	if strings.HasPrefix(pp, "unix:") {
+		return "", false
+	}
+	// 必须含 ://;不然就是 upstream{} 的引用,无法静态判跨机。
+	idx := strings.Index(pp, "://")
+	if idx < 0 {
+		return "", false
+	}
+	rest := pp[idx+3:]
+	// 砍掉 path / query / fragment
+	for _, sep := range []string{"/", "?", "#"} {
+		if i := strings.Index(rest, sep); i >= 0 {
+			rest = rest[:i]
+		}
+	}
+	// 砍掉端口
+	if i := strings.LastIndex(rest, ":"); i >= 0 {
+		// 防 IPv6 误伤:[::1]:8080 — 暂不支持 IPv6 跨机,直接当无主机处理
+		if strings.HasPrefix(rest, "[") {
+			return "", false
+		}
+		rest = rest[:i]
+	}
+	rest = strings.TrimSpace(rest)
+	if rest == "" {
+		return "", false
+	}
+	return rest, true
 }

@@ -93,7 +93,63 @@ func importCandidatesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 				}
 			}
 		}
+		// 跨机 upstream 标记:扫描出来的 proxy_pass 主机,如果命中**另一台**已注册
+		// Server 的 Host / Networks[].Address,就把 server id+name 回吐给前端,让
+		// 用户在导入时一眼看见"这条 proxy_pass 指向另一台机,接管后建议切到 service
+		// upstream 让 Resolver 自动选最优网络"。同 edge 自身的 loopback / private
+		// 命中**不**视作跨机,避免对"normal 接管自家进程"打扰。
+		if len(cands) > 0 {
+			annotateCrossServer(out.Candidates, db, edgeID)
+		}
 		resp.OK(c, out)
+	}
+}
+
+// annotateCrossServer 把跨机 proxy_pass 标记到 candidates 的 routes 上。
+//
+// 实现:把 db 里所有 Server 的 Host + Networks[].Address 摊成 host→(id,name) 表,
+// 然后对每条 route 取 ProxyPassHost 查表。命中**当前 edge** 的不算跨机。
+func annotateCrossServer(cands []discovery.IngressProxyCandidate, db *gorm.DB, edgeID uint) {
+	var servers []model.Server
+	if err := db.Find(&servers).Error; err != nil {
+		return // 跨机标记是 best-effort,DB 抖一下不影响主流程
+	}
+	type srvRef struct {
+		id   uint
+		name string
+	}
+	lookup := make(map[string]srvRef, len(servers)*2)
+	for _, s := range servers {
+		ref := srvRef{id: s.ID, name: s.Name}
+		if h := strings.TrimSpace(s.Host); h != "" {
+			lookup[h] = ref
+		}
+		for _, n := range s.Networks {
+			// loopback Address 永远是 127.0.0.1,不能用来跨机匹配——任何 edge 上
+			// 看到 proxy_pass http://127.0.0.1 都是"自家进程"。
+			if n.Kind == model.NetworkKindLoopback {
+				continue
+			}
+			if a := strings.TrimSpace(n.Address); a != "" {
+				// 多台机若共用同一非 loopback Address(配置错误,极罕见) 后写覆盖
+				// 前写——跨机标记本就是 best-effort 提示,精确度让位于代码简单。
+				lookup[a] = ref
+			}
+		}
+	}
+	for i := range cands {
+		for j := range cands[i].Routes {
+			host, ok := discovery.ProxyPassHost(cands[i].Routes[j].ProxyPass)
+			if !ok {
+				continue
+			}
+			ref, hit := lookup[host]
+			if !hit || ref.id == edgeID {
+				continue
+			}
+			cands[i].Routes[j].CrossServerID = ref.id
+			cands[i].Routes[j].CrossServerName = ref.name
+		}
 	}
 }
 
