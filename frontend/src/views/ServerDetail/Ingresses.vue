@@ -441,7 +441,8 @@ async function saveIngress() {
 async function delIngress(ig: Ingress) {
   try {
     await deleteIngress(ig.id)
-    message.success('已删除')
+    // 仅删了 DB 记录,远端 nginx 配置文件还在;提醒用户跑一次 Apply 完成清理。
+    message.warning('数据库已删除,请点击"应用配置"清理远端文件', { duration: 6000 })
     await loadIngressList()
   } catch (e: any) {
     showApiError(e, '删除失败')
@@ -687,11 +688,8 @@ const ingressColumns = computed<DataTableColumns<Ingress>>(() => [
       { default: () => row.match_kind === 'domain' ? '域名' : '路径' }),
   },
   {
-    title: 'TLS', key: 'cert_id', width: 110,
-    render: (row) => row.cert_id
-      ? h(NTag, { size: 'small', type: row.force_https ? 'error' : 'success' },
-          { default: () => row.force_https ? 'HTTPS强制' : 'HTTPS' })
-      : '—',
+    title: 'TLS', key: 'cert_id', width: 160,
+    render: (row) => row.cert_id ? renderTlsCell(row) : '—',
   },
   { title: '默认路径', key: 'default_path', width: 140, ellipsis: { tooltip: true } },
   {
@@ -754,6 +752,31 @@ function renderRoutes(row: Ingress) {
       ]),
     ])),
   )
+}
+
+// renderTlsCell 把 TLS 列渲染成 HTTPS 标 + cert 剩余天数小标。
+//   - days_left < 14:红色危险态(必须立刻续签)
+//   - days_left < 60:橙色警告(进入续签窗口)
+//   - 否则:中性
+// 找不到证书(已被删除/列表未加载到):降级为问号灰标,引导用户去检查。
+function renderTlsCell(row: Ingress) {
+  const main = h(NTag, { size: 'small', type: row.force_https ? 'error' : 'success' },
+    { default: () => row.force_https ? 'HTTPS强制' : 'HTTPS' })
+  const cert = certs.value.find((c) => c.id === row.cert_id)
+  if (!cert) {
+    return h('div', { class: 'ig-ops' }, [
+      main,
+      h(NTag, { size: 'tiny', type: 'default' }, { default: () => '?cert' }),
+    ])
+  }
+  const days = cert.days_left
+  let tone: 'default' | 'warning' | 'error' = 'default'
+  if (days < 14) tone = 'error'
+  else if (days < 60) tone = 'warning'
+  return h('div', { class: 'ig-ops' }, [
+    main,
+    h(NTag, { size: 'tiny', type: tone }, { default: () => `${days}d` }),
+  ])
 }
 
 function upstreamLabel(rt: IngressRoute): string {

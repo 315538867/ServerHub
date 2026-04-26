@@ -710,6 +710,126 @@ func TestTLS_UpdateRejectsForceHTTPSWithoutCert(t *testing.T) {
 	}
 }
 
+// ── 路由唯一性预检（A+C）────────────────────────────────────────────────────
+
+func TestRouteUniqueness_RejectsDuplicatePath(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	ig := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "u.com"}
+	db.Create(&ig)
+	// 已经有一条 / 路由
+	db.Create(&model.IngressRoute{IngressID: ig.ID, Path: "/", Protocol: "http"})
+
+	w, body := do(t, r, "POST", "/ingresses/"+uintToStr(ig.ID)+"/routes", map[string]any{
+		"path": "/", "protocol": "http",
+		"upstream": map[string]any{"type": "raw", "raw_url": "http://x:1"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("同 ingress 内重复 path 应 400, got %d body=%v", w.Code, body)
+	}
+}
+
+func TestRouteUniqueness_AllowsSamePathAcrossIngresses(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	ig1 := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "a.com"}
+	ig2 := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "b.com"}
+	db.Create(&ig1)
+	db.Create(&ig2)
+	db.Create(&model.IngressRoute{IngressID: ig1.ID, Path: "/", Protocol: "http"})
+
+	w, body := do(t, r, "POST", "/ingresses/"+uintToStr(ig2.ID)+"/routes", map[string]any{
+		"path": "/", "protocol": "http",
+		"upstream": map[string]any{"type": "raw", "raw_url": "http://x:1"},
+	})
+	if w.Code != http.StatusOK || body["code"].(float64) != 0 {
+		t.Fatalf("不同 ingress 同 path 应放行, status=%d body=%v", w.Code, body)
+	}
+}
+
+func TestRouteUniqueness_RejectsListenPortConflictAcrossIngresses(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	ig1 := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "a.com"}
+	ig2 := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "b.com"}
+	db.Create(&ig1)
+	db.Create(&ig2)
+	port := 5432
+	db.Create(&model.IngressRoute{
+		IngressID: ig1.ID, Path: "/", Protocol: "tcp", ListenPort: &port,
+	})
+
+	// 跨 ingress 同 listen_port 应被拦
+	w, body := do(t, r, "POST", "/ingresses/"+uintToStr(ig2.ID)+"/routes", map[string]any{
+		"path": "/", "protocol": "tcp", "listen_port": 5432,
+		"upstream": map[string]any{"type": "raw", "raw_url": "h:1"},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("跨 ingress 同 tcp listen_port 应 400, got %d body=%v", w.Code, body)
+	}
+}
+
+func TestRouteUniqueness_AllowsListenPortReuseOnDifferentEdge(t *testing.T) {
+	r, db := setup(t)
+	e1 := mkEdge(t, db)
+	e2 := mkEdge(t, db)
+	ig1 := model.Ingress{EdgeServerID: e1, MatchKind: "domain", Domain: "a.com"}
+	ig2 := model.Ingress{EdgeServerID: e2, MatchKind: "domain", Domain: "b.com"}
+	db.Create(&ig1)
+	db.Create(&ig2)
+	port := 5432
+	db.Create(&model.IngressRoute{
+		IngressID: ig1.ID, Path: "/", Protocol: "tcp", ListenPort: &port,
+	})
+
+	w, body := do(t, r, "POST", "/ingresses/"+uintToStr(ig2.ID)+"/routes", map[string]any{
+		"path": "/", "protocol": "tcp", "listen_port": 5432,
+		"upstream": map[string]any{"type": "raw", "raw_url": "h:1"},
+	})
+	if w.Code != http.StatusOK || body["code"].(float64) != 0 {
+		t.Fatalf("不同 edge 上 listen_port 复用应放行, status=%d body=%v", w.Code, body)
+	}
+}
+
+func TestRouteUniqueness_UpdateExcludesSelf(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	ig := model.Ingress{EdgeServerID: edge, MatchKind: "domain", Domain: "u.com"}
+	db.Create(&ig)
+	rt := model.IngressRoute{IngressID: ig.ID, Path: "/api", Protocol: "http"}
+	db.Create(&rt)
+
+	// 不变 path 的 update 不应被自己卡住
+	w, body := do(t, r, "PUT", "/ingresses/"+uintToStr(ig.ID)+"/routes/"+uintToStr(rt.ID), map[string]any{
+		"path": "/api", "sort": 5,
+		"upstream": map[string]any{"type": "raw", "raw_url": "http://y:2"},
+	})
+	if w.Code != http.StatusOK || body["code"].(float64) != 0 {
+		t.Fatalf("update 不变 path 应放行, status=%d body=%v", w.Code, body)
+	}
+}
+
+func TestRouteUniqueness_CreateIngressBatchRejectsDuplicatePath(t *testing.T) {
+	r, db := setup(t)
+	edge := mkEdge(t, db)
+	w, _ := do(t, r, "POST", "/ingresses", map[string]any{
+		"edge_server_id": edge, "match_kind": "domain", "domain": "x.com",
+		"routes": []map[string]any{
+			{"path": "/", "upstream": map[string]any{"type": "raw", "raw_url": "h:1"}},
+			{"path": "/", "upstream": map[string]any{"type": "raw", "raw_url": "h:2"}},
+		},
+	})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("批内重复 path 应 400, got %d", w.Code)
+	}
+	// 事务回滚后 ingress 也不该残留
+	var cnt int64
+	db.Model(&model.Ingress{}).Count(&cnt)
+	if cnt != 0 {
+		t.Errorf("批内冲突应回滚事务,Ingress 还剩 %d", cnt)
+	}
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func uintToStr(u uint) string {

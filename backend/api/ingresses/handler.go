@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -135,6 +136,62 @@ func loadIngress(db *gorm.DB, id uint) (*model.Ingress, error) {
 	return &ig, nil
 }
 
+// validateRouteUniqueness 在写库前预检两类冲突,把本来要靠 nginx -t 兜底的错误前移:
+//
+//   - 同 ingress 内 path 重复：renderer 会产生两条 location 同 prefix,nginx -t 报
+//     "duplicate location"。同一 ingress 下用户极少需要两条同 path,统一拒绝。
+//   - 同 edge 内 tcp/udp 同 listen_port：renderer 写到 streams.conf 顶层 stream{}
+//     里两个 listen 同端口会让 nginx -t 直接挂掉,而且整个 stream 块都不可用。
+//
+// excludeRouteID 用于 update 场景排除自己;0 表示不排除(create 路径)。
+func validateRouteUniqueness(
+	db *gorm.DB, ingressID, edgeServerID uint,
+	path, protocol string, listenPort *int, excludeRouteID uint,
+) error {
+	if path != "" {
+		q := db.Model(&model.IngressRoute{}).
+			Where("ingress_id = ? AND path = ?", ingressID, path)
+		if excludeRouteID > 0 {
+			q = q.Where("id <> ?", excludeRouteID)
+		}
+		var cnt int64
+		if err := q.Count(&cnt).Error; err != nil {
+			return err
+		}
+		if cnt > 0 {
+			return errors.New("同 ingress 下已存在 path=" + path + " 的路由")
+		}
+	}
+	if (protocol == "tcp" || protocol == "udp") && listenPort != nil && *listenPort > 0 {
+		// 跨 ingress 的 stream 端口冲突：先把同 edge 下所有 ingress.id 取出来,
+		// 再按 (protocol IN tcp/udp, listen_port=?) 计数。
+		var siblingIDs []uint
+		if err := db.Model(&model.Ingress{}).
+			Where("edge_server_id = ?", edgeServerID).
+			Pluck("id", &siblingIDs).Error; err != nil {
+			return err
+		}
+		if len(siblingIDs) == 0 {
+			return nil
+		}
+		q := db.Model(&model.IngressRoute{}).
+			Where("ingress_id IN ?", siblingIDs).
+			Where("protocol IN ?", []string{"tcp", "udp"}).
+			Where("listen_port = ?", *listenPort)
+		if excludeRouteID > 0 {
+			q = q.Where("id <> ?", excludeRouteID)
+		}
+		var cnt int64
+		if err := q.Count(&cnt).Error; err != nil {
+			return err
+		}
+		if cnt > 0 {
+			return fmt.Errorf("同 edge 下已存在 listen_port=%d 的 tcp/udp 路由", *listenPort)
+		}
+	}
+	return nil
+}
+
 // validateTLS 校验 cert_id / force_https / match_kind 的组合一致性。
 //   - matchKind=path 时不允许带 CertID（共享 hub 站点暂不支持 per-ingress 证书）
 //   - certID==nil 但 forceHTTPS=true → 拒（强制跳转必须有目的端证书）
@@ -237,18 +294,25 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 			if err := tx.Create(&ig).Error; err != nil {
 				return err
 			}
+			// 同请求内多条路由之间也要互查:此时第 N 条 vs 已写入第 N-1 条会被
+			// validateRouteUniqueness 在 tx 内查到,等价于"批内冲突"也被前置拦截。
 			for _, r := range req.Routes {
 				if err := validateProtocol(r.Protocol, r.ListenPort); err != nil {
 					return err
 				}
+				proto := r.Protocol
+				if proto == "" {
+					proto = "http"
+				}
+				if err := validateRouteUniqueness(tx, ig.ID, ig.EdgeServerID,
+					r.Path, proto, r.ListenPort, 0); err != nil {
+					return err
+				}
 				ir := model.IngressRoute{
 					IngressID: ig.ID, Sort: r.Sort, Path: r.Path,
-					Protocol: r.Protocol, Upstream: r.Upstream,
+					Protocol: proto, Upstream: r.Upstream,
 					WebSocket: r.WebSocket, Extra: r.Extra,
 					ListenPort: r.ListenPort,
-				}
-				if ir.Protocol == "" {
-					ir.Protocol = "http"
 				}
 				if err := tx.Create(&ir).Error; err != nil {
 					return err
@@ -360,7 +424,8 @@ func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		if _, err := loadIngress(db, igID); err != nil {
+		ig, err := loadIngress(db, igID)
+		if err != nil {
 			resp.NotFound(c, "ingress 不存在")
 			return
 		}
@@ -373,14 +438,20 @@ func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
+		proto := req.Protocol
+		if proto == "" {
+			proto = "http"
+		}
+		if err := validateRouteUniqueness(db, igID, ig.EdgeServerID,
+			req.Path, proto, req.ListenPort, 0); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
 		ir := model.IngressRoute{
 			IngressID: igID, Sort: req.Sort, Path: req.Path,
-			Protocol: req.Protocol, Upstream: req.Upstream,
+			Protocol: proto, Upstream: req.Upstream,
 			WebSocket: req.WebSocket, Extra: req.Extra,
 			ListenPort: req.ListenPort,
-		}
-		if ir.Protocol == "" {
-			ir.Protocol = "http"
 		}
 		if err := db.Create(&ir).Error; err != nil {
 			resp.InternalError(c, err.Error())
@@ -412,6 +483,20 @@ func updateRouteHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if err := validateProtocol(req.Protocol, req.ListenPort); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
+		ig, err := loadIngress(db, igID)
+		if err != nil {
+			resp.NotFound(c, "ingress 不存在")
+			return
+		}
+		proto := req.Protocol
+		if proto == "" {
+			proto = ir.Protocol
+		}
+		if err := validateRouteUniqueness(db, igID, ig.EdgeServerID,
+			req.Path, proto, req.ListenPort, ir.ID); err != nil {
 			resp.BadRequest(c, err.Error())
 			return
 		}

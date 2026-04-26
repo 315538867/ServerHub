@@ -133,6 +133,7 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 			res.Output += "\n[rollback 也失败] " + rerr.Error()
 		}
 		res.RolledBack = true
+		_ = markPendingAsBroken(db, edgeID)
 		return res, fmt.Errorf("nginx -t 失败: %s", res.Output)
 	}
 
@@ -145,6 +146,7 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 			res.Output += "\n[rollback 也失败] " + rb.Error()
 		}
 		res.RolledBack = true
+		_ = markPendingAsBroken(db, edgeID)
 		return res, fmt.Errorf("nginx -s reload 失败: %w", rerr)
 	}
 
@@ -333,6 +335,15 @@ func updateIngressStatus(db *gorm.DB, edgeID uint) error {
 	return db.Model(&model.Ingress{}).
 		Where("edge_server_id = ?", edgeID).
 		Updates(map[string]any{"status": "applied", "last_applied_at": &now}).Error
+}
+
+// markPendingAsBroken 在 Apply 失败 + rollback 之后,把"用户改完还没成功 apply 的"
+// (status=pending) 标 broken,让 UI 能看到这次提交确实没生效。已 applied 的不动 ——
+// rollback 完远端就回到了 apply 前状态,正常运行的 ingress 不应被波及。
+func markPendingAsBroken(db *gorm.DB, edgeID uint) error {
+	return db.Model(&model.Ingress{}).
+		Where("edge_server_id = ? AND status = ?", edgeID, "pending").
+		Update("status", "broken").Error
 }
 
 // formatChangeset 把 Change 列表压成一段适合存进 audit 的人类可读 diff。

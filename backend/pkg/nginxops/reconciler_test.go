@@ -188,6 +188,61 @@ func TestApply_NginxTFails_RollsBack(t *testing.T) {
 	}
 }
 
+// nginx -t 失败时,rollback 后应把 status=pending 的 ingress 翻 broken,
+// applied 的不动。让 UI 上 broken 状态实际可见。
+func TestApply_NginxTFails_MarksBrokenForPending(t *testing.T) {
+	db := newTestDB(t)
+	edge := model.Server{Name: "edge", Type: "ssh"}
+	db.Create(&edge)
+	svc := model.Service{Name: "app", ServerID: edge.ID, ExposedPort: 80}
+	db.Create(&svc)
+	// 用户改完待应用：pending
+	pendingIg := model.Ingress{
+		EdgeServerID: edge.ID, MatchKind: nginxrender.MatchKindDomain,
+		Domain: "boom.com", Status: "pending",
+	}
+	db.Create(&pendingIg)
+	db.Create(&model.IngressRoute{
+		IngressID: pendingIg.ID, Path: "/",
+		Upstream: model.IngressUpstream{Type: "service", ServiceID: &svc.ID}, Extra: "boom",
+	})
+	// 旁观者:已应用且不在本次变更里
+	stableIg := model.Ingress{
+		EdgeServerID: edge.ID, MatchKind: nginxrender.MatchKindDomain,
+		Domain: "stable.com", Status: "applied",
+	}
+	db.Create(&stableIg)
+
+	fr := newFakeRunner()
+	fr.onContains("base64", "", nil)
+	fr.onContains("tar -C /etc/nginx", "", nil)
+	fr.onContains("nginx -t", "test failed", &fakeErr{"exit 1"})
+	installFakeRunner(t, fr)
+
+	res, err := Apply(context.Background(), db, &config.Config{}, edge.ID, nil)
+	if err == nil {
+		t.Fatal("应返回 nginx -t 错误")
+	}
+	if !res.RolledBack {
+		t.Errorf("应标记 RolledBack")
+	}
+	// 各取一条新结构体,避免 db.First 复用同一结构体时旧字段残留导致误判。
+	var gotPending model.Ingress
+	if err := db.First(&gotPending, pendingIg.ID).Error; err != nil {
+		t.Fatalf("reload pending: %v", err)
+	}
+	if gotPending.Status != "broken" {
+		t.Errorf("pending ingress 应被翻 broken,得 %q", gotPending.Status)
+	}
+	var gotStable model.Ingress
+	if err := db.First(&gotStable, stableIg.ID).Error; err != nil {
+		t.Fatalf("reload stable: %v", err)
+	}
+	if gotStable.Status != "applied" {
+		t.Errorf("已 applied 的旁观 ingress 不应被波及,得 %q", gotStable.Status)
+	}
+}
+
 func TestApply_RejectsNonFullCapability(t *testing.T) {
 	db := newTestDB(t)
 	edge := model.Server{Name: "edge", Type: "local"}
