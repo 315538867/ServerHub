@@ -141,6 +141,40 @@
           />
           <NInput v-else v-model:value="routeForm.raw_url" placeholder="如 http://outside:9000" />
         </NFormItem>
+        <NFormItem v-if="routeForm.upstream_kind === 'service'" label="高级">
+          <UiButton
+            variant="ghost"
+            size="sm"
+            @click="showAdvanced = !showAdvanced"
+          >
+            {{ showAdvanced ? '收起' : '展开' }}网络偏好 / 覆盖
+          </UiButton>
+        </NFormItem>
+        <template v-if="routeForm.upstream_kind === 'service' && showAdvanced">
+          <NFormItem label="网络偏好">
+            <NSelect
+              v-model:value="routeForm.network_pref"
+              :options="networkPrefOptions"
+              placeholder="auto = 让 Resolver 自动选最优网络"
+            />
+          </NFormItem>
+          <NFormItem label="覆盖 Host">
+            <NInput
+              v-model:value="routeForm.override_host"
+              placeholder="留空 = 用 Resolver 选出的地址"
+            />
+          </NFormItem>
+          <NFormItem label="覆盖端口">
+            <NInputNumber
+              v-model:value="routeForm.override_port"
+              :min="1"
+              :max="65535"
+              clearable
+              placeholder="留空 = 用 Service.exposed_port"
+              style="width: 100%"
+            />
+          </NFormItem>
+        </template>
         <NFormItem label="额外指令">
           <NInput
             v-model:value="routeForm.extra"
@@ -171,7 +205,7 @@ import {
   NRadioGroup, NRadioButton, NSwitch, NPopconfirm, NTag, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns, SelectOption } from 'naive-ui'
-import { RefreshCw, Plus } from 'lucide-vue-next'
+import { RefreshCw } from 'lucide-vue-next'
 import { showApiError } from '@/utils/errors'
 import {
   listIngresses, getIngress, createIngress, updateIngress, deleteIngress,
@@ -181,6 +215,7 @@ import {
 import type {
   Ingress, IngressDetail, IngressRoute, IngressMatchKind,
   ApplyResult, IngressChange, AuditApply, ServiceOpt, ChangeKind,
+  NetworkPref, IngressUpstream,
 } from '@/api/ingresses'
 import { listCerts, type SSLCert } from '@/api/ssl'
 import UiSection from '@/components/ui/UiSection.vue'
@@ -388,6 +423,9 @@ const routeForm = ref<{
   upstream_kind: 'service' | 'raw'
   service_id: number | null
   raw_url: string
+  network_pref: NetworkPref
+  override_host: string
+  override_port: number | null
   extra: string
   sort: number
   listen_port: number | null
@@ -398,10 +436,24 @@ const routeForm = ref<{
   upstream_kind: 'service',
   service_id: null,
   raw_url: '',
+  network_pref: 'auto',
+  override_host: '',
+  override_port: null,
   extra: '',
   sort: 0,
   listen_port: null,
 })
+
+const showAdvanced = ref(false)
+
+const networkPrefOptions: SelectOption[] = [
+  { label: '自动 (auto)', value: 'auto' },
+  { label: '回环 (loopback)', value: 'loopback' },
+  { label: '内网 (private)', value: 'private' },
+  { label: 'VPN', value: 'vpn' },
+  { label: '反向隧道 (tunnel)', value: 'tunnel' },
+  { label: '公网 (public)', value: 'public' },
+]
 
 function openAddRoute(ig: Ingress) {
   routeIngressId.value = ig.id
@@ -414,16 +466,23 @@ function openAddRoute(ig: Ingress) {
     upstream_kind: 'service',
     service_id: null,
     raw_url: '',
+    network_pref: 'auto',
+    override_host: '',
+    override_port: null,
     extra: '',
     sort: baseSort,
     listen_port: null,
   }
+  showAdvanced.value = false
   routeVisible.value = true
 }
 
 function openEditRoute(ig: Ingress, rt: IngressRoute) {
   routeIngressId.value = ig.id
   editRoute.value = rt
+  const pref = (rt.upstream.network_pref || 'auto') as NetworkPref
+  const overrideHost = rt.upstream.override_host ?? ''
+  const overridePort = rt.upstream.override_port ?? 0
   routeForm.value = {
     path: rt.path,
     protocol: rt.protocol || 'http',
@@ -431,10 +490,15 @@ function openEditRoute(ig: Ingress, rt: IngressRoute) {
     upstream_kind: rt.upstream.type === 'raw' ? 'raw' : 'service',
     service_id: rt.upstream.service_id ?? null,
     raw_url: rt.upstream.raw_url ?? '',
+    network_pref: pref,
+    override_host: overrideHost,
+    override_port: overridePort > 0 ? overridePort : null,
     extra: rt.extra,
     sort: rt.sort,
     listen_port: rt.listen_port ?? null,
   }
+  // 高级折叠默认收起,有非默认值时自动展开
+  showAdvanced.value = pref !== 'auto' || overrideHost !== '' || overridePort > 0
   routeVisible.value = true
 }
 
@@ -444,15 +508,29 @@ async function saveRoute() {
     return
   }
   const f = routeForm.value
-  const upstream = f.upstream_kind === 'service'
-    ? { type: 'service' as const, service_id: f.service_id }
-    : { type: 'raw' as const, raw_url: f.raw_url }
   if (f.upstream_kind === 'service' && !f.service_id) {
     message.warning('请选择 Service')
     return
   }
   if (f.upstream_kind === 'raw' && !f.raw_url.trim()) {
     message.warning('请填写 URL')
+    return
+  }
+  // 仅 service 类型的 upstream 关心 Resolver/override;raw 直接走 RawURL,
+  // 后端 resolveUpstream 也会忽略它们。这里一并裁剪,避免脏数据落库。
+  const upstream: IngressUpstream = f.upstream_kind === 'service'
+    ? {
+        type: 'service',
+        service_id: f.service_id,
+        ...(f.network_pref && f.network_pref !== 'auto' ? { network_pref: f.network_pref } : {}),
+        ...(f.override_host.trim() ? { override_host: f.override_host.trim() } : {}),
+        ...(f.override_port && f.override_port > 0 ? { override_port: f.override_port } : {}),
+      }
+    : { type: 'raw', raw_url: f.raw_url.trim() }
+  if (f.upstream_kind === 'service'
+      && f.override_port !== null
+      && (f.override_port <= 0 || f.override_port > 65535)) {
+    message.warning('覆盖端口需在 1-65535 之间')
     return
   }
   if (isStreamProto(f.protocol)) {
@@ -603,6 +681,7 @@ function renderRoutes(row: Ingress) {
       rt.listen_port ? h(NTag, { size: 'tiny', type: 'warning' }, { default: () => `:${rt.listen_port}` }) : null,
       h('span', { class: 'ig-arrow' }, '→'),
       h('code', { class: 'ig-mono ig-mono--up' }, upstreamLabel(rt)),
+      ...renderUpstreamHints(rt),
       rt.extra ? h('code', { class: 'ig-mono ig-mono--muted' }, rt.extra) : null,
       h('span', { class: 'ig-route__ops' }, [
         h(UiButton, { variant: 'ghost', size: 'sm', onClick: () => openEditRoute(row, rt) }, () => '编辑'),
@@ -625,6 +704,26 @@ function upstreamLabel(rt: IngressRoute): string {
   if (!sid) return '(unset)'
   const svc = services.value.find((s) => s.id === sid)
   return svc ? `${svc.name}${svc.exposed_port ? ' :' + svc.exposed_port : ''}` : `service#${sid}`
+}
+
+// 给 service 类型的 upstream 渲染高级偏好/覆盖小标,raw upstream 不展示。
+// auto / 空 视作默认,不打 tag。
+function renderUpstreamHints(rt: IngressRoute) {
+  if (rt.upstream.type !== 'service') return []
+  const tags: ReturnType<typeof h>[] = []
+  const pref = rt.upstream.network_pref
+  if (pref && pref !== 'auto') {
+    tags.push(h(NTag, { size: 'tiny', type: 'info' }, { default: () => `pref=${pref}` }))
+  }
+  if (rt.upstream.override_host) {
+    tags.push(h(NTag, { size: 'tiny', type: 'warning' },
+      { default: () => `host=${rt.upstream.override_host}` }))
+  }
+  if (rt.upstream.override_port && rt.upstream.override_port > 0) {
+    tags.push(h(NTag, { size: 'tiny', type: 'warning' },
+      { default: () => `port=${rt.upstream.override_port}` }))
+  }
+  return tags
 }
 
 const auditColumns: DataTableColumns<AuditApply> = [

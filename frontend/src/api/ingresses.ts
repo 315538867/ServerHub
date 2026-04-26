@@ -4,11 +4,20 @@ import request from './request'
 
 export type IngressMatchKind = 'domain' | 'path'
 
+// IngressUpstream 与后端 model.IngressUpstream 一一对应:
+//   - service / raw 互斥
+//   - network_pref 控制 Resolver 偏好,空 / 'auto' 等价
+//   - override_host / override_port 用于在 Resolver 选择基础上做硬覆盖
+//     (典型场景:本机短路改走 docker bridge host,或临时把端口指到旧版本)
+export type NetworkPref = '' | 'auto' | 'loopback' | 'private' | 'vpn' | 'tunnel' | 'public'
+
 export interface IngressUpstream {
   type: 'service' | 'raw'
   service_id?: number | null
-  port?: number | null
   raw_url?: string
+  network_pref?: NetworkPref
+  override_host?: string
+  override_port?: number
 }
 
 export interface IngressRoute {
@@ -21,7 +30,6 @@ export interface IngressRoute {
   websocket: boolean
   extra: string
   listen_port?: number | null
-  legacy_app_route_id?: number | null
 }
 
 export interface Ingress {

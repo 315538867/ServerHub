@@ -8,17 +8,17 @@ import (
 )
 
 // IngressUpstream 表示一条 IngressRoute 的目标地址。两类型互斥：
-//   - service 类型：引用某个 Service.ID + 端口（端口名或 ExposedPort），
-//     由 netresolve.Resolve 在 apply 时算出 edge 视角的 URL，Service 端口变更
-//     下次 apply 自动同步。
+//   - service 类型：引用某个 Service.ID（端口取 Service.ExposedPort，可被
+//     OverridePort 覆盖），由 netresolve.Resolve 在 apply 时算出 edge 视角
+//     的 URL，Service 端口变更下次 apply 自动同步。
 //   - raw 类型：用户直接填的 URL 字符串（migrate 来的旧数据 / 外部地址）。
 //
-// network_pref 控制 Resolver 的网络偏好；override_host/override_port 用于在
-// 极少数场景下显式覆盖 Resolver 的选择。
+// NetworkPref 控制 Resolver 的网络偏好；OverrideHost/OverridePort 用于在
+// 极少数场景下显式覆盖 Resolver 的选择（典型用法：本机短路改走 docker bridge
+// host、或临时把端口指向滚动发布前的旧端口）。
 type IngressUpstream struct {
 	Type         string `json:"type"` // service | raw
 	ServiceID    *uint  `json:"service_id,omitempty"`
-	PortName     string `json:"port_name,omitempty"`
 	RawURL       string `json:"raw_url,omitempty"`
 	NetworkPref  string `json:"network_pref,omitempty"` // auto|loopback|private|vpn|tunnel|public（空=auto）
 	OverrideHost string `json:"override_host,omitempty"`
