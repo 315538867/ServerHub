@@ -114,7 +114,7 @@ func TestStripStreamMarkers_Idempotent(t *testing.T) {
 
 func TestAppendStreamMarkers_NoTrailingBlankPileUp(t *testing.T) {
 	in := "x\n\n\n"
-	out := appendStreamMarkers(in)
+	out := appendStreamMarkers(in, "/etc/nginx/streams.conf")
 	if strings.Contains(out, "\n\n\n\n") {
 		t.Errorf("不应堆积空行:\n%q", out)
 	}

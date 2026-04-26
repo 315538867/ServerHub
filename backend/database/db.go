@@ -81,6 +81,8 @@ func Init(cfg *config.Config) *gorm.DB {
 		&model.IngressRoute{},
 		&model.NginxCert{},
 		&model.AuditApply{},
+		// Phase Nginx-P3: 多实例 nginx 部署形态（路径/命令/probe 结果）。1:1 with edge.
+		&model.NginxProfile{},
 	); err != nil {
 		panic(fmt.Sprintf("migration failed: %v", err))
 	}

@@ -15,7 +15,7 @@ func TestRestore_HappyPath(t *testing.T) {
 	if err := Restore(fr, "/var/lib/serverhub/nginx-bak/1-x.tar.gz"); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	if len(fr.calls) != 1 || !strings.Contains(fr.calls[0], "tar -C /etc/nginx -xzf") {
+	if len(fr.calls) != 1 || !strings.Contains(fr.calls[0], "tar -C '/etc/nginx' -xzf") {
 		t.Errorf("restore 命令异常: %v", fr.calls)
 	}
 }
@@ -93,7 +93,7 @@ func TestApply_SnapshotFails_Aborts(t *testing.T) {
 	db.Create(&edge)
 
 	fr := newFakeRunner()
-	fr.onContains("tar -C /etc/nginx", "no space", &fakeErr{"exit 1"})
+	fr.onContains("tar -C '/etc/nginx'", "no space", &fakeErr{"exit 1"})
 	installFakeRunner(t, fr)
 
 	res, err := Apply(context.Background(), db, &config.Config{}, edge.ID, nil)
@@ -118,7 +118,7 @@ func TestApply_ReloadFails_RollsBack(t *testing.T) {
 
 	fr := newFakeRunner()
 	fr.onContains("base64", "", nil)
-	fr.onContains("tar -C /etc/nginx", "", nil)
+	fr.onContains("tar -C '/etc/nginx'", "", nil)
 	fr.onContains("nginx -t", "ok", nil)
 	fr.onContains("nginx -s reload", "reload broke", &fakeErr{"reload exit 1"})
 	installFakeRunner(t, fr)

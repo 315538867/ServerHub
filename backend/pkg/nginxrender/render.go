@@ -37,18 +37,25 @@ const (
 	MatchKindPath   = "path"
 )
 
-// Render 把一组 IngressCtx 渲染成所有该 edge 上应有的 nginx 配置文件。
+// Render 是 RenderWith(ingresses, DefaultProfile()) 的简写，保留给老调用方与单测。
+// 新代码请直接走 RenderWith 并显式传入 edge 实际生效的 Profile（多实例必需）。
+func Render(ingresses []IngressCtx) ([]ConfigFile, error) {
+	return RenderWith(ingresses, DefaultProfile())
+}
+
+// RenderWith 把一组 IngressCtx 渲染成所有该 edge 上应有的 nginx 配置文件。
 // 返回结果按 Path 升序，便于 Differ 稳定比较；空 routes 的 ingress 不出文件。
 //
-// 路径策略：
-//   - MatchKind=domain → SitesAvailableDir/<FileStem>-sh.conf（独占 server block）
-//   - MatchKind=path   → AppLocationsDir/<FileStem>.conf（被 hub 站点 include）
-//   - protocol=tcp|udp → 全部聚合到 StreamsConf 单文件（顶层 stream 块）
+// 路径策略（路径来自 profile，不再硬编码包级 const）：
+//   - MatchKind=domain → p.SitesAvailableDir/<FileStem>-sh.conf（独占 server block）
+//   - MatchKind=path   → p.AppLocationsDir/<FileStem>.conf（被 hub 站点 include）
+//   - protocol=tcp|udp → 全部聚合到 p.StreamsConf 单文件（顶层 stream 块）
 //
 // 注意：sites-enabled 下的 symlink、nginx.conf 中的 stream include 都不在本函数
 // 输出中，由 Reconciler 单独维护（Differ 把 symlink 当成独立 ChangeKind；nginx.conf
 // 的 marker 块由 Reconciler.ensureStreamInclude 幂等处理）。
-func Render(ingresses []IngressCtx) ([]ConfigFile, error) {
+func RenderWith(ingresses []IngressCtx, p Profile) ([]ConfigFile, error) {
+	p = NormalizeProfile(p)
 	var files []ConfigFile
 	hasPath := false
 	var streamRoutes []RouteCtx
@@ -68,13 +75,13 @@ func Render(ingresses []IngressCtx) ([]ConfigFile, error) {
 
 		switch igHTTP.MatchKind {
 		case MatchKindDomain:
-			f, err := renderDomainSite(igHTTP)
+			f, err := renderDomainSite(igHTTP, p)
 			if err != nil {
 				return nil, fmt.Errorf("render ingress edge=%d domain=%q: %w", ig.EdgeServerID, ig.Domain, err)
 			}
 			files = append(files, f)
 		case MatchKindPath:
-			f, err := renderPathLocations(igHTTP)
+			f, err := renderPathLocations(igHTTP, p)
 			if err != nil {
 				return nil, fmt.Errorf("render ingress edge=%d domain=%q: %w", ig.EdgeServerID, ig.Domain, err)
 			}
@@ -87,7 +94,7 @@ func Render(ingresses []IngressCtx) ([]ConfigFile, error) {
 
 	// 任一 path 模式 ingress 存在 → 共享 hub 站点也要渲染出来
 	if hasPath {
-		hub, err := RenderHubSite()
+		hub, err := RenderHubSiteWith(p)
 		if err != nil {
 			return nil, err
 		}
@@ -96,7 +103,7 @@ func Render(ingresses []IngressCtx) ([]ConfigFile, error) {
 
 	// 任一 stream 路由 → 聚合成单个 streams.conf
 	if len(streamRoutes) > 0 {
-		sf, err := renderStreams(streamRoutes)
+		sf, err := renderStreams(streamRoutes, p)
 		if err != nil {
 			return nil, err
 		}
@@ -108,16 +115,22 @@ func Render(ingresses []IngressCtx) ([]ConfigFile, error) {
 }
 
 // RenderHubSite 渲染 path 模式共用的 hub 站点（include 全部 app-locations）。
-// 与旧 applyPath 中硬编码的 hubConf 字节对齐。
+// 等价于 RenderHubSiteWith(DefaultProfile())。
 func RenderHubSite() (ConfigFile, error) {
+	return RenderHubSiteWith(DefaultProfile())
+}
+
+// RenderHubSiteWith 用 Profile 指定的路径渲染 hub 站点。
+func RenderHubSiteWith(p Profile) (ConfigFile, error) {
+	p = NormalizeProfile(p)
 	content := fmt.Sprintf(`server {
     listen 80;
     server_name _;
 
     include %s/*.conf;
-}`, AppLocationsDir)
+}`, p.AppLocationsDir)
 	return ConfigFile{
-		Path:    SitesAvailableDir + "/" + HubSiteName,
+		Path:    p.SitesAvailableDir + "/" + p.HubSiteName,
 		Content: content,
 		Mode:    0o644,
 	}, nil
@@ -136,7 +149,7 @@ func RenderHubSite() (ConfigFile, error) {
 //   - ForceHTTPS=true：把 80 块替换成 return 301 https://$host$request_uri 的跳转
 //     server；HTTPS 块照常渲染
 //   - ForceHTTPS=false 且 TLS 启用：80 与 443 同时挂同一组路由（明/密双轨）
-func renderDomainSite(ig IngressCtx) (ConfigFile, error) {
+func renderDomainSite(ig IngressCtx, p Profile) (ConfigFile, error) {
 	if ig.FileStem == "" {
 		return ConfigFile{}, fmt.Errorf("FileStem 不可为空")
 	}
@@ -172,7 +185,7 @@ func renderDomainSite(ig IngressCtx) (ConfigFile, error) {
 	}
 
 	return ConfigFile{
-		Path:    fmt.Sprintf("%s/%s-sh.conf", SitesAvailableDir, ig.FileStem),
+		Path:    fmt.Sprintf("%s/%s-sh.conf", p.SitesAvailableDir, ig.FileStem),
 		Content: sb.String(),
 		Mode:    0o644,
 	}, nil
@@ -196,7 +209,7 @@ func writeServerWithRoutes(sb *strings.Builder, listen, name, certPath, keyPath 
 
 // renderPathLocations 输出 path 模式下的纯 location 列表（无外层 server）。
 // 字节对齐旧 applyPath：每个 location 以 "}\n\n" 结尾，文件末尾保留尾随空行。
-func renderPathLocations(ig IngressCtx) (ConfigFile, error) {
+func renderPathLocations(ig IngressCtx, p Profile) (ConfigFile, error) {
 	if ig.FileStem == "" {
 		return ConfigFile{}, fmt.Errorf("FileStem 不可为空")
 	}
@@ -208,7 +221,7 @@ func renderPathLocations(ig IngressCtx) (ConfigFile, error) {
 	}
 
 	return ConfigFile{
-		Path:    fmt.Sprintf("%s/%s.conf", AppLocationsDir, ig.FileStem),
+		Path:    fmt.Sprintf("%s/%s.conf", p.AppLocationsDir, ig.FileStem),
 		Content: sb.String(),
 		Mode:    0o644,
 	}, nil
@@ -324,7 +337,7 @@ func isStreamProto(p string) bool {
 //   - proxy_pass 接受 host:port，scheme 必须剥掉
 //
 // 路由按 (ListenPort asc, Path asc) 稳定排序，使输出可重现。
-func renderStreams(routes []RouteCtx) (ConfigFile, error) {
+func renderStreams(routes []RouteCtx, p Profile) (ConfigFile, error) {
 	srv := make([]RouteCtx, 0, len(routes))
 	for _, r := range routes {
 		if r.ListenPort <= 0 {
@@ -358,7 +371,7 @@ func renderStreams(routes []RouteCtx) (ConfigFile, error) {
 		fmt.Fprintf(&sb, "    }\n")
 	}
 	sb.WriteString("}\n")
-	return ConfigFile{Path: StreamsConf, Content: sb.String(), Mode: 0o644}, nil
+	return ConfigFile{Path: p.StreamsConf, Content: sb.String(), Mode: 0o644}, nil
 }
 
 // streamUpstream 把上游 URL 转成 stream proxy_pass 期望的 host:port。

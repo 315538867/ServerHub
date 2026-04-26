@@ -143,7 +143,7 @@ func TestSnapshot_BuildsExpectedCommand(t *testing.T) {
 	cmd := r.calls[0]
 	for _, want := range []string{
 		"sudo -n mkdir -p '/var/lib/serverhub/nginx-bak'",
-		"sudo -n tar -C /etc/nginx -czf",
+		"sudo -n tar -C '/etc/nginx' -czf",
 		"-mtime +7 -delete",
 	} {
 		if !strings.Contains(cmd, want) {

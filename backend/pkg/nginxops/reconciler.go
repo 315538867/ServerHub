@@ -34,14 +34,15 @@ func SetRunnerFactory(f runnerFactory) runnerFactory {
 //   1. Acquire(edgeID)
 //   2. Capability 守卫：runner.Capability != CapFull → 423 等价错误
 //   3. INSERT audit_apply 占位拿到 ID（defer UPDATE 写完整记录）
-//   4. LoadDesired：DB → IngressCtx
-//   5. nginxrender.Render → desired ConfigFile
-//   6. Snapshot → backupPath（breakglass）
-//   7. Inspect + Diff → changeset；空 → NoOp
-//   8. 写入差异（add/update 用 WriteRemoteFile；delete 用 rm；维护 sites-enabled symlink）
-//   9. nginx -t；失败 → 用 Diff 反向回滚（add 回 rm；update/delete 回写旧内容）+ RolledBack
-//   10. nginx -s reload
-//   11. UPDATE audit + ingress.status
+//   4. LoadProfile：DB → nginxrender.Profile（多实例路径/命令）
+//   5. LoadDesired：DB → IngressCtx
+//   6. nginxrender.RenderWith → desired ConfigFile
+//   7. SnapshotWith → backupPath（breakglass）
+//   8. InspectWith + Diff → changeset；空 → NoOp
+//   9. 写入差异（add/update 用 WriteRemoteFile；delete 用 rm；维护 sites-enabled symlink）
+//   10. profile.TestCmd；失败 → 用 Diff 反向回滚（add 回 rm；update/delete 回写旧内容）+ RolledBack
+//   11. profile.ReloadCmd
+//   12. UPDATE audit + ingress.status
 //
 // actor 为执行用户 ID（可能为 nil，例如系统触发）。
 func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, actor *uint) (ApplyResult, error) {
@@ -65,6 +66,11 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 		return ApplyResult{}, fmt.Errorf("apply 拒绝：edge 当前 capability=%s，需要 full（裸机或 --pid=host 容器）", r.Capability())
 	}
 
+	profile, _, err := LoadProfile(db, edgeID)
+	if err != nil {
+		return ApplyResult{}, fmt.Errorf("加载 nginx profile 失败: %w", err)
+	}
+
 	audit := model.AuditApply{EdgeServerID: edgeID, ActorUserID: actor}
 	if err := db.Create(&audit).Error; err != nil {
 		return ApplyResult{}, fmt.Errorf("创建 audit 失败: %w", err)
@@ -80,16 +86,16 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 		_ = db.Save(&audit).Error // 审计写入失败也不掩盖主流程错误
 	}()
 
-	desiredCtxs, err := LoadDesired(db, &edge, cfg.Security.AESKey)
+	desiredCtxs, err := LoadDesired(db, &edge, cfg.Security.AESKey, profile)
 	if err != nil {
 		return res, err
 	}
-	desired, err := nginxrender.Render(desiredCtxs)
+	desired, err := nginxrender.RenderWith(desiredCtxs, profile)
 	if err != nil {
 		return res, fmt.Errorf("render 失败: %w", err)
 	}
 
-	backupPath, err := Snapshot(r, edgeID)
+	backupPath, err := SnapshotWith(r, edgeID, profile)
 	if err != nil {
 		return res, err
 	}
@@ -102,7 +108,7 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 		return res, fmt.Errorf("证书落盘失败: %w", err)
 	}
 
-	actual, err := Inspect(r)
+	actual, err := InspectWith(r, profile)
 	if err != nil {
 		return res, err
 	}
@@ -117,26 +123,26 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 	if err := writeChanges(r, changes); err != nil {
 		return res, err
 	}
-	if err := syncSitesEnabled(r, desired); err != nil {
+	if err := syncSitesEnabledWith(r, desired, profile); err != nil {
 		return res, err
 	}
 
 	// stream 路由的 include 不能落在 sites-enabled（被 http{} include），必须挂在
 	// nginx.conf 顶层。这步独立于 Diff：直接读 nginx.conf、做带标记的幂等 rewrite，
 	// 把变化（如有）作为合成 Change 加进 rollback 列表。
-	streamWanted := desiredHasStreams(desired)
-	if streamChange, err := ensureStreamInclude(r, streamWanted); err != nil {
+	streamWanted := desiredHasStreams(desired, profile)
+	if streamChange, err := ensureStreamIncludeWith(r, profile, streamWanted); err != nil {
 		return res, err
 	} else if streamChange != nil {
 		changes = append(changes, *streamChange)
 		res.Changes = changes
 	}
 
-	out, terr := r.Run("sudo -n nginx -t 2>&1")
+	out, terr := r.Run(profile.TestCmd)
 	res.Output = strings.TrimSpace(out)
 	if terr != nil {
 		// nginx -t 失败：反向回滚 + 不 reload
-		if rerr := rollback(r, changes); rerr != nil {
+		if rerr := rollbackWith(r, changes, profile); rerr != nil {
 			res.Output += "\n[rollback 也失败] " + rerr.Error()
 		}
 		res.RolledBack = true
@@ -144,12 +150,12 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 		return res, fmt.Errorf("nginx -t 失败: %s", res.Output)
 	}
 
-	rout, rerr := r.Run("sudo -n nginx -s reload 2>&1")
+	rout, rerr := r.Run(profile.ReloadCmd)
 	if rout != "" {
 		res.Output += "\n" + strings.TrimSpace(rout)
 	}
 	if rerr != nil {
-		if rb := rollback(r, changes); rb != nil {
+		if rb := rollbackWith(r, changes, profile); rb != nil {
 			res.Output += "\n[rollback 也失败] " + rb.Error()
 		}
 		res.RolledBack = true
@@ -179,15 +185,20 @@ func DryRun(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint) (
 	}
 	defer r.Close()
 
-	desiredCtxs, err := LoadDesired(db, &edge, cfg.Security.AESKey)
+	profile, _, err := LoadProfile(db, edgeID)
+	if err != nil {
+		return nil, fmt.Errorf("加载 nginx profile 失败: %w", err)
+	}
+
+	desiredCtxs, err := LoadDesired(db, &edge, cfg.Security.AESKey, profile)
 	if err != nil {
 		return nil, err
 	}
-	desired, err := nginxrender.Render(desiredCtxs)
+	desired, err := nginxrender.RenderWith(desiredCtxs, profile)
 	if err != nil {
 		return nil, fmt.Errorf("render 失败: %w", err)
 	}
-	actual, err := Inspect(r)
+	actual, err := InspectWith(r, profile)
 	if err != nil {
 		return nil, err
 	}
@@ -275,8 +286,15 @@ func writeChanges(r runner.Runner, changes []Change) error {
 	return nil
 }
 
-// rollback 按 Diff 反向把远端还原到 apply 前。失败合并错误返回。
+// rollback 等价于 rollbackWith(r, changes, DefaultProfile())，老调用方可继续使用。
 func rollback(r runner.Runner, changes []Change) error {
+	return rollbackWith(r, changes, nginxrender.DefaultProfile())
+}
+
+// rollbackWith 按 Diff 反向把远端还原到 apply 前。失败合并错误返回。
+// Profile 用于 sites-enabled symlink 修复，多实例必需。
+func rollbackWith(r runner.Runner, changes []Change, p nginxrender.Profile) error {
+	p = nginxrender.NormalizeProfile(p)
 	var errs []string
 	for _, c := range changes {
 		switch c.Kind {
@@ -292,28 +310,35 @@ func rollback(r runner.Runner, changes []Change) error {
 		}
 	}
 	// rollback 后也要修一遍 sites-enabled symlink（因为我们可能新增了 *-sh.conf）
-	_ = syncSitesEnabledFromRemote(r)
+	_ = syncSitesEnabledFromRemoteWith(r, p)
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
 }
 
-// syncSitesEnabled 根据 desired 中的 SitesAvailable 文件维护 sites-enabled
-// 下的 symlink：所有 *-sh.conf 与 hub 文件都启用；其余清理。
+// syncSitesEnabled 等价于 syncSitesEnabledWith(..., DefaultProfile())。
 func syncSitesEnabled(r runner.Runner, desired []nginxrender.ConfigFile) error {
+	return syncSitesEnabledWith(r, desired, nginxrender.DefaultProfile())
+}
+
+// syncSitesEnabledWith 根据 desired 中的 SitesAvailable 文件维护 sites-enabled
+// 下的 symlink：所有 *-sh.conf 与 hub 文件都启用；其余清理。
+// Profile 决定 SitesAvailableDir / SitesEnabledDir / HubSiteName。
+func syncSitesEnabledWith(r runner.Runner, desired []nginxrender.ConfigFile, p nginxrender.Profile) error {
+	p = nginxrender.NormalizeProfile(p)
 	var enable []string
 	for _, f := range desired {
-		if !strings.HasPrefix(f.Path, nginxrender.SitesAvailableDir+"/") {
+		if !strings.HasPrefix(f.Path, p.SitesAvailableDir+"/") {
 			continue
 		}
-		base := strings.TrimPrefix(f.Path, nginxrender.SitesAvailableDir+"/")
+		base := strings.TrimPrefix(f.Path, p.SitesAvailableDir+"/")
 		switch {
 		case strings.HasSuffix(base, ".conf"):
 			// foo-sh.conf → 链接名 foo-sh
 			link := strings.TrimSuffix(base, ".conf")
 			enable = append(enable, link+":"+base)
-		case base == nginxrender.HubSiteName:
+		case base == p.HubSiteName:
 			enable = append(enable, base+":"+base)
 		}
 	}
@@ -321,7 +346,7 @@ func syncSitesEnabled(r runner.Runner, desired []nginxrender.ConfigFile) error {
 	// 先清理我们管的旧 link：sites-enabled 下名为 *-sh 或 HubSiteName 的链接
 	clearCmd := fmt.Sprintf(
 		"sudo -n find %s -maxdepth 1 \\( -name '*-sh' -o -name %s \\) -delete 2>/dev/null || true",
-		safeshell.Quote(nginxrender.SitesEnabledDir), safeshell.Quote(nginxrender.HubSiteName),
+		safeshell.Quote(p.SitesEnabledDir), safeshell.Quote(p.HubSiteName),
 	)
 	if out, err := r.Run(clearCmd); err != nil {
 		return fmt.Errorf("清理 sites-enabled 失败: %s: %w", strings.TrimSpace(out), err)
@@ -330,8 +355,8 @@ func syncSitesEnabled(r runner.Runner, desired []nginxrender.ConfigFile) error {
 	for _, item := range enable {
 		parts := strings.SplitN(item, ":", 2)
 		linkName, target := parts[0], parts[1]
-		linkPath := nginxrender.SitesEnabledDir + "/" + linkName
-		targetPath := nginxrender.SitesAvailableDir + "/" + target
+		linkPath := p.SitesEnabledDir + "/" + linkName
+		targetPath := p.SitesAvailableDir + "/" + target
 		cmd := fmt.Sprintf("sudo -n ln -sf %s %s",
 			safeshell.Quote(targetPath), safeshell.Quote(linkPath))
 		if out, err := r.Run(cmd); err != nil {
@@ -341,8 +366,14 @@ func syncSitesEnabled(r runner.Runner, desired []nginxrender.ConfigFile) error {
 	return nil
 }
 
-// syncSitesEnabledFromRemote 在 rollback 之后再扫一次远端 sites-available 修复 symlink。
+// syncSitesEnabledFromRemote 等价于 syncSitesEnabledFromRemoteWith(..., DefaultProfile())。
 func syncSitesEnabledFromRemote(r runner.Runner) error {
+	return syncSitesEnabledFromRemoteWith(r, nginxrender.DefaultProfile())
+}
+
+// syncSitesEnabledFromRemoteWith 在 rollback 之后再扫一次远端 sites-available 修复 symlink。
+func syncSitesEnabledFromRemoteWith(r runner.Runner, p nginxrender.Profile) error {
+	p = nginxrender.NormalizeProfile(p)
 	cmd := fmt.Sprintf(`set -eu
 sudo -n find %s -maxdepth 1 \( -name '*-sh' -o -name %s \) -delete 2>/dev/null || true
 shopt -s nullglob 2>/dev/null || true
@@ -355,13 +386,13 @@ if [ -f %s/%s ]; then
   sudo -n ln -sf %s/%s %s/%s
 fi
 `,
-		safeshell.Quote(nginxrender.SitesEnabledDir),
-		safeshell.Quote(nginxrender.HubSiteName),
-		nginxrender.SitesAvailableDir,
-		safeshell.Quote(nginxrender.SitesEnabledDir),
-		nginxrender.SitesAvailableDir, nginxrender.HubSiteName,
-		nginxrender.SitesAvailableDir, nginxrender.HubSiteName,
-		nginxrender.SitesEnabledDir, nginxrender.HubSiteName,
+		safeshell.Quote(p.SitesEnabledDir),
+		safeshell.Quote(p.HubSiteName),
+		p.SitesAvailableDir,
+		safeshell.Quote(p.SitesEnabledDir),
+		p.SitesAvailableDir, p.HubSiteName,
+		p.SitesAvailableDir, p.HubSiteName,
+		p.SitesEnabledDir, p.HubSiteName,
 	)
 	_, err := r.Run("bash -c " + safeshell.Quote(cmd))
 	return err

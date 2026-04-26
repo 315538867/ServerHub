@@ -29,7 +29,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(
 		&model.Server{}, &model.Service{}, &model.Application{},
 		&model.Ingress{}, &model.IngressRoute{},
-		&model.AuditApply{}, &model.NginxCert{},
+		&model.AuditApply{}, &model.NginxCert{}, &model.NginxProfile{},
 	); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestApply_NoOp_OnEmptyEdge(t *testing.T) {
 	fr := newFakeRunner()
 	fr.onContains("base64", "", nil)            // inspect 返回空
 	fr.onContains("nginx -t", "ok", nil)        // 不会被调用，但放着无副作用
-	fr.onContains("tar -C /etc/nginx", "", nil) // snapshot
+	fr.onContains("tar -C '/etc/nginx'", "", nil) // snapshot
 	installFakeRunner(t, fr)
 
 	res, err := Apply(context.Background(), db, &config.Config{}, edge.ID, nil)
@@ -95,7 +95,7 @@ func TestApply_AddAndReload(t *testing.T) {
 
 	fr := newFakeRunner()
 	fr.onContains("base64", "", nil)            // inspect: 远端无文件
-	fr.onContains("tar -C /etc/nginx", "", nil) // snapshot
+	fr.onContains("tar -C '/etc/nginx'", "", nil) // snapshot
 	fr.onContains("nginx -t", "syntax ok", nil)
 	fr.onContains("nginx -s reload", "", nil)
 	// mkdir / WriteRemoteFile / find / ln -sf 都默认成功
@@ -159,7 +159,7 @@ func TestApply_NginxTFails_RollsBack(t *testing.T) {
 
 	fr := newFakeRunner()
 	fr.onContains("base64", "", nil)
-	fr.onContains("tar -C /etc/nginx", "", nil)
+	fr.onContains("tar -C '/etc/nginx'", "", nil)
 	fr.onContains("nginx -t", "test failed: bad", &fakeErr{"exit 1"})
 	installFakeRunner(t, fr)
 
@@ -215,7 +215,7 @@ func TestApply_NginxTFails_MarksBrokenForPending(t *testing.T) {
 
 	fr := newFakeRunner()
 	fr.onContains("base64", "", nil)
-	fr.onContains("tar -C /etc/nginx", "", nil)
+	fr.onContains("tar -C '/etc/nginx'", "", nil)
 	fr.onContains("nginx -t", "test failed", &fakeErr{"exit 1"})
 	installFakeRunner(t, fr)
 
@@ -344,7 +344,7 @@ func TestLoadDesired_RawUpstream(t *testing.T) {
 	}
 	db.Create(&rt)
 
-	got, err := LoadDesired(db, &edge, "")
+	got, err := LoadDesired(db, &edge, "", nginxrender.DefaultProfile())
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestLoadDesired_ServiceMissingPortErrors(t *testing.T) {
 	rt := model.IngressRoute{IngressID: ig.ID, Path: "/", Upstream: model.IngressUpstream{Type: "service", ServiceID: &svc.ID}}
 	db.Create(&rt)
 
-	if _, err := LoadDesired(db, &edge, ""); err == nil {
+	if _, err := LoadDesired(db, &edge, "", nginxrender.DefaultProfile()); err == nil {
 		t.Fatal("无 exposed_port 应报错")
 	}
 }

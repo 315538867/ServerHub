@@ -20,7 +20,6 @@ import (
 const (
 	streamMarkerBegin = "# >>> serverhub stream begin"
 	streamMarkerEnd   = "# <<< serverhub stream end"
-	nginxConfPath     = "/etc/nginx/nginx.conf"
 )
 
 // streamMarkerRE 匹配 marker 块（含两端 marker、include 行与紧邻空行），用于剥除。
@@ -30,9 +29,10 @@ var streamMarkerRE = regexp.MustCompile(`(?ms)(?:^[ \t]*\r?\n)?` +
 	regexp.QuoteMeta(streamMarkerEnd) + `\r?\n?`)
 
 // desiredHasStreams 在 desired 列表里检索是否存在 streams.conf。
-func desiredHasStreams(desired []nginxrender.ConfigFile) bool {
+// 多实例下 streams.conf 路径来自 profile，因此需要传入。
+func desiredHasStreams(desired []nginxrender.ConfigFile, p nginxrender.Profile) bool {
 	for _, f := range desired {
-		if f.Path == nginxrender.StreamsConf {
+		if f.Path == p.StreamsConf {
 			return true
 		}
 	}
@@ -46,26 +46,36 @@ func desiredHasStreams(desired []nginxrender.ConfigFile) bool {
 //
 // 任何实际写入都会返回一个 ChangeUpdate 合成项，调用方追加到 rollback 列表，
 // 由现有 rollback() 用 OldContent 回写。
+//
+// 旧签名 ensureStreamInclude(r, want) 由 reconciler 自己已切换到 With 形式；
+// 这里仍保留无 Profile 入参的轻量包装方便单测延续。
 func ensureStreamInclude(r runner.Runner, want bool) (*Change, error) {
-	out, err := r.Run("sudo -n cat " + safeshell.Quote(nginxConfPath))
+	return ensureStreamIncludeWith(r, nginxrender.DefaultProfile(), want)
+}
+
+// ensureStreamIncludeWith 同 ensureStreamInclude，但允许调用方指定 Profile。
+// p.NginxConfPath 是顶层 nginx.conf 绝对路径，p.StreamsConf 是 include 目标。
+func ensureStreamIncludeWith(r runner.Runner, p nginxrender.Profile, want bool) (*Change, error) {
+	p = nginxrender.NormalizeProfile(p)
+	out, err := r.Run("sudo -n cat " + safeshell.Quote(p.NginxConfPath))
 	if err != nil {
 		return nil, fmt.Errorf("读取 nginx.conf 失败: %s: %w", strings.TrimSpace(out), err)
 	}
 	oldContent := out
 	newContent := stripStreamMarkers(oldContent)
 	if want {
-		newContent = appendStreamMarkers(newContent)
+		newContent = appendStreamMarkers(newContent, p.StreamsConf)
 	}
 	if newContent == oldContent {
 		return nil, nil
 	}
-	cmd := safeshell.WriteRemoteFile(nginxConfPath, newContent, true)
+	cmd := safeshell.WriteRemoteFile(p.NginxConfPath, newContent, true)
 	if w, err := r.Run(cmd); err != nil {
 		return nil, fmt.Errorf("写入 nginx.conf 失败: %s: %w", strings.TrimSpace(w), err)
 	}
 	return &Change{
 		Kind:       ChangeUpdate,
-		Path:       nginxConfPath,
+		Path:       p.NginxConfPath,
 		OldContent: oldContent,
 		OldHash:    sha256Hex(oldContent),
 		NewContent: newContent,
@@ -80,9 +90,9 @@ func stripStreamMarkers(s string) string {
 
 // appendStreamMarkers 把 marker 块追加到 nginx.conf 末尾。
 // 始终保证文件末尾恰好一个换行后再写 marker，避免空行堆积。
-func appendStreamMarkers(s string) string {
+func appendStreamMarkers(s, streamsConfPath string) string {
 	trimmed := strings.TrimRight(s, "\n") + "\n"
 	return trimmed + "\n" + streamMarkerBegin + "\n" +
-		"include " + nginxrender.StreamsConf + ";\n" +
+		"include " + streamsConfPath + ";\n" +
 		streamMarkerEnd + "\n"
 }

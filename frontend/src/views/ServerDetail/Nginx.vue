@@ -22,6 +22,111 @@
       </UiCard>
     </UiSection>
 
+    <UiSection title="实例信息（多实例 / 自编译适配）">
+      <template #extra>
+        <UiButton variant="secondary" size="sm" :loading="probing" @click="doProbe">
+          重新探测 nginx -V
+        </UiButton>
+        <UiButton variant="primary" size="sm" :loading="profileSaving" @click="saveProfile">
+          保存路径/命令
+        </UiButton>
+      </template>
+      <UiCard>
+        <NForm
+          :model="profileForm"
+          label-placement="left"
+          label-width="180"
+          size="small"
+          class="profile-form"
+        >
+          <NGrid :cols="2" x-gap="16">
+            <NGi>
+              <NFormItem label="nginx_conf_dir">
+                <NInput v-model:value="profileForm.nginx_conf_dir" :placeholder="profile?.effective.nginx_conf_dir" />
+              </NFormItem>
+            </NGi>
+            <NGi>
+              <NFormItem label="nginx_conf_path">
+                <NInput v-model:value="profileForm.nginx_conf_path" :placeholder="profile?.effective.nginx_conf_path" />
+              </NFormItem>
+            </NGi>
+            <NGi>
+              <NFormItem label="sites_available_dir">
+                <NInput v-model:value="profileForm.sites_available_dir" :placeholder="profile?.effective.sites_available_dir" />
+              </NFormItem>
+            </NGi>
+            <NGi>
+              <NFormItem label="sites_enabled_dir">
+                <NInput v-model:value="profileForm.sites_enabled_dir" :placeholder="profile?.effective.sites_enabled_dir" />
+              </NFormItem>
+            </NGi>
+            <NGi>
+              <NFormItem label="app_locations_dir">
+                <NInput v-model:value="profileForm.app_locations_dir" :placeholder="profile?.effective.app_locations_dir" />
+              </NFormItem>
+            </NGi>
+            <NGi>
+              <NFormItem label="streams_conf">
+                <NInput v-model:value="profileForm.streams_conf" :placeholder="profile?.effective.streams_conf" />
+              </NFormItem>
+            </NGi>
+            <NGi>
+              <NFormItem label="cert_dir">
+                <NInput v-model:value="profileForm.cert_dir" :placeholder="profile?.effective.cert_dir" />
+              </NFormItem>
+            </NGi>
+            <NGi>
+              <NFormItem label="hub_site_name">
+                <NInput v-model:value="profileForm.hub_site_name" :placeholder="profile?.effective.hub_site_name" />
+              </NFormItem>
+            </NGi>
+            <NGi :span="2">
+              <NFormItem label="test_cmd">
+                <NInput v-model:value="profileForm.test_cmd" :placeholder="profile?.effective.test_cmd" />
+              </NFormItem>
+            </NGi>
+            <NGi :span="2">
+              <NFormItem label="reload_cmd">
+                <NInput v-model:value="profileForm.reload_cmd" :placeholder="profile?.effective.reload_cmd" />
+              </NFormItem>
+            </NGi>
+          </NGrid>
+          <div class="profile-tips">
+            空字段 = 走默认（即 placeholder 显示的值）。改路径/命令前请先确认 nginx 真的部署在该位置。
+          </div>
+        </NForm>
+      </UiCard>
+
+      <UiCard v-if="profile" class="probe-card">
+        <div class="probe-header">
+          <div>
+            <span class="probe-label">nginx 版本</span>
+            <span class="probe-value">{{ profile.version || '未探测' }}</span>
+          </div>
+          <div>
+            <span class="probe-label">可执行路径</span>
+            <span class="probe-value">{{ profile.binary_path || '—' }}</span>
+          </div>
+          <div>
+            <span class="probe-label">--prefix</span>
+            <span class="probe-value">{{ profile.build_prefix || '—' }}</span>
+          </div>
+          <div>
+            <span class="probe-label">--conf-path</span>
+            <span class="probe-value">{{ profile.build_conf || '—' }}</span>
+          </div>
+          <div>
+            <span class="probe-label">最近探测</span>
+            <span class="probe-value">{{ profile.last_probe_at ? new Date(profile.last_probe_at).toLocaleString() : '—' }}</span>
+          </div>
+        </div>
+        <div v-if="profile.modules?.length" class="modules">
+          <span class="probe-label">编译模块</span>
+          <UiBadge v-for="m in profile.modules" :key="m" tone="neutral" class="mod">{{ m }}</UiBadge>
+        </div>
+      </UiCard>
+    </UiSection>
+
     <NModal
       v-model:show="createVisible"
       preset="card"
@@ -89,7 +194,7 @@ import { ref, computed, nextTick, onMounted, onBeforeUnmount, h } from 'vue'
 import { useRoute } from 'vue-router'
 import {
   NDataTable, NModal, NDrawer, NDrawerContent, NForm, NFormItem,
-  NInput, NInputNumber, NSelect, NPopconfirm, useMessage,
+  NInput, NInputNumber, NSelect, NPopconfirm, NGrid, NGi, useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { RefreshCw } from 'lucide-vue-next'
@@ -105,8 +210,9 @@ import {
   getSites, createSite, getSiteConfig, putSiteConfig,
   deleteSite, enableSite, disableSite, nginxReload, nginxRestart,
   accessLogsWsUrl, errorLogsWsUrl,
+  getNginxProfile, putNginxProfile, probeNginxProfile,
 } from '@/api/nginx'
-import type { SiteItem } from '@/api/nginx'
+import type { SiteItem, NginxProfile, NginxProfileUpdate } from '@/api/nginx'
 import UiSection from '@/components/ui/UiSection.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiButton from '@/components/ui/UiButton.vue'
@@ -285,7 +391,59 @@ async function loadSites() {
   try { sites.value = await getSites(serverId.value) } finally { loading.value = false }
 }
 
-onMounted(() => loadSites())
+// ── Phase Nginx-P3: NginxProfile（多实例 + nginx -V） ────────────────────────
+const profile = ref<NginxProfile | null>(null)
+const profileSaving = ref(false)
+const probing = ref(false)
+const profileForm = ref<NginxProfileUpdate>({
+  nginx_conf_dir: '', sites_available_dir: '', sites_enabled_dir: '',
+  app_locations_dir: '', streams_conf: '', cert_dir: '',
+  nginx_conf_path: '', hub_site_name: '', test_cmd: '', reload_cmd: '',
+})
+
+function fillForm(p: NginxProfile) {
+  profileForm.value = {
+    nginx_conf_dir: p.nginx_conf_dir, sites_available_dir: p.sites_available_dir,
+    sites_enabled_dir: p.sites_enabled_dir, app_locations_dir: p.app_locations_dir,
+    streams_conf: p.streams_conf, cert_dir: p.cert_dir,
+    nginx_conf_path: p.nginx_conf_path, hub_site_name: p.hub_site_name,
+    test_cmd: p.test_cmd, reload_cmd: p.reload_cmd,
+  }
+}
+
+async function loadProfile() {
+  try {
+    const p = await getNginxProfile(serverId.value)
+    profile.value = p
+    fillForm(p)
+  } catch (e: any) { showApiError(e, '加载 nginx profile 失败') }
+}
+
+async function saveProfile() {
+  profileSaving.value = true
+  try {
+    const p = await putNginxProfile(serverId.value, profileForm.value)
+    profile.value = p
+    fillForm(p)
+    message.success('已保存')
+  } catch (e: any) {
+    showApiError(e, '保存失败')
+  } finally { profileSaving.value = false }
+}
+
+async function doProbe() {
+  probing.value = true
+  try {
+    const p = await probeNginxProfile(serverId.value)
+    profile.value = p
+    fillForm(p)
+    message.success(`探测完成：nginx ${p.version || '<未知>'}`)
+  } catch (e: any) {
+    showApiError(e, '探测失败')
+  } finally { probing.value = false }
+}
+
+onMounted(() => { loadSites(); loadProfile() })
 onBeforeUnmount(() => { closeLogs(); editorView?.destroy() })
 </script>
 

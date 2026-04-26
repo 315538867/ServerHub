@@ -27,7 +27,8 @@ import (
 // 表示禁用 PEM 解密（仅供单测且 DB 里没 PEM 数据时）。
 //
 // 返回 nil error 即使无 ingress（空切片合法，触发"清空 edge"语义）。
-func LoadDesired(db *gorm.DB, edge *model.Server, aesKey string) ([]nginxrender.IngressCtx, error) {
+func LoadDesired(db *gorm.DB, edge *model.Server, aesKey string, profile nginxrender.Profile) ([]nginxrender.IngressCtx, error) {
+	profile = nginxrender.NormalizeProfile(profile)
 	var ingresses []model.Ingress
 	if err := db.Where("edge_server_id = ?", edge.ID).Order("id").Find(&ingresses).Error; err != nil {
 		return nil, fmt.Errorf("加载 ingress 失败: %w", err)
@@ -62,7 +63,7 @@ func LoadDesired(db *gorm.DB, edge *model.Server, aesKey string) ([]nginxrender.
 			})
 		}
 
-		certPath, keyPath, certPEM, keyPEM, err := loadCertPaths(db, edge, ig.CertID, aesKey)
+		certPath, keyPath, certPEM, keyPEM, err := loadCertPaths(db, edge, ig.CertID, aesKey, profile)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +173,7 @@ func resolveUpstream(db *gorm.DB, edge *model.Server, rt *model.IngressRoute) (s
 //   - cert.CertPEM 为空且 cert.CertPath 存在 → 兼容旧 letsencrypt 模式：
 //     直接引用远端已存在的路径，PEM 内容空（reconciler 不写盘）
 //   - 既无 PEM 又无路径 → 错误，让 audit 看到根因
-func loadCertPaths(db *gorm.DB, edge *model.Server, certID *uint, aesKey string) (string, string, string, string, error) {
+func loadCertPaths(db *gorm.DB, edge *model.Server, certID *uint, aesKey string, profile nginxrender.Profile) (string, string, string, string, error) {
 	if certID == nil {
 		return "", "", "", "", nil
 	}
@@ -196,7 +197,7 @@ func loadCertPaths(db *gorm.DB, edge *model.Server, certID *uint, aesKey string)
 		if err != nil {
 			return "", "", "", "", fmt.Errorf("cert id=%d 解密 key_pem 失败: %w", cert.ID, err)
 		}
-		cp, kp := nginxrender.CertCanonicalPaths(cert.Domain)
+		cp, kp := nginxrender.CertCanonicalPathsIn(profile, cert.Domain)
 		return cp, kp, certText, keyText, nil
 	}
 

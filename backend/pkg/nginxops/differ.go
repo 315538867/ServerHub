@@ -20,17 +20,18 @@ type ActualFile struct {
 	Hash    string
 }
 
-// inspectScript 在远端列出所有「我们管的」nginx 配置文件，逐行输出
+// buildInspectScript 拼出在远端列出所有「我们管的」nginx 配置文件的脚本，逐行输出
 // `<path>\t<sha256>\t<base64>`。三段以 TAB 分隔，方便上层解析。
 //
-// 管辖范围（与 nginxrender 路径策略对齐）:
+// 管辖范围（来自 Profile 的路径，与 nginxrender 渲染目标对齐）:
 //   - SitesAvailableDir/*-sh.conf
-//   - SitesAvailableDir/serverhub-app-hub
+//   - SitesAvailableDir/<HubSiteName>
 //   - AppLocationsDir/*.conf
 //   - StreamsConf（tcp/udp 聚合文件）
 //
 // 用 `2>/dev/null || true` 容忍目录不存在的场景（首次 apply）。
-const inspectScript = `set -eu
+func buildInspectScript(p nginxrender.Profile) string {
+	return `set -eu
 shopt -s nullglob 2>/dev/null || true
 emit() {
   for f in "$@"; do
@@ -40,17 +41,26 @@ emit() {
     printf '%s\t%s\t%s\n' "$f" "$h" "$b"
   done
 }
-emit ` + nginxrender.SitesAvailableDir + `/*-sh.conf 2>/dev/null || true
-emit ` + nginxrender.SitesAvailableDir + `/` + nginxrender.HubSiteName + ` 2>/dev/null || true
-emit ` + nginxrender.AppLocationsDir + `/*.conf 2>/dev/null || true
-emit ` + nginxrender.StreamsConf + ` 2>/dev/null || true
+emit ` + p.SitesAvailableDir + `/*-sh.conf 2>/dev/null || true
+emit ` + p.SitesAvailableDir + `/` + p.HubSiteName + ` 2>/dev/null || true
+emit ` + p.AppLocationsDir + `/*.conf 2>/dev/null || true
+emit ` + p.StreamsConf + ` 2>/dev/null || true
 exit 0
 `
+}
 
 // Inspect 在远端枚举管辖文件并返回 path → ActualFile 映射。
 // 提取出 runner 调用是为了让 Diff 保持纯函数、便于单测。
+//
+// 旧签名 Inspect(r) 等价于 InspectWith(r, DefaultProfile())，单测/老调用方延续可用。
 func Inspect(r runner.Runner) (map[string]ActualFile, error) {
-	out, err := r.Run("bash -c " + safeshell.Quote(inspectScript))
+	return InspectWith(r, nginxrender.DefaultProfile())
+}
+
+// InspectWith 同 Inspect，但允许调用方指定 Profile（多实例必需）。
+func InspectWith(r runner.Runner, p nginxrender.Profile) (map[string]ActualFile, error) {
+	p = nginxrender.NormalizeProfile(p)
+	out, err := r.Run("bash -c " + safeshell.Quote(buildInspectScript(p)))
 	if err != nil {
 		return nil, fmt.Errorf("inspect 失败: %s: %w", strings.TrimSpace(out), err)
 	}

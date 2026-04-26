@@ -34,6 +34,8 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.POST("/:id/nginx/restart", restartHandler(db, cfg))
 	r.GET("/:id/nginx/logs/access", accessLogsHandler(db, cfg))
 	r.GET("/:id/nginx/logs/error", errorLogsHandler(db, cfg))
+	// Phase Nginx-P3: 多实例 profile 与 nginx -V probe
+	RegisterProfileRoutes(r, db, cfg)
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
