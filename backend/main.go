@@ -59,11 +59,16 @@ import (
 	"github.com/serverhub/serverhub/database"
 	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/migration"
-	"github.com/serverhub/serverhub/pkg/deployer"
 	"github.com/serverhub/serverhub/pkg/scheduler"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/retention"
 	"github.com/serverhub/serverhub/pkg/auditq"
+	"github.com/serverhub/serverhub/usecase"
+
+	_ "github.com/serverhub/serverhub/adapters/runtime/compose"
+	_ "github.com/serverhub/serverhub/adapters/runtime/docker"
+	_ "github.com/serverhub/serverhub/adapters/runtime/native"
+	_ "github.com/serverhub/serverhub/adapters/runtime/static"
 	"gorm.io/gorm"
 )
 
@@ -174,7 +179,7 @@ func main() {
 	}
 
 	// Release / Artifact 保留策略需要 data_dir 来删除 upload 物理文件
-	deployer.ArtifactsDataDir = cfg.Server.DataDir
+	usecase.ArtifactsDataDir = cfg.Server.DataDir
 
 	scheduler.Start(db, cfg)
 	scheduler.StartReconciler(db, cfg)

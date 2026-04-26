@@ -16,7 +16,7 @@ import (
 
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/deployer"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
@@ -112,7 +112,7 @@ func runOne(
 		"total":      total,
 	})
 	startedAt := time.Now()
-	run, err := deployer.ApplyRelease(db, cfg, svcID, relID, triggerSource,
+	run, err := usecase.ApplyRelease(db, cfg, svcID, relID, triggerSource,
 		func(line string) {
 			safeEmit(emit, "service_line", map[string]any{
 				"service_id": svcID,

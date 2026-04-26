@@ -9,4 +9,9 @@ type Release struct {
 	ServiceID uint
 	Version   string
 	StartSpec string // R8: 改为 StartSpec interface
+
+	// R2 扩(为 adapter docker 路径的 image 兜底所需):
+	// ArtifactProvider / ArtifactRef 来自 model.Artifact,在 model→domain 转换时填入。
+	ArtifactProvider string
+	ArtifactRef      string
 }

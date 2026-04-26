@@ -11,7 +11,7 @@
 // webhook.go 还在本包里挂 /panel/api/v1/webhooks/:token —— Git provider 推送
 // 复用同一个 Release Apply 路径。
 //
-// 实际 Apply 执行逻辑在 pkg/deployer/release_apply.go。
+// 实际 Apply 执行逻辑在 usecase/deploy.go。
 package release
 
 import (
@@ -28,7 +28,7 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
-	"github.com/serverhub/serverhub/pkg/deployer"
+	"github.com/serverhub/serverhub/usecase"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"gorm.io/gorm"
 )
@@ -213,7 +213,7 @@ func applyRelease(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if req.TriggerSource == "" {
 			req.TriggerSource = model.TriggerSourceManual
 		}
-		run, err := deployer.ApplyRelease(db, cfg, sid, uint(rid), req.TriggerSource, nil)
+		run, err := usecase.ApplyRelease(db, cfg, sid, uint(rid), req.TriggerSource, nil)
 		// 部署失败但 run 已建（含 failed/rolled_back 状态 + output）时，仍按业务成功回吐，
 		// 便于前端统一读 data.status / data.output，无需区分 HTTP error 与业务 error。
 		if err != nil && run == nil {

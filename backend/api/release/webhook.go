@@ -11,8 +11,8 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/auditq"
-	"github.com/serverhub/serverhub/pkg/deployer"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
@@ -81,7 +81,7 @@ func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		go func(serviceID, releaseID uint) {
-			_, _ = deployer.ApplyRelease(db, cfg, serviceID, releaseID, "webhook", nil)
+			_, _ = usecase.ApplyRelease(db, cfg, serviceID, releaseID, "webhook", nil)
 		}(svc.ID, *svc.CurrentReleaseID)
 		resp.OK(c, gin.H{"triggered": true, "release_id": *svc.CurrentReleaseID})
 	}

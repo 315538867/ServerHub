@@ -14,7 +14,7 @@ type Service struct {
 	ID       uint   `gorm:"primaryKey" json:"id"`
 	Name     string `gorm:"not null" json:"name"`
 	ServerID uint   `gorm:"not null" json:"server_id"`
-	// Type 是启动命令模板调度键 —— pkg/deployer/release_apply.go::buildStartPart
+	// Type 是启动命令模板调度键 —— usecase/deploy.go::buildStartPart
 	// 按 Type switch 选择 docker run / docker compose / native shell / static 四套
 	// 模板组装最终 ExecStart。Release.StartSpec 表达"这次部署用什么命令"，
 	// Type 表达"这个 Service 属于哪类 runtime"，二者职责不重叠。

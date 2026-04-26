@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/deployer"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
@@ -51,8 +51,8 @@ func runAll(db *gorm.DB) {
 	cleanTable(db, "deploy_logs", deployLogKeepDays(db))
 	// M3：旧 deploy_versions 表已只读，不再 PruneAllVersions；
 	// Release 保留 + Artifact 物理文件孤儿清理仍然生效。
-	deployer.PruneAllReleases(db, releaseKeepPerService(db))
-	deployer.PruneOrphanArtifactFiles(db)
+	usecase.PruneAllReleases(db, releaseKeepPerService(db))
+	usecase.PruneOrphanArtifactFiles(db)
 	if shouldVacuum(db) {
 		if err := db.Exec("VACUUM").Error; err != nil {
 			log.Printf("[retention] VACUUM error: %v", err)
@@ -106,11 +106,11 @@ func cleanTable(db *gorm.DB, table string, keepDays int) {
 func releaseKeepPerService(db *gorm.DB) int {
 	var s model.Setting
 	if err := db.Where("key = ?", "release_keep_per_service").First(&s).Error; err != nil {
-		return deployer.MaxReleasesPerService
+		return usecase.MaxReleasesPerService
 	}
 	n, err := strconv.Atoi(s.Value)
 	if err != nil || n <= 0 {
-		return deployer.MaxReleasesPerService
+		return usecase.MaxReleasesPerService
 	}
 	return n
 }

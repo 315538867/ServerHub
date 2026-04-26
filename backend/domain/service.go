@@ -19,4 +19,9 @@ type Service struct {
 	Name     string
 	Type     ServiceType
 	ServerID uint
+
+	// R2 扩(为 adapter BuildStartCmd / PlanStart 纯函数化所需):
+	WorkDir            string // 远端工作目录(空则退化 /tmp/serverhub-svc-<id>)
+	AutoRollbackOnFail bool   // 部署失败是否自动回滚到上一条 active Release
+	CurrentReleaseID   *uint  // 当前 active Release(回滚选目标用)
 }

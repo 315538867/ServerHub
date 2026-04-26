@@ -7,7 +7,7 @@ import (
 
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/deployer"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
@@ -60,7 +60,7 @@ func reconcileOne(db *gorm.DB, cfg *config.Config, svc model.Service) {
 		return
 	}
 
-	_, err := deployer.ApplyRelease(db, cfg, svc.ID, *svc.CurrentReleaseID, "schedule", nil)
+	_, err := usecase.ApplyRelease(db, cfg, svc.ID, *svc.CurrentReleaseID, "schedule", nil)
 	if err != nil {
 		fmt.Printf("[reconciler] service %d apply failed: %v\n", svc.ID, err)
 		db.Model(&svc).Update("sync_status", "error")
