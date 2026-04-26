@@ -51,7 +51,6 @@ func Import(db *gorm.DB, serverID uint, cands []Candidate, aesKey string) Import
 			SourceKind: c.Kind,
 			SourceID:   c.SourceID,
 			SyncStatus: "synced",
-			LastStatus: "success",
 		}
 		if err := db.Create(&d).Error; err != nil {
 			res.Errors = append(res.Errors, c.Name+": "+err.Error())

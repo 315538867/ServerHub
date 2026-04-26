@@ -72,6 +72,11 @@ func init() {
 		Name:    "drop services.env_vars",
 		Fn:      migrateDropServiceEnvVarsCol,
 	})
+	Register(Migration{
+		Version: "023_drop_service_last_status_cols",
+		Name:    "drop services.{last_status,last_run_at}",
+		Fn:      migrateDropServiceLastStatusCols,
+	})
 }
 
 // migrateRenameDeploysToServices 把 v0.2 之前的 deploys 表改名 services。
@@ -276,6 +281,33 @@ func migrateDropServiceEnvVarsCol(tx *gorm.DB) error {
 	}
 	if err := tx.Migrator().DropColumn("services", "env_vars"); err != nil {
 		return fmt.Errorf("drop services.env_vars: %w", err)
+	}
+	return nil
+}
+
+// migrateDropServiceLastStatusCols 收口 P-G:把 services 上 last_status / last_run_at
+// 两列从物理 schema 删除。
+//
+// 语义前提:
+//   - P-G 起 Service.{LastStatus,LastRunAt} 模型字段下线,前端展示与 Application
+//     状态聚合改从最近一条 DeployRun(deploy_runs.service_id, started_at DESC)
+//     派生 —— 实现见 pkg/svcstatus.LatestByService。
+//   - 历史值不需要 backfill 到 deploy_runs:每次成功部署都已经写过 DeployRun,
+//     LastStatus 只是同一事实的冗余摘要;唯一例外是 takeover 直写的 "success",
+//     这类 Service 没有 DeployRun 行,派生侧统一兜底为 "success",语义保留。
+//
+// 可重入:HasColumn 守卫确保旧库 / 新装库都安全 no-op。
+func migrateDropServiceLastStatusCols(tx *gorm.DB) error {
+	if !tx.Migrator().HasTable("services") {
+		return nil
+	}
+	for _, col := range []string{"last_status", "last_run_at"} {
+		if !tx.Migrator().HasColumn("services", col) {
+			continue
+		}
+		if err := tx.Migrator().DropColumn("services", col); err != nil {
+			return fmt.Errorf("drop services.%s: %w", col, err)
+		}
 	}
 	return nil
 }

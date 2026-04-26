@@ -91,13 +91,8 @@ func applyReleaseDepth(db *gorm.DB, cfg *config.Config, serviceID, releaseID uin
 	finishRun(db, &run, success, output)
 
 	if success {
-		// 切指针 + 状态推进
-		now := time.Now()
-		db.Model(&svc).Updates(map[string]any{
-			"current_release_id": rel.ID,
-			"last_run_at":        &now,
-			"last_status":        "success",
-		})
+		// 切指针：last_run_at/last_status 已下线，状态由最近一条 DeployRun 派生
+		db.Model(&svc).Update("current_release_id", rel.ID)
 		// 老 active 标记 archived（避免历史累积太多 active）
 		db.Model(&model.Release{}).
 			Where("service_id = ? AND id <> ? AND status = ?", serviceID, rel.ID, model.ReleaseStatusActive).
@@ -106,8 +101,6 @@ func applyReleaseDepth(db *gorm.DB, cfg *config.Config, serviceID, releaseID uin
 		return &run, nil
 	}
 
-	// 失败：可能触发自动回滚
-	db.Model(&svc).Update("last_status", "failed")
 	if svc.AutoRollbackOnFail && depth < 1 {
 		prev := findPrevActiveRelease(db, serviceID, rel.ID)
 		if prev != nil {

@@ -11,6 +11,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/sshpool"
+	"github.com/serverhub/serverhub/pkg/svcstatus"
 	"gorm.io/gorm"
 )
 
@@ -310,10 +311,12 @@ func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 
 		// 一次性取出 Application 名称
 		appIDs := make([]uint, 0, len(svcs))
+		svcIDs := make([]uint, 0, len(svcs))
 		for _, sv := range svcs {
 			if sv.ApplicationID != nil {
 				appIDs = append(appIDs, *sv.ApplicationID)
 			}
+			svcIDs = append(svcIDs, sv.ID)
 		}
 		nameByApp := make(map[uint]string, len(appIDs))
 		if len(appIDs) > 0 {
@@ -324,15 +327,23 @@ func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
+		// LastStatus 派生:最近一条 DeployRun 的 Status;无 run 视作 takeover 接管,
+		// 默认 "success" 与 P-G 之前的写入语义对齐,避免前端从有值变 "—" 的 UX 退步。
+		latest := svcstatus.LatestByService(db, svcIDs)
+
 		out := make([]svcItem, len(svcs))
 		for i, sv := range svcs {
+			status := "success"
+			if e, ok := latest[sv.ID]; ok {
+				status = e.Status
+			}
 			it := svcItem{
 				ID: sv.ID, Name: sv.Name, Type: sv.Type,
 				ApplicationID: sv.ApplicationID,
 				ExposedPort:   sv.ExposedPort,
 				ImageName:     sv.ImageName,
 				WorkDir:       sv.WorkDir,
-				LastStatus:    sv.LastStatus,
+				LastStatus:    status,
 			}
 			if sv.ApplicationID != nil {
 				it.ApplicationName = nameByApp[*sv.ApplicationID]

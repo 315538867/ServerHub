@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/runner"
@@ -198,17 +197,14 @@ func runStatic(db *gorm.DB, rn runner.Runner, log *Log, server model.Server,
 	// All host-side mutations succeeded; create the DB row. If this fails we do
 	// NOT roll back the host changes — the files are correct, the operator can
 	// retry the import from the UI without needing another takeover dance.
-	now := time.Now()
 	d := model.Service{
-		Name:           req.TargetName,
-		ServerID:       server.ID,
-		Type:           "static",
-		WorkDir:        target,
-		SourceKind:     c.Kind,
-		SourceID:       c.SourceID,
-		SyncStatus:     "synced",
-		LastStatus:     "success",
-		LastRunAt:      &now,
+		Name:       req.TargetName,
+		ServerID:   server.ID,
+		Type:       "static",
+		WorkDir:    target,
+		SourceKind: c.Kind,
+		SourceID:   c.SourceID,
+		SyncStatus: "synced",
 	}
 	if _, err := attachToApplication(db, &d, c, req); err != nil {
 		log.Printf("⚠ Application 绑定失败: %v\n", err)

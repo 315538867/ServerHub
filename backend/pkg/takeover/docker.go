@@ -6,7 +6,6 @@ import (
 	"path"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/runner"
@@ -192,18 +191,15 @@ func runDocker(db *gorm.DB, rn runner.Runner, log *Log, server model.Server,
 		return err
 	}
 
-	now := time.Now()
 	d := model.Service{
-		Name:           req.TargetName,
-		ServerID:       server.ID,
-		Type:           "docker-compose",
-		WorkDir:        target,
-		ImageName:      spec.Image,
-		SourceKind:     c.Kind,
-		SourceID:       c.SourceID,
-		SyncStatus:     "synced",
-		LastStatus:     "success",
-		LastRunAt:      &now,
+		Name:       req.TargetName,
+		ServerID:   server.ID,
+		Type:       "docker-compose",
+		WorkDir:    target,
+		ImageName:  spec.Image,
+		SourceKind: c.Kind,
+		SourceID:   c.SourceID,
+		SyncStatus: "synced",
 	}
 	if _, err := attachToApplication(db, &d, c, req); err != nil {
 		log.Printf("⚠ Application 绑定失败: %v\n", err)

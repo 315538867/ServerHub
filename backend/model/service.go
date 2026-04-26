@@ -14,7 +14,10 @@ type Service struct {
 	ID       uint   `gorm:"primaryKey" json:"id"`
 	Name     string `gorm:"not null" json:"name"`
 	ServerID uint   `gorm:"not null" json:"server_id"`
-	// Deprecated: M3 起由 Release.StartSpec + Artifact.Provider 表达；保留供历史读路径与 M2 迁移脚本使用。
+	// Type 是启动命令模板调度键 —— pkg/deployer/release_apply.go::buildStartPart
+	// 按 Type switch 选择 docker run / docker compose / native shell / static 四套
+	// 模板组装最终 ExecStart。Release.StartSpec 表达"这次部署用什么命令"，
+	// Type 表达"这个 Service 属于哪类 runtime"，二者职责不重叠。
 	Type string `gorm:"default:docker-compose" json:"type"` // docker|docker-compose|native|static
 
 	// Application binding (nullable: floating services allowed)
@@ -49,9 +52,8 @@ type Service struct {
 	SyncInterval int    `gorm:"default:60" json:"sync_interval"`
 	SyncStatus   string `gorm:"default:''" json:"sync_status"`
 
-	// Status
-	LastRunAt  *time.Time `json:"last_run_at"`
-	LastStatus string     `gorm:"default:''" json:"last_status"`
+	// Status: 历史 LastStatus/LastRunAt 在 P-G 起从 deploy_runs 派生 ——
+	// 上层只看"最近一条 DeployRun.Status/StartedAt"。Service 不再持有摘要列。
 
 	// Discovery source. SourceFingerprint is computed by discovery.Fingerprint
 	// from kind-specific stable inputs and used to dedup candidates against

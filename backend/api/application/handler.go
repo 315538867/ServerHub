@@ -14,6 +14,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
+	"github.com/serverhub/serverhub/pkg/svcstatus"
 	"gorm.io/gorm"
 )
 
@@ -112,6 +113,10 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 		// 聚合下属 Service 状态到 Application.Status：
 		//   任一 failed → error；任一 syncing → syncing；
 		//   全 success → running；否则保持原值
+		//
+		// P-G 起 Service 不再持有 last_status 摘要列,改从最近一条 DeployRun 派生。
+		// 无 DeployRun 的 Service(takeover 直接接管)按 "success" 处理,与历史
+		// 写入 LastStatus="success" 等价。
 		if len(apps) > 0 {
 			ids := make([]uint, 0, len(apps))
 			for _, a := range apps {
@@ -119,16 +124,25 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 			}
 			type stRow struct {
 				ApplicationID uint
-				LastStatus    string
+				ServiceID     uint
 			}
 			var rows []stRow
 			db.Model(&model.Service{}).
-				Select("application_id, last_status").
+				Select("application_id, id AS service_id").
 				Where("application_id IN ?", ids).
 				Scan(&rows)
+			svcIDs := make([]uint, 0, len(rows))
+			for _, r := range rows {
+				svcIDs = append(svcIDs, r.ServiceID)
+			}
+			latest := svcstatus.LatestByService(db, svcIDs)
 			grouped := map[uint][]string{}
 			for _, r := range rows {
-				grouped[r.ApplicationID] = append(grouped[r.ApplicationID], r.LastStatus)
+				st := "success"
+				if e, ok := latest[r.ServiceID]; ok {
+					st = e.Status
+				}
+				grouped[r.ApplicationID] = append(grouped[r.ApplicationID], st)
 			}
 			for i := range apps {
 				statuses, ok := grouped[apps[i].ID]
