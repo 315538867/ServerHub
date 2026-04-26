@@ -1,0 +1,52 @@
+# v2 重构期 arch-lint 规则
+#
+# R1 启用:adapter-isolation, domain-pure(skip 模式,允许 model import 直到 R7)
+# R6 启用:api-no-gorm, usecase-no-gin, handler-no-adapter
+# R7 收紧:domain-pure 强模式
+#
+# 当前以 grep 脚本实现(见 .github/workflows/arch-gate.yml::arch-lint job)。
+# R6+ 替换为二进制 tool。
+
+rules:
+  - id: adapter-isolation
+    desc: "一个 adapter 不得 import 另一个 adapter"
+    enabled: true
+    pattern: 'adapters/[^/]+/[^/]+/.*\.go'
+    forbid_import_regex: '"github\.com/serverhub/serverhub/adapters/'
+    severity: error
+
+  - id: domain-pure
+    desc: "domain/ 仅允许 import 标准库(R7 强模式)"
+    enabled: true
+    mode: skip   # R1: 先 skip,R7 切 strict
+    pattern: 'domain/.*\.go'
+    forbid_import_regex: '"github\.com/serverhub/serverhub/(?!domain)'
+    severity: error
+
+  - id: api-no-gorm
+    desc: "api/ 全包不得 import gorm.io/gorm"
+    enabled: false   # R6 启用
+    pattern: 'api/.*\.go'
+    forbid_import_regex: '"gorm\.io/gorm"'
+    severity: error
+
+  - id: usecase-no-gin
+    desc: "usecase/ 不得 import gin"
+    enabled: false   # R6 启用
+    pattern: 'usecase/.*\.go'
+    forbid_import_regex: '"github\.com/gin-gonic/gin"'
+    severity: error
+
+  - id: handler-no-adapter
+    desc: "handler 不得直接 import adapters/"
+    enabled: false   # R6 启用
+    pattern: 'api/.*\.go'
+    forbid_import_regex: '"github\.com/serverhub/serverhub/adapters/'
+    severity: error
+
+  - id: model-only-in-repo-migration
+    desc: "model/ 仅允许被 repo/ 与 migration 引用"
+    enabled: false   # R7 启用
+    pattern: '(?!repo/|migration/).*\.go'
+    forbid_import_regex: '"github\.com/serverhub/serverhub/model"'
+    severity: error

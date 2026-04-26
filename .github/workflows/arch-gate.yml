@@ -30,11 +30,43 @@ jobs:
         run: cd backend && CGO_ENABLED=1 go test -count=1 ./...
 
   arch-lint:
-    name: arch-lint(R0 占位)
+    name: arch-lint(R1:adapter-isolation 启用)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: echo "arch-lint rules pending R1+, see docs/architecture/v2/06-quality-gates.md §3"
+      - name: adapter-isolation
+        run: |
+          set -euo pipefail
+          echo "[arch-lint] rule: adapter-isolation"
+          if [ -d backend/adapters ]; then
+            HITS=$(grep -RnE '"github\.com/serverhub/serverhub/adapters/' \
+              backend/adapters/ 2>/dev/null \
+              | grep -v '_test.go:' || true)
+            if [ -n "$HITS" ]; then
+              echo "ERROR: adapter cross-import detected:"
+              echo "$HITS"
+              exit 1
+            fi
+            echo "  ok (no adapters/ → adapters/ imports)"
+          else
+            echo "  skipped (backend/adapters/ not yet created — R2)"
+          fi
+      - name: domain-pure(skip 模式)
+        run: |
+          echo "[arch-lint] rule: domain-pure (skip until R7)"
+          if [ -d backend/domain ]; then
+            BAD=$(grep -RnE '"github\.com/serverhub/serverhub/(repo|usecase|adapters|api)' \
+              backend/domain/ 2>/dev/null || true)
+            if [ -n "$BAD" ]; then
+              echo "WARN: domain/ imports downstream package:"
+              echo "$BAD"
+              echo "  (skip 模式不阻断,R7 转 strict)"
+            else
+              echo "  ok"
+            fi
+          fi
+      - name: future rules
+        run: echo "api-no-gorm / usecase-no-gin / handler-no-adapter pending R6"
 
   bench-gate:
     name: 性能退化(R0 占位)

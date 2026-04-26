@@ -1,5 +1,24 @@
 package main
 
+// === v2 重构 — adapters blank import 占位块(R1 落地,R2-R5 逐个填实) ===
+//
+// 触发各 adapter 包的 init() 自注册到 core/<port>.Default。
+// 注册时机参见 docs/architecture/v2/05-extension-points.md §2。
+//
+//   _ "github.com/serverhub/serverhub/adapters/runtime/docker"   // R2
+//   _ "github.com/serverhub/serverhub/adapters/runtime/compose"  // R2
+//   _ "github.com/serverhub/serverhub/adapters/runtime/native"   // R2
+//   _ "github.com/serverhub/serverhub/adapters/runtime/static"   // R2
+//   _ "github.com/serverhub/serverhub/adapters/source/docker"    // R4
+//   _ "github.com/serverhub/serverhub/adapters/source/compose"   // R4
+//   _ "github.com/serverhub/serverhub/adapters/source/nginx"     // R4
+//   _ "github.com/serverhub/serverhub/adapters/source/systemd"   // R4
+//   _ "github.com/serverhub/serverhub/adapters/ingress/nginx"    // R5
+//   _ "github.com/serverhub/serverhub/adapters/notify/webhook"   // R6
+//   _ "github.com/serverhub/serverhub/adapters/notify/email"     // R6
+//
+// === v2 重构占位结束 ===
+
 import (
 	"encoding/json"
 	"flag"
