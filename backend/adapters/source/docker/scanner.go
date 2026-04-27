@@ -5,7 +5,6 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/serverhub/serverhub/core/source"
@@ -145,9 +144,6 @@ func (Scanner) Fingerprint(c source.Candidate) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Takeover 在 R4 第二阶段实现:平移 v1 pkg/takeover/docker.go 的 step 链
-// 到 stepkit.RunSteps,Scanner 不写 repo——那是 usecase 在 Takeover 返回
-// nil 后的事。当前为占位以便 R4-base commit 通过编译。
-func (Scanner) Takeover(ctx context.Context, tc source.TakeoverContext) error {
-	return fmt.Errorf("docker source.Takeover: 未实现(R4 后续 commit)")
-}
+// Takeover 实现见 adapters/source/docker/takeover.go(平移 v1
+// pkg/takeover/docker.go 的 step 链到 stepkit.RunSteps)。Scanner 不写
+// repo——usecase 在 Takeover 返回 nil 后构造 model.Service。
