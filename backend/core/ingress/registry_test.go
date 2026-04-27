@@ -8,13 +8,19 @@ import (
 	"github.com/serverhub/serverhub/infra"
 )
 
-type fakeBackend struct{ kind string }
+type fakeBackend struct {
+	kind  string
+	cands []IngressCandidate
+}
 
 func (f *fakeBackend) Kind() string                                        { return f.kind }
 func (f *fakeBackend) Render([]domain.IngressRoute) (string, error)        { return "", nil }
 func (f *fakeBackend) Validate(context.Context, infra.Runner) error        { return nil }
 func (f *fakeBackend) Reload(context.Context, infra.Runner, *domain.Server) error {
 	return nil
+}
+func (f *fakeBackend) Discover(context.Context, infra.Runner) ([]IngressCandidate, error) {
+	return f.cands, nil
 }
 
 func newReg() *Registry { return &Registry{m: map[string]Backend{}} }
@@ -76,5 +82,18 @@ func TestRegistry_AllKindsSorted(t *testing.T) {
 		if got[i] != want[i] {
 			t.Fatalf("Kinds[%d]=%q want %q", i, got[i], want[i])
 		}
+	}
+}
+
+func TestBackend_DiscoverSignature(t *testing.T) {
+	r := newReg()
+	cands := []IngressCandidate{{ServerName: "a.example.com", Fingerprint: "abc"}}
+	r.Register(&fakeBackend{kind: "nginx", cands: cands})
+	got, err := r.MustGet("nginx").Discover(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Discover err=%v", err)
+	}
+	if len(got) != 1 || got[0].ServerName != "a.example.com" {
+		t.Fatalf("Discover returned %+v", got)
 	}
 }
