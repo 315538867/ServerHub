@@ -69,6 +69,7 @@ import (
 	_ "github.com/serverhub/serverhub/adapters/runtime/docker"
 	_ "github.com/serverhub/serverhub/adapters/runtime/native"
 	_ "github.com/serverhub/serverhub/adapters/runtime/static"
+	_ "github.com/serverhub/serverhub/adapters/source/docker"
 	"gorm.io/gorm"
 )
 
