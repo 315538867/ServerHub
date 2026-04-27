@@ -65,6 +65,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/auditq"
 	"github.com/serverhub/serverhub/usecase"
 
+	_ "github.com/serverhub/serverhub/adapters/ingress/nginx"
 	_ "github.com/serverhub/serverhub/adapters/runtime/compose"
 	_ "github.com/serverhub/serverhub/adapters/runtime/docker"
 	_ "github.com/serverhub/serverhub/adapters/runtime/native"
