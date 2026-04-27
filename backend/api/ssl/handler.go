@@ -16,7 +16,7 @@ import (
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/acme"
 	"github.com/serverhub/serverhub/pkg/crypto"
-	"github.com/serverhub/serverhub/pkg/nginxrender"
+	"github.com/serverhub/serverhub/adapters/ingress/nginx/ssl"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/sftppool"
@@ -125,7 +125,7 @@ func persistCert(
 	if err != nil {
 		return fmt.Errorf("加密 key: %w", err)
 	}
-	certPath, keyPath := nginxrender.CertCanonicalPaths(domain)
+	certPath, keyPath := ssl.CertCanonicalPaths(domain)
 
 	// 远端先落盘——上传后立即可用，不必等下一次 apply。Reconciler 后续 apply
 	// 看到内容相同会 noop（base64 tee 幂等）。

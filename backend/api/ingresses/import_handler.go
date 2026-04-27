@@ -10,11 +10,13 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/core/ingress"
+	"github.com/serverhub/serverhub/infra"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/discovery"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
+	"github.com/serverhub/serverhub/usecase"
 )
 
 // importRunnerFactory 让单测覆盖 runner 获取——生产路径直接用 runner.For，
@@ -50,8 +52,8 @@ func RegisterImportRoutes(group *gin.RouterGroup, db *gorm.DB, cfg *config.Confi
 // ImportCandidatesResp 是 GET 的响应载荷。Errors 一般为空，留口子让 runner
 // 失败 / 单文件 cat 失败时把非致命错误带出来。
 type ImportCandidatesResp struct {
-	Candidates []discovery.IngressProxyCandidate `json:"candidates"`
-	Errors     []string                          `json:"errors,omitempty"`
+	Candidates []ingress.IngressCandidate `json:"candidates"`
+	Errors     []string                   `json:"errors,omitempty"`
 }
 
 func importCandidatesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
@@ -70,88 +72,14 @@ func importCandidatesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, "runner: "+err.Error())
 			return
 		}
-		cands, scanErr := discovery.ScanNginxIngressProxy(rn)
-		out := ImportCandidatesResp{Candidates: cands}
-		if scanErr != nil {
-			out.Errors = append(out.Errors, scanErr.Error())
-		}
-		// AlreadyManaged：当前 edge 下已有同 domain 的 Ingress 视作"已接管"，
-		// 前端据此把"导入"按钮置灰，避免重复落库导致 unique(edge_id, domain)
-		// 冲突的 500。
-		if len(cands) > 0 {
-			var existing []string
-			db.Model(&model.Ingress{}).
-				Where("edge_server_id = ?", edgeID).
-				Pluck("domain", &existing)
-			known := make(map[string]struct{}, len(existing))
-			for _, d := range existing {
-				known[d] = struct{}{}
-			}
-			for i := range out.Candidates {
-				if _, hit := known[out.Candidates[i].ServerName]; hit {
-					out.Candidates[i].AlreadyManaged = true
-				}
-			}
-		}
-		// 跨机 upstream 标记:扫描出来的 proxy_pass 主机,如果命中**另一台**已注册
-		// Server 的 Host / Networks[].Address,就把 server id+name 回吐给前端,让
-		// 用户在导入时一眼看见"这条 proxy_pass 指向另一台机,接管后建议切到 service
-		// upstream 让 Resolver 自动选最优网络"。同 edge 自身的 loopback / private
-		// 命中**不**视作跨机,避免对"normal 接管自家进程"打扰。
-		if len(cands) > 0 {
-			annotateCrossServer(out.Candidates, db, edgeID)
-		}
-		resp.OK(c, out)
+		result := usecase.DiscoverIngresses(c.Request.Context(), db, infra.AdaptV1(rn), edgeID)
+		resp.OK(c, ImportCandidatesResp{
+			Candidates: result.Candidates,
+			Errors:     result.Errors,
+		})
 	}
 }
 
-// annotateCrossServer 把跨机 proxy_pass 标记到 candidates 的 routes 上。
-//
-// 实现:把 db 里所有 Server 的 Host + Networks[].Address 摊成 host→(id,name) 表,
-// 然后对每条 route 取 ProxyPassHost 查表。命中**当前 edge** 的不算跨机。
-func annotateCrossServer(cands []discovery.IngressProxyCandidate, db *gorm.DB, edgeID uint) {
-	var servers []model.Server
-	if err := db.Find(&servers).Error; err != nil {
-		return // 跨机标记是 best-effort,DB 抖一下不影响主流程
-	}
-	type srvRef struct {
-		id   uint
-		name string
-	}
-	lookup := make(map[string]srvRef, len(servers)*2)
-	for _, s := range servers {
-		ref := srvRef{id: s.ID, name: s.Name}
-		if h := strings.TrimSpace(s.Host); h != "" {
-			lookup[h] = ref
-		}
-		for _, n := range s.Networks {
-			// loopback Address 永远是 127.0.0.1,不能用来跨机匹配——任何 edge 上
-			// 看到 proxy_pass http://127.0.0.1 都是"自家进程"。
-			if n.Kind == model.NetworkKindLoopback {
-				continue
-			}
-			if a := strings.TrimSpace(n.Address); a != "" {
-				// 多台机若共用同一非 loopback Address(配置错误,极罕见) 后写覆盖
-				// 前写——跨机标记本就是 best-effort 提示,精确度让位于代码简单。
-				lookup[a] = ref
-			}
-		}
-	}
-	for i := range cands {
-		for j := range cands[i].Routes {
-			host, ok := discovery.ProxyPassHost(cands[i].Routes[j].ProxyPass)
-			if !ok {
-				continue
-			}
-			ref, hit := lookup[host]
-			if !hit || ref.id == edgeID {
-				continue
-			}
-			cands[i].Routes[j].CrossServerID = ref.id
-			cands[i].Routes[j].CrossServerName = ref.name
-		}
-	}
-}
 
 // ── Phase Nginx-P3D: import-confirm（归档 + 落库）/ restore（还原） ─────────
 

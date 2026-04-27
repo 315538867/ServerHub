@@ -11,17 +11,16 @@ import (
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 
+	"github.com/serverhub/serverhub/adapters/ingress/nginx/profile"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/nginxops"
-	"github.com/serverhub/serverhub/pkg/nginxrender"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 )
 
 // ProfileResp 是返回给前端的 NginxProfile 视图。modules 解析成数组方便前端渲染。
 // effective_* 字段把 Default + 用户覆盖合并后的实际生效值算出来，前端无需重复
-// nginxrender.NormalizeProfile 的逻辑。
+// profile.NormalizeProfile 的逻辑。
 type ProfileResp struct {
 	EdgeServerID uint `json:"edge_server_id"`
 
@@ -38,7 +37,7 @@ type ProfileResp struct {
 	ReloadCmd         string `json:"reload_cmd"`
 
 	// 合并后的有效值，给前端 placeholder / "实际生效" 标签用。
-	Effective nginxrender.Profile `json:"effective"`
+	Effective profile.Profile `json:"effective"`
 
 	// probe 缓存（只读）
 	BinaryPath  string     `json:"binary_path,omitempty"`
@@ -81,7 +80,7 @@ func loadProfileRow(db *gorm.DB, edgeID uint) (model.NginxProfile, bool, error) 
 }
 
 func makeProfileResp(np model.NginxProfile, exists bool) ProfileResp {
-	eff := nginxrender.NormalizeProfile(nginxrender.Profile{
+	eff := profile.NormalizeProfile(profile.Profile{
 		NginxConfDir:      np.NginxConfDir,
 		SitesAvailableDir: np.SitesAvailableDir,
 		SitesEnabledDir:   np.SitesEnabledDir,
@@ -287,7 +286,7 @@ func probeProfileHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		pr, err := nginxops.ProbeNginxV(rn)
+		pr, err := profile.ProbeNginxV(rn)
 		if err != nil {
 			resp.InternalError(c, "probe 失败: "+err.Error())
 			return

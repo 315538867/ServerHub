@@ -18,9 +18,9 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/nginxops"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/safeshell"
+	"github.com/serverhub/serverhub/usecase"
 )
 
 // RegisterRoutes 把所有 Ingress 相关 API 挂到 group 下。
@@ -583,7 +583,7 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		actor := currentUserID(c)
 		_ = middleware.GetClaims(c) // 触发 claim 解析（部分中间件依赖）
-		res, err := nginxops.Apply(context.Background(), db, cfg, edgeID, actor)
+		res, err := usecase.ApplyIngress(context.Background(), db, cfg, edgeID, actor)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"code":    5000,
@@ -602,13 +602,13 @@ func dryRunHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		changes, err := nginxops.DryRun(context.Background(), db, cfg, edgeID)
+		changes, err := usecase.DryRunIngress(context.Background(), db, cfg, edgeID)
 		if err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
 		if changes == nil {
-			changes = []nginxops.Change{}
+			changes = []usecase.IngressChange{}
 		}
 		resp.OK(c, gin.H{"changes": changes})
 	}
