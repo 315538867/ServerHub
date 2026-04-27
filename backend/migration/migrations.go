@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/serverhub/serverhub/core/source"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/discovery"
 	"gorm.io/gorm"
 )
 
@@ -131,16 +131,27 @@ func migrateBackfillFingerprints(tx *gorm.DB) error {
 		return err
 	}
 	for _, s := range rows {
-		cand := discovery.Candidate{
+		// 重建 source.Candidate,只填指纹算法用到的字段。注:历史 003 跑过的库
+		// 已经把 fingerprint 落库了,这里的字节集只为了让首次升级到 v2 的库
+		// 算出与 v1 backfill 完全相同的 SHA1。算法实现在 adapters/source/<kind>,
+		// 通过 source.Default 注册表派发,字节兼容性见各 adapter 的 Fingerprint
+		// 注释。
+		sc, err := source.Default.Get(s.SourceKind)
+		if err != nil {
+			// 未知 kind 跳过(老库可能存了 R4 之后已退役的 kind),不阻断升级。
+			continue
+		}
+		cand := source.Candidate{
 			Kind:     s.SourceKind,
 			SourceID: s.SourceID,
-			Suggested: discovery.SuggestedDeploy{
-				ImageName:   s.ImageName,
-				WorkDir:     s.WorkDir,
+			Suggested: source.SuggestedFields{
+				Image:       s.ImageName,
+				Workdir:     s.WorkDir,
 				ComposeFile: s.ComposeFile,
 			},
+			Raw: map[string]string{}, // binds/ports/exec_start/server_name 历史均为空
 		}
-		fp := discovery.Fingerprint(cand)
+		fp := sc.Fingerprint(cand)
 		if err := tx.Table("services").Where("id = ?", s.ID).
 			Update("source_fingerprint", fp).Error; err != nil {
 			return err
