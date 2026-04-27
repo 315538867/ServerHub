@@ -1,6 +1,10 @@
-// Package discovery (api) exposes the service-discovery HTTP endpoints. It
-// scans a managed server for running Docker / compose / systemd services and
-// lets the operator selectively import them as Deploy rows.
+// Package discovery (api) exposes the service-discovery HTTP endpoints.
+//
+// R4 起本 handler 不再直接 import pkg/discovery + pkg/takeover,改为编排
+// usecase + adapters/source/<kind>。具体职责切分:
+//   - 路由 + 入参 binding 在本文件
+//   - 远端扫描 / 接管编排在 usecase.DiscoverServer / usecase.RunTakeover
+//   - kind 派发 + 远端 step 链在 adapters/source/<kind>(由 init() 自注册到 source.Default)
 package discovery
 
 import (
@@ -9,11 +13,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/core/source"
+	"github.com/serverhub/serverhub/infra"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/discovery"
 	"github.com/serverhub/serverhub/pkg/resp"
-	"github.com/serverhub/serverhub/pkg/runner"
-	"github.com/serverhub/serverhub/pkg/takeover"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
@@ -29,7 +33,7 @@ func scanHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		rn, err := runner.For(&s, cfg)
+		r, err := infra.For(&s, cfg)
 		if err != nil {
 			resp.InternalError(c, "runner: "+err.Error())
 			return
@@ -38,43 +42,16 @@ func scanHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if raw := strings.TrimSpace(c.Query("kinds")); raw != "" {
 			kinds = strings.Split(raw, ",")
 		}
-		result := discovery.Scan(rn, kinds)
-		markAlreadyManaged(db, s.ID, &result)
-		resp.OK(c, result)
+		out := usecase.DiscoverServer(c.Request.Context(), db, r, s.ID, kinds)
+		resp.OK(c, out)
 	}
-}
-
-// markAlreadyManaged 对扫描结果计算 fingerprint 并查本机已存在的 Service，
-// 命中则把 AlreadyManaged 置 true，让前端灰化"接管"按钮。
-func markAlreadyManaged(db *gorm.DB, serverID uint, res *discovery.Result) {
-	var fps []string
-	db.Model(&model.Service{}).
-		Where("server_id = ? AND source_fingerprint != ''", serverID).
-		Pluck("source_fingerprint", &fps)
-	known := make(map[string]struct{}, len(fps))
-	for _, fp := range fps {
-		known[fp] = struct{}{}
-	}
-	mark := func(list []discovery.Candidate) {
-		for i := range list {
-			fp := discovery.Fingerprint(list[i])
-			list[i].Fingerprint = fp
-			if _, hit := known[fp]; hit {
-				list[i].AlreadyManaged = true
-			}
-		}
-	}
-	mark(res.Docker)
-	mark(res.Compose)
-	mark(res.Systemd)
-	mark(res.Nginx)
 }
 
 type importReq struct {
-	Docker  []discovery.Candidate `json:"docker"`
-	Compose []discovery.Candidate `json:"compose"`
-	Systemd []discovery.Candidate `json:"systemd"`
-	Nginx   []discovery.Candidate `json:"nginx"`
+	Docker  []source.Candidate `json:"docker"`
+	Compose []source.Candidate `json:"compose"`
+	Systemd []source.Candidate `json:"systemd"`
+	Nginx   []source.Candidate `json:"nginx"`
 }
 
 func importHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
@@ -88,22 +65,21 @@ func importHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
-		all := make([]discovery.Candidate, 0,
+		all := make([]source.Candidate, 0,
 			len(req.Docker)+len(req.Compose)+len(req.Systemd)+len(req.Nginx))
 		all = append(all, req.Docker...)
 		all = append(all, req.Compose...)
 		all = append(all, req.Systemd...)
 		all = append(all, req.Nginx...)
-		out := discovery.Import(db, s.ID, all, cfg.Security.AESKey)
+		out := usecase.ImportCandidates(db, s.ID, all, cfg.Security.AESKey)
 		resp.OK(c, out)
 	}
 }
 
 type takeoverReq struct {
-	Candidate  discovery.Candidate `json:"candidate" binding:"required"`
-	TargetName string              `json:"target_name" binding:"required"`
+	Candidate  source.Candidate `json:"candidate" binding:"required"`
+	TargetName string           `json:"target_name" binding:"required"`
 
-	// 归属策略（见 takeover.Request 注释）：floating|existing|new，空串按 floating
 	AppMode string `json:"app_mode,omitempty"`
 	AppID   *uint  `json:"app_id,omitempty"`
 	AppName string `json:"app_name,omitempty"`
@@ -120,8 +96,13 @@ func takeoverHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
-		out := takeover.Run(db, cfg, s, takeover.Request{
-			Candidate:  req.Candidate,
+		r, err := infra.For(&s, cfg)
+		if err != nil {
+			resp.InternalError(c, "runner: "+err.Error())
+			return
+		}
+		out := usecase.RunTakeover(c.Request.Context(), db, cfg, &s, r, usecase.TakeoverRequest{
+			Cand:       req.Candidate,
 			TargetName: req.TargetName,
 			AppMode:    req.AppMode,
 			AppID:      req.AppID,
