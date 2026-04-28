@@ -9,9 +9,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/auditq"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
@@ -26,15 +26,11 @@ func RegisterWebhookRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) 
 // webhookHandler authenticates the sender via either:
 //   - X-Hub-Signature-256 (GitHub): HMAC-SHA256(webhookSecret, body)
 //   - X-Gitlab-Token (GitLab): raw secret compared with constant-time
-//
-// Requests carrying neither header are rejected so a leaked URL alone cannot
-// trigger a deploy. On auth success the Service's current Release is re-applied
-// via deployer.ApplyRelease (M3: legacy deployer.Run is gone).
 func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.Param("token")
-		var svc model.Service
-		if err := db.Where("webhook_secret = ?", token).First(&svc).Error; err != nil {
+		svc, err := repo.GetServiceByWebhookSecret(c.Request.Context(), db, token)
+		if err != nil {
 			resp.NotFound(c, "资源不存在")
 			return
 		}

@@ -22,14 +22,14 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
-	"github.com/serverhub/serverhub/usecase"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/repo"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
@@ -52,7 +52,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	// Artifact
 	g.GET("/artifacts", listArtifacts(db))
 	g.POST("/artifacts", createArtifact(db, cfg))
-	g.POST("/artifacts/:aid/probe", probeArtifact(db, cfg))
+	g.POST("/artifacts/:aid/probe", probeArtifact())
 
 	// EnvVarSet
 	g.GET("/env-sets", listEnvSets(db))
@@ -81,32 +81,26 @@ func parseServiceID(c *gin.Context) (uint, bool) {
 	return uint(v), true
 }
 
-func loadService(db *gorm.DB, id uint) (*model.Service, error) {
-	var s model.Service
-	if err := db.First(&s, id).Error; err != nil {
-		return nil, err
-	}
-	return &s, nil
-}
-
-// listServices 返回所有 Service。M2 之前在 apideploy.listHandler 里;
-// 那个包整体退役后这条只读端点搬到这里,语义没变。
+// listServices 返回所有 Service。
 func listServices(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var services []model.Service
-		db.Order("id asc").Find(&services)
+		services, err := repo.ListAllServices(c.Request.Context(), db)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, services)
 	}
 }
 
-// getService 返回单条 Service。前端 ServiceDetail.vue 在用。
+// getService 返回单条 Service。
 func getService(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
 			return
 		}
-		s, err := loadService(db, sid)
+		s, err := repo.GetServiceByID(c.Request.Context(), db, sid)
 		if err != nil {
 			resp.NotFound(c, "Service 不存在")
 			return
@@ -132,8 +126,11 @@ func listReleases(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		var rows []model.Release
-		db.Where("service_id = ?", sid).Order("id desc").Find(&rows)
+		rows, err := repo.ListReleasesByServiceID(c.Request.Context(), db, sid, 0)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, rows)
 	}
 }
@@ -144,53 +141,31 @@ func createRelease(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		if _, err := loadService(db, sid); err != nil {
-			resp.NotFound(c, "service not found")
-			return
-		}
 		var req releaseReq
 		if err := c.ShouldBindJSON(&req); err != nil {
 			resp.BadRequest(c, err.Error())
 			return
 		}
-		var art model.Artifact
-		if err := db.Where("id = ? AND service_id = ?", req.ArtifactID, sid).First(&art).Error; err != nil {
-			resp.BadRequest(c, "artifact not found")
-			return
-		}
-		if art.Provider == model.ArtifactProviderImported {
-			resp.BadRequest(c, "imported artifact cannot be used for new release; pick a real provider")
-			return
-		}
 		startSpecJSON, _ := json.Marshal(req.StartSpec)
-		label := req.Label
-		if label == "" {
-			label = autoLabel(db, sid)
-		}
-		rel := model.Release{
+		rel, err := usecase.CreateRelease(c.Request.Context(), db, usecase.CreateReleaseParams{
 			ServiceID:   sid,
-			Label:       label,
+			Label:       req.Label,
 			ArtifactID:  req.ArtifactID,
 			EnvSetID:    req.EnvSetID,
 			ConfigSetID: req.ConfigSetID,
 			StartSpec:   string(startSpecJSON),
 			Note:        req.Note,
-			Status:      model.ReleaseStatusDraft,
-		}
-		if err := db.Create(&rel).Error; err != nil {
-			resp.InternalError(c, err.Error())
+		})
+		if err != nil {
+			if repo.IsNotFound(err) {
+				resp.NotFound(c, err.Error())
+			} else {
+				resp.BadRequest(c, err.Error())
+			}
 			return
 		}
 		resp.OK(c, rel)
 	}
-}
-
-// autoLabel 生成 YYYY-MM-DD-N 兜底标签
-func autoLabel(db *gorm.DB, sid uint) string {
-	today := time.Now().Format("2006-01-02")
-	var n int64
-	db.Model(&model.Release{}).Where("service_id = ? AND label LIKE ?", sid, today+"-%").Count(&n)
-	return today + "-" + strconv.FormatInt(n+1, 10)
 }
 
 type applyReq struct {
@@ -214,8 +189,6 @@ func applyRelease(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			req.TriggerSource = model.TriggerSourceManual
 		}
 		run, err := usecase.ApplyRelease(db, cfg, sid, uint(rid), req.TriggerSource, nil)
-		// 部署失败但 run 已建（含 failed/rolled_back 状态 + output）时，仍按业务成功回吐，
-		// 便于前端统一读 data.status / data.output，无需区分 HTTP error 与业务 error。
 		if err != nil && run == nil {
 			resp.InternalError(c, err.Error())
 			return
@@ -238,8 +211,11 @@ func listArtifacts(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		var rows []model.Artifact
-		db.Where("service_id = ?", sid).Order("id desc").Find(&rows)
+		rows, err := repo.ListArtifactsByServiceID(c.Request.Context(), db, sid, 0)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, rows)
 	}
 }
@@ -253,7 +229,8 @@ func createArtifact(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		if _, err := loadService(db, sid); err != nil {
+		ctx := c.Request.Context()
+		if _, err := repo.GetServiceByID(ctx, db, sid); err != nil {
 			resp.NotFound(c, "service not found")
 			return
 		}
@@ -289,7 +266,7 @@ func createArtifact(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			Ref:        req.Ref,
 			PullScript: req.PullScript,
 		}
-		if err := db.Create(&art).Error; err != nil {
+		if err := repo.CreateArtifact(ctx, db, &art); err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
@@ -325,7 +302,6 @@ func saveUploadArtifact(c *gin.Context, db *gorm.DB, cfg *config.Config, sid uin
 	}
 	defer src.Close()
 
-	// 临时落盘 -> sha256 -> 重命名
 	tmp, err := os.CreateTemp(dir, ".upload-*")
 	if err != nil {
 		return nil, err
@@ -344,7 +320,6 @@ func saveUploadArtifact(c *gin.Context, db *gorm.DB, cfg *config.Config, sid uin
 			return nil, err
 		}
 	} else {
-		// 相同 sha 已存在，去重
 		os.Remove(tmpPath)
 	}
 	rel := filepath.Join("artifacts", strconv.FormatUint(uint64(sid), 10), hash+ext)
@@ -355,7 +330,7 @@ func saveUploadArtifact(c *gin.Context, db *gorm.DB, cfg *config.Config, sid uin
 		Checksum:  hash,
 		SizeBytes: size,
 	}
-	if err := db.Create(&art).Error; err != nil {
+	if err := repo.CreateArtifact(c.Request.Context(), db, &art); err != nil {
 		return nil, err
 	}
 	return &art, nil
@@ -365,9 +340,8 @@ func copyAndHash(r io.Reader, w io.Writer) (string, int64, error) {
 	return crypto.CopyAndSHA256(r, w)
 }
 
-func probeArtifact(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func probeArtifact() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// M1: 占位实现；M2 实现 git/http/script 的试拉取
 		resp.OK(c, gin.H{"probed": false, "msg": "probe not implemented yet"})
 	}
 }
@@ -375,8 +349,8 @@ func probeArtifact(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 // ── EnvVarSet handlers ────────────────────────────────────────────────────
 
 type envSetReq struct {
-	Label string            `json:"label"`
-	Vars  []envVar          `json:"vars" binding:"required"`
+	Label string `json:"label"`
+	Vars  []envVar `json:"vars" binding:"required"`
 }
 type envVar struct {
 	Key    string `json:"key"`
@@ -390,10 +364,11 @@ func listEnvSets(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		// 不带 Content（加密体，不出 JSON）
-		var rows []model.EnvVarSet
-		db.Select("id, service_id, label, created_at").
-			Where("service_id = ?", sid).Order("id desc").Find(&rows)
+		rows, err := repo.ListEnvSetsByServiceID(c.Request.Context(), db, sid)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, rows)
 	}
 }
@@ -416,7 +391,7 @@ func createEnvSet(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		row := model.EnvVarSet{ServiceID: sid, Label: req.Label, Content: enc}
-		if err := db.Create(&row).Error; err != nil {
+		if err := repo.CreateEnvSet(c.Request.Context(), db, &row); err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
@@ -431,9 +406,9 @@ type configSetReq struct {
 	Files []configFile `json:"files" binding:"required"`
 }
 type configFile struct {
-	Name        string `json:"name"`
-	ContentB64  string `json:"content_b64"`
-	Mode        int    `json:"mode"`
+	Name       string `json:"name"`
+	ContentB64 string `json:"content_b64"`
+	Mode       int    `json:"mode"`
 }
 
 func listConfigSets(db *gorm.DB) gin.HandlerFunc {
@@ -442,8 +417,11 @@ func listConfigSets(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		var rows []model.ConfigFileSet
-		db.Where("service_id = ?", sid).Order("id desc").Find(&rows)
+		rows, err := repo.ListConfigSetsByServiceID(c.Request.Context(), db, sid)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, rows)
 	}
 }
@@ -461,7 +439,7 @@ func createConfigSet(db *gorm.DB) gin.HandlerFunc {
 		}
 		raw, _ := json.Marshal(req.Files)
 		row := model.ConfigFileSet{ServiceID: sid, Label: req.Label, Files: string(raw)}
-		if err := db.Create(&row).Error; err != nil {
+		if err := repo.CreateConfigSet(c.Request.Context(), db, &row); err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
@@ -477,8 +455,11 @@ func listDeployRuns(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		var rows []model.DeployRun
-		db.Where("service_id = ?", sid).Order("id desc").Limit(200).Find(&rows)
+		rows, err := repo.ListDeployRunsByServiceID(c.Request.Context(), db, sid, 200)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, rows)
 	}
 }
@@ -494,8 +475,8 @@ func getDeployRun(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "invalid run id")
 			return
 		}
-		var row model.DeployRun
-		if err := db.Where("id = ? AND service_id = ?", rid, sid).First(&row).Error; err != nil {
+		row, err := repo.GetDeployRunByIDAndServiceID(c.Request.Context(), db, uint(rid), sid)
+		if err != nil {
 			resp.NotFound(c, "deploy run not found")
 			return
 		}
@@ -520,8 +501,9 @@ func patchAutoRollback(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, err.Error())
 			return
 		}
-		if err := db.Model(&model.Service{}).Where("id = ?", sid).
-			Update("auto_rollback_on_fail", req.Enabled).Error; err != nil {
+		if err := repo.UpdateServiceFields(c.Request.Context(), db, sid, map[string]any{
+			"auto_rollback_on_fail": req.Enabled,
+		}); err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}

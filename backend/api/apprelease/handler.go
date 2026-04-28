@@ -17,9 +17,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/sse"
+	"github.com/serverhub/serverhub/repo"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
@@ -40,9 +41,8 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "无效 App ID")
 			return
 		}
-		var rows []model.AppReleaseSet
-		if err := db.Where("application_id = ?", appID).
-			Order("id desc").Find(&rows).Error; err != nil {
+		rows, err := repo.ListAppReleaseSetsByAppID(c.Request.Context(), db, appID)
+		if err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
@@ -62,9 +62,8 @@ func getHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "无效 Release Set ID")
 			return
 		}
-		var set model.AppReleaseSet
-		if err := db.Where("id = ? AND application_id = ?", rsID, appID).
-			First(&set).Error; err != nil {
+		set, err := repo.GetAppReleaseSetByIDAndAppID(c.Request.Context(), db, rsID, appID)
+		if err != nil {
 			resp.NotFound(c, "Release Set 不存在")
 			return
 		}
@@ -88,7 +87,7 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 		_ = c.ShouldBindJSON(&req) // 全字段可选
 		createdBy, _ := c.Get("username")
 		createdByStr, _ := createdBy.(string)
-		set, err := CreateFromCurrent(db, appID, req.Label, req.Note, createdByStr)
+		set, err := usecase.CreateAppReleaseSetFromCurrent(c.Request.Context(), db, appID, req.Label, req.Note, createdByStr)
 		if err != nil {
 			resp.BadRequest(c, err.Error())
 			return
@@ -102,11 +101,12 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		runSSE(c, db, func(w *sse.Writer, setID uint, trigger string) error {
-			return Apply(db, cfg, setID, trigger, func(name string, data any) {
-				if w != nil && !w.Closed() {
-					_ = w.Event(name, data)
-				}
-			})
+			return usecase.AppReleaseApply(c.Request.Context(), db, cfg, setID, trigger,
+				func(name string, data any) {
+					if w != nil && !w.Closed() {
+						_ = w.Event(name, data)
+					}
+				})
 		})
 	}
 }
@@ -114,11 +114,12 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 func rollbackHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		runSSE(c, db, func(w *sse.Writer, setID uint, trigger string) error {
-			return Rollback(db, cfg, setID, trigger, func(name string, data any) {
-				if w != nil && !w.Closed() {
-					_ = w.Event(name, data)
-				}
-			})
+			return usecase.AppReleaseRollback(c.Request.Context(), db, cfg, setID, trigger,
+				func(name string, data any) {
+					if w != nil && !w.Closed() {
+						_ = w.Event(name, data)
+					}
+				})
 		})
 	}
 }
@@ -138,9 +139,7 @@ func runSSE(c *gin.Context, db *gorm.DB,
 		resp.BadRequest(c, "无效 Release Set ID")
 		return
 	}
-	var set model.AppReleaseSet
-	if err := db.Where("id = ? AND application_id = ?", rsID, appID).
-		First(&set).Error; err != nil {
+	if _, err := repo.GetAppReleaseSetByIDAndAppID(c.Request.Context(), db, rsID, appID); err != nil {
 		resp.NotFound(c, "Release Set 不存在")
 		return
 	}
@@ -158,7 +157,7 @@ func runSSE(c *gin.Context, db *gorm.DB,
 
 	if err := fn(w, rsID, trigger); err != nil {
 		data := map[string]any{"error": err.Error()}
-		if errors.Is(err, ErrAlreadyApplying) {
+		if errors.Is(err, usecase.ErrAppReleaseAlreadyApplying) {
 			data["code"] = "already_applying"
 		}
 		_ = w.Event("error", data)

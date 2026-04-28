@@ -57,3 +57,29 @@ func CountReleasesByServiceID(ctx context.Context, db *gorm.DB, serviceID uint) 
 	}
 	return n, nil
 }
+
+// CountReleaseLabelLike 统计同 service 下 label 匹配给定 pattern 的记录数。
+func CountReleaseLabelLike(ctx context.Context, db *gorm.DB, serviceID uint, pattern string) (int64, error) {
+	var n int64
+	if err := db.WithContext(ctx).Model(&model.Release{}).
+		Where("service_id = ? AND label LIKE ?", serviceID, pattern).
+		Count(&n).Error; err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// FindPrevRelease 返回 serviceID 下 id 严格小于 excludeID 的最近一条
+// active/archived Release ID。找不到返回 0。
+func FindPrevRelease(ctx context.Context, db *gorm.DB, serviceID, excludeID uint) uint {
+	var r model.Release
+	err := db.WithContext(ctx).
+		Where("service_id = ? AND id < ? AND status IN ?",
+			serviceID, excludeID,
+			[]string{model.ReleaseStatusActive, model.ReleaseStatusArchived}).
+		Order("id desc").First(&r).Error
+	if err != nil {
+		return 0
+	}
+	return r.ID
+}

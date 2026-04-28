@@ -65,3 +65,11 @@ func UpdateServiceFields(ctx context.Context, db *gorm.DB, id uint, updates map[
 func DeleteService(ctx context.Context, db *gorm.DB, id uint) error {
 	return db.WithContext(ctx).Delete(&model.Service{}, id).Error
 }
+
+func ListAllServices(ctx context.Context, db *gorm.DB) ([]model.Service, error) {
+	var out []model.Service
+	if err := db.WithContext(ctx).Order("id asc").Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
