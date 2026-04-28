@@ -25,7 +25,7 @@ func GetServiceByWebhookSecret(ctx context.Context, db *gorm.DB, token string) (
 
 func ListServicesByServerID(ctx context.Context, db *gorm.DB, serverID uint) ([]model.Service, error) {
 	var out []model.Service
-	if err := db.WithContext(ctx).Where("server_id = ?", serverID).Find(&out).Error; err != nil {
+	if err := db.WithContext(ctx).Where("server_id = ?", serverID).Order("id asc").Find(&out).Error; err != nil {
 		return nil, err
 	}
 	return out, nil

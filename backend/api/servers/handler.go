@@ -13,6 +13,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/svcstatus"
+	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
 
@@ -30,14 +31,6 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.PUT("/:id/networks", updateNetworksHandler(db))
 }
 
-// serverResp 是 GET /servers 的响应 DTO。
-//
-// R3 起 Status / LastCheckAt 不再来自 model.Server(列已下线),改由 derive.ServerStatus
-// 从 server_probes 时序表派生:
-//   - Status      ← derive.ServerStatusEntry.Result(online|lagging|offline|unknown)
-//   - LastCheckAt ← derive.ServerStatusEntry.LastProbeAt (zero → null)
-//
-// 兼容性:JSON 字段名保留,前端 TS 类型不需要改;只是来源改了。
 type serverResp struct {
 	ID          uint       `json:"id"`
 	Name        string     `json:"name"`
@@ -80,8 +73,12 @@ type createReq struct {
 
 func listHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var servers []model.Server
-		db.Order("id asc").Find(&servers)
+		ctx := c.Request.Context()
+		servers, err := repo.ListAllServers(ctx, db)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		ids := make([]uint, len(servers))
 		for i, s := range servers {
 			ids[i] = s.ID
@@ -126,11 +123,10 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			Password: encPwd, PrivateKey: encKey,
 			Remark: req.Remark,
 		}
-		if err := db.Create(&s).Error; err != nil {
+		if err := repo.CreateServer(c.Request.Context(), db, &s); err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
-		// 刚创建尚无 probe → unknown,无需查 derive
 		c.JSON(http.StatusCreated, gin.H{"code": 0, "msg": "ok", "data": toResp(s, derive.ServerStatusEntry{Result: derive.ServerStatusUnknown})})
 	}
 }
@@ -184,7 +180,7 @@ func updateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 
 		sshpool.Remove(s.ID)
-		if err := db.Model(&s).Updates(updates).Error; err != nil {
+		if err := repo.UpdateServerFields(c.Request.Context(), db, s.ID, updates); err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
@@ -204,14 +200,10 @@ func deleteHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		sshpool.Remove(s.ID)
-		db.Delete(&s)
-		sid := s.ID
-		db.Where("server_id = ?", sid).Delete(&model.Metric{})
-		db.Where("server_id = ?", sid).Delete(&model.Service{})
-		db.Where("server_id = ?", sid).Delete(&model.DBConn{})
-		db.Where("server_id = ?", sid).Delete(&model.AlertRule{})
-		db.Where("server_id = ?", sid).Delete(&model.AlertEvent{})
-		db.Where("server_id = ?", sid).Delete(&model.SSLCert{})
+		if err := repo.DeleteServerCascade(c.Request.Context(), db, s.ID); err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, nil)
 	}
 }
@@ -222,8 +214,9 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
+		ctx := c.Request.Context()
 		if s.Type == "local" {
-			db.Create(&model.ServerProbe{ServerID: s.ID, Result: "online", CreatedAt: time.Now()})
+			_ = repo.CreateProbe(ctx, db, &model.ServerProbe{ServerID: s.ID, Result: "online", CreatedAt: time.Now()})
 			resp.OK(c, gin.H{"status": "online"})
 			return
 		}
@@ -239,7 +232,7 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
 		latencyMs := int(time.Since(start).Milliseconds())
 		if err != nil {
-			db.Create(&model.ServerProbe{
+			_ = repo.CreateProbe(ctx, db, &model.ServerProbe{
 				ServerID: s.ID, Result: "offline",
 				LatencyMs: latencyMs, ErrMsg: err.Error(), CreatedAt: time.Now(),
 			})
@@ -247,7 +240,7 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		_ = client
-		db.Create(&model.ServerProbe{
+		_ = repo.CreateProbe(ctx, db, &model.ServerProbe{
 			ServerID: s.ID, Result: "online",
 			LatencyMs: latencyMs, CreatedAt: time.Now(),
 		})
@@ -289,7 +282,7 @@ func collectMetricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			CPU:      metrics.CPU, Mem: metrics.Mem, Disk: metrics.Disk,
 			Load1: metrics.Load1, Uptime: metrics.Uptime,
 		}
-		db.Create(&m)
+		_ = repo.CreateMetric(c.Request.Context(), db, &m)
 		resp.OK(c, m)
 	}
 }
@@ -308,14 +301,15 @@ func listMetricsHandler(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		var metrics []model.Metric
-		db.Where("server_id = ?", s.ID).Order("created_at desc").Limit(limit).Find(&metrics)
+		metrics, err := repo.ListMetricsByServerID(c.Request.Context(), db, s.ID, limit)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, metrics)
 	}
 }
 
-// listServicesHandler 返回该服务器上所有 Service（供 NginxRoutes 下拉用）。
-// 同时附带 Application 名（nullable）便于前端展示归属关系。
 func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 	type svcItem struct {
 		ID              uint   `json:"id"`
@@ -333,10 +327,13 @@ func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		var svcs []model.Service
-		db.Where("server_id = ?", s.ID).Order("id asc").Find(&svcs)
+		ctx := c.Request.Context()
+		svcs, err := repo.ListServicesByServerID(ctx, db, s.ID)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 
-		// 一次性取出 Application 名称
 		appIDs := make([]uint, 0, len(svcs))
 		svcIDs := make([]uint, 0, len(svcs))
 		for _, sv := range svcs {
@@ -347,21 +344,16 @@ func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 		nameByApp := make(map[uint]string, len(appIDs))
 		if len(appIDs) > 0 {
-			var apps []model.Application
-			db.Where("id IN ?", appIDs).Find(&apps)
+			apps, err := repo.ListApplicationsByIDs(ctx, db, appIDs)
+			if err != nil {
+				resp.InternalError(c, err.Error())
+				return
+			}
 			for _, a := range apps {
 				nameByApp[a.ID] = a.Name
 			}
 		}
 
-		// 派生区:LastStatus 取最近一条 DeployRun.Status,无 run 视作 takeover 接管,
-		// 默认 "success" 与 P-G 之前的写入语义对齐,避免前端从有值变 "—" 的 UX 退步。
-		// ImageName 从 P-I 起也走派生:Service.CurrentReleaseID → Release.StartSpec.image,
-		// 真值跟 buildStartPart 实际启动用的镜像对齐(而非历史 takeover 一次性快照)。
-		//
-		// 注意:Entry 现在多字段聚合,某 Service 可能只有 Image(还没部署过 → 没 DeployRun)
-		// 或只有 Status(StartSpec 不是 docker 类型 → 没 image)。所以两个字段各自判断,
-		// 不能用 ok-check 做"是否有 entry"的统一开关。
 		latest := svcstatus.LatestByService(db, svcIDs)
 
 		out := make([]svcItem, len(svcs))
@@ -396,8 +388,8 @@ func findServer(c *gin.Context, db *gorm.DB) (model.Server, bool) {
 		resp.BadRequest(c, "ID 格式错误")
 		return model.Server{}, false
 	}
-	var s model.Server
-	if err := db.First(&s, id).Error; err != nil {
+	s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
+	if err != nil {
 		resp.NotFound(c, "服务器不存在")
 		return model.Server{}, false
 	}
