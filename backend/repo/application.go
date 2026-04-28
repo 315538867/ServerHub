@@ -15,6 +15,18 @@ func GetApplicationByID(ctx context.Context, db *gorm.DB, id uint) (model.Applic
 	return a, nil
 }
 
+func ListApplications(ctx context.Context, db *gorm.DB, serverID *uint) ([]model.Application, error) {
+	q := db.WithContext(ctx).Order("id asc")
+	if serverID != nil {
+		q = q.Where("server_id = ?", *serverID)
+	}
+	var out []model.Application
+	if err := q.Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func ListAllApplications(ctx context.Context, db *gorm.DB) ([]model.Application, error) {
 	var out []model.Application
 	if err := db.WithContext(ctx).Order("id asc").Find(&out).Error; err != nil {
@@ -52,4 +64,11 @@ func UpdateApplicationFields(ctx context.Context, db *gorm.DB, id uint, updates 
 
 func UpdatePrimaryService(ctx context.Context, db *gorm.DB, appID uint, serviceID *uint) error {
 	return db.WithContext(ctx).Model(&model.Application{}).Where("id = ?", appID).Update("primary_service_id", serviceID).Error
+}
+
+// ClearPrimaryServiceIfMatch 若 app 的主服务恰好是 serviceID,则置空。
+func ClearPrimaryServiceIfMatch(ctx context.Context, db *gorm.DB, appID, serviceID uint) error {
+	return db.WithContext(ctx).Model(&model.Application{}).
+		Where("id = ? AND primary_service_id = ?", appID, serviceID).
+		Update("primary_service_id", nil).Error
 }

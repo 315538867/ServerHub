@@ -15,22 +15,10 @@ import (
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
+	"github.com/serverhub/serverhub/repo"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
-
-// appResp 是 Application API 的统一响应壳:嵌入 model.Application 把全部基础字段
-// 平铺到 JSON,Status 字段从 derive.AppStatus 派生(R3 起 Application.Status 列已下线)。
-//
-// 历史兼容:JSON 字段名 "status" 与 R2 之前一致,前端 TS 类型不需要改。
-type appResp struct {
-	model.Application
-	Status string `json:"status"`
-}
-
-func toAppResp(db *gorm.DB, a model.Application) appResp {
-	m := derive.AppStatus(db, []uint{a.ID})
-	return appResp{Application: a, Status: m[a.ID].Result}
-}
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.GET("", listHandler(db))
@@ -62,19 +50,19 @@ type appReq struct {
 
 // ── SSH helper ────────────────────────────────────────────────────────────────
 
-func runnerForServer(db *gorm.DB, cfg *config.Config, serverID uint) (runner.Runner, error) {
-	var s model.Server
-	if err := db.First(&s, serverID).Error; err != nil {
+func runnerForServer(ctx *gin.Context, db *gorm.DB, cfg *config.Config, serverID uint) (runner.Runner, error) {
+	s, err := repo.GetServerByID(ctx.Request.Context(), db, serverID)
+	if err != nil {
 		return nil, fmt.Errorf("服务器不存在")
 	}
 	return runner.For(&s, cfg)
 }
 
-func initAppDirs(db *gorm.DB, cfg *config.Config, app *model.Application) error {
+func initAppDirs(c *gin.Context, db *gorm.DB, cfg *config.Config, app *model.Application) error {
 	if err := safeshell.AbsPath(app.BaseDir); err != nil {
 		return fmt.Errorf("base_dir 非法: %w", err)
 	}
-	r, err := runnerForServer(db, cfg, app.ServerID)
+	r, err := runnerForServer(c, db, cfg, app.ServerID)
 	if err != nil {
 		return err
 	}
@@ -85,8 +73,7 @@ func initAppDirs(db *gorm.DB, cfg *config.Config, app *model.Application) error 
 	return err
 }
 
-// validateAppReq enforces shell/path safety on user-controlled fields that
-// are spliced into remote commands or filesystem paths.
+// validateAppReq enforces shell/path safety on user-controlled fields.
 func validateAppReq(req *appReq) error {
 	if err := safeshell.ValidName(req.Name, 64); err != nil {
 		return fmt.Errorf("name 非法: %w", err)
@@ -118,25 +105,20 @@ func validateAppReq(req *appReq) error {
 
 func listHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var apps []model.Application
-		q := db.Order("id asc")
+		var serverID *uint
 		if sid := c.Query("server_id"); sid != "" {
-			q = q.Where("server_id = ?", sid)
+			v, err := strconv.Atoi(sid)
+			if err != nil || v <= 0 {
+				resp.BadRequest(c, "server_id 无效")
+				return
+			}
+			uid := uint(v)
+			serverID = &uid
 		}
-		q.Find(&apps)
-		// R3 起 Application.Status 列已下线,改由 derive.AppStatus 派生:
-		//   任一 Service.DeployRun.Status=failed → error
-		//   任一 syncing → syncing
-		//   全 success → running
-		//   无 Service / 全 unknown → unknown
-		ids := make([]uint, len(apps))
-		for i, a := range apps {
-			ids[i] = a.ID
-		}
-		statusMap := derive.AppStatus(db, ids)
-		out := make([]appResp, len(apps))
-		for i, a := range apps {
-			out[i] = appResp{Application: a, Status: statusMap[a.ID].Result}
+		out, err := usecase.ListApplications(c.Request.Context(), db, serverID)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
 		}
 		resp.OK(c, out)
 	}
@@ -151,8 +133,11 @@ func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "无效 ID")
 			return
 		}
-		var services []model.Service
-		db.Where("application_id = ?", id).Order("id asc").Find(&services)
+		services, err := repo.ListServicesByApplicationID(c.Request.Context(), db, uint(id))
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, services)
 	}
 }
@@ -169,29 +154,14 @@ func attachServiceHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "无效服务 ID")
 			return
 		}
-		var app model.Application
-		if err := db.First(&app, appID).Error; err != nil {
-			resp.NotFound(c, "应用不存在")
+		svc, err := usecase.AttachService(c.Request.Context(), db, uint(appID), uint(sid))
+		if err != nil {
+			if repo.IsNotFound(err) {
+				resp.NotFound(c, err.Error())
+			} else {
+				resp.BadRequest(c, err.Error())
+			}
 			return
-		}
-		var svc model.Service
-		if err := db.First(&svc, sid).Error; err != nil {
-			resp.NotFound(c, "服务不存在")
-			return
-		}
-		if svc.ServerID != app.ServerID {
-			resp.BadRequest(c, "服务与应用不在同一服务器，不可挂载")
-			return
-		}
-		appIDu := uint(appID)
-		svc.ApplicationID = &appIDu
-		if err := db.Save(&svc).Error; err != nil {
-			resp.InternalError(c, err.Error())
-			return
-		}
-		if app.PrimaryServiceID == nil {
-			svcID := svc.ID
-			db.Model(&app).Update("primary_service_id", svcID)
 		}
 		resp.OK(c, svc)
 	}
@@ -209,24 +179,14 @@ func detachServiceHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "无效服务 ID")
 			return
 		}
-		var svc model.Service
-		if err := db.First(&svc, sid).Error; err != nil {
-			resp.NotFound(c, "服务不存在")
+		if err := usecase.DetachService(c.Request.Context(), db, uint(appID), uint(sid)); err != nil {
+			if repo.IsNotFound(err) {
+				resp.NotFound(c, err.Error())
+			} else {
+				resp.BadRequest(c, err.Error())
+			}
 			return
 		}
-		if svc.ApplicationID == nil || *svc.ApplicationID != uint(appID) {
-			resp.BadRequest(c, "该服务未挂在此应用下")
-			return
-		}
-		svc.ApplicationID = nil
-		if err := db.Save(&svc).Error; err != nil {
-			resp.InternalError(c, err.Error())
-			return
-		}
-		// 若主服务被卸下，清掉 PrimaryServiceID
-		db.Model(&model.Application{}).
-			Where("id = ? AND primary_service_id = ?", appID, sid).
-			Update("primary_service_id", nil)
 		resp.OK(c, nil)
 	}
 }
@@ -242,11 +202,6 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		if err := validateAppReq(&req); err != nil {
 			resp.BadRequest(c, err.Error())
-			return
-		}
-		var server model.Server
-		if err := db.First(&server, req.ServerID).Error; err != nil {
-			resp.BadRequest(c, "服务器不存在")
 			return
 		}
 		exposeMode := req.ExposeMode
@@ -273,15 +228,14 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			DeployID:      req.DeployID,
 			DBConnID:      req.DBConnID,
 		}
-		if err := db.Create(&app).Error; err != nil {
-			resp.InternalError(c, err.Error())
+		if err := usecase.CreateApplication(c.Request.Context(), db, &app); err != nil {
+			resp.BadRequest(c, err.Error())
 			return
 		}
 		go func() {
-			_ = initAppDirs(db, cfg, &app)
+			_ = initAppDirs(c, db, cfg, &app)
 		}()
-		// 刚创建尚无 Service → derive 返回 unknown,无需打 DB
-		resp.OK(c, appResp{Application: app, Status: derive.AppStatusUnknown})
+		resp.OK(c, usecase.AppWithStatus{Application: app, Status: derive.AppStatusUnknown})
 	}
 }
 
@@ -294,12 +248,12 @@ func getHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "无效 ID")
 			return
 		}
-		var app model.Application
-		if err := db.First(&app, id).Error; err != nil {
+		out, err := usecase.GetApplication(c.Request.Context(), db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "应用不存在")
 			return
 		}
-		resp.OK(c, toAppResp(db, app))
+		resp.OK(c, out)
 	}
 }
 
@@ -312,8 +266,9 @@ func updateHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "无效 ID")
 			return
 		}
-		var app model.Application
-		if err := db.First(&app, id).Error; err != nil {
+		ctx := c.Request.Context()
+		app, err := repo.GetApplicationByID(ctx, db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "应用不存在")
 			return
 		}
@@ -337,11 +292,12 @@ func updateHandler(db *gorm.DB) gin.HandlerFunc {
 		if req.ExposeMode == "path" || req.ExposeMode == "site" || req.ExposeMode == "none" {
 			app.ExposeMode = req.ExposeMode
 		}
-		if err := db.Save(&app).Error; err != nil {
+		out, err := usecase.UpdateApplication(ctx, db, &app)
+		if err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
-		resp.OK(c, toAppResp(db, app))
+		resp.OK(c, out)
 	}
 }
 
@@ -354,7 +310,7 @@ func deleteHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "无效 ID")
 			return
 		}
-		if err := db.Delete(&model.Application{}, id).Error; err != nil {
+		if err := usecase.DeleteApplication(c.Request.Context(), db, uint(id)); err != nil {
 			resp.InternalError(c, err.Error())
 			return
 		}
@@ -379,8 +335,8 @@ func dirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "无效 ID")
 			return
 		}
-		var app model.Application
-		if err := db.First(&app, id).Error; err != nil {
+		app, err := repo.GetApplicationByID(c.Request.Context(), db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "应用不存在")
 			return
 		}
@@ -392,7 +348,7 @@ func dirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "base_dir 非法: "+err.Error())
 			return
 		}
-		client, err := runnerForServer(db, cfg, app.ServerID)
+		client, err := runnerForServer(c, db, cfg, app.ServerID)
 		if err != nil {
 			resp.Fail(c, http.StatusServiceUnavailable, 5003, "连接失败: "+err.Error())
 			return
@@ -442,8 +398,8 @@ func initDirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "无效 ID")
 			return
 		}
-		var app model.Application
-		if err := db.First(&app, id).Error; err != nil {
+		app, err := repo.GetApplicationByID(c.Request.Context(), db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "应用不存在")
 			return
 		}
@@ -451,7 +407,7 @@ func initDirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "应用未设置 base_dir")
 			return
 		}
-		if err := initAppDirs(db, cfg, &app); err != nil {
+		if err := initAppDirs(c, db, cfg, &app); err != nil {
 			resp.Fail(c, http.StatusServiceUnavailable, 5003, "初始化失败: "+err.Error())
 			return
 		}
@@ -460,24 +416,20 @@ func initDirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 }
 
 // ── metrics ───────────────────────────────────────────────────────────────────
-//
-// GET /api/applications/:id/metrics
-// 通过 SSH 调 `docker stats --no-stream --format '{{json .}}'` 取关联容器的实时指标。
 
 type appMetrics struct {
 	Available   bool    `json:"available"`
 	Reason      string  `json:"reason,omitempty"`
 	CPUPercent  float64 `json:"cpu_percent"`
-	MemUsage    string  `json:"mem_usage"`    // e.g. "128.5MiB / 2GiB"
+	MemUsage    string  `json:"mem_usage"`
 	MemPercent  float64 `json:"mem_percent"`
-	NetIO       string  `json:"net_io"`       // e.g. "1.2MB / 340kB"
+	NetIO       string  `json:"net_io"`
 	BlockIO     string  `json:"block_io"`
 	PIDs        int     `json:"pids"`
 	ContainerID string  `json:"container_id"`
 	Timestamp   int64   `json:"ts"`
 }
 
-// docker stats JSON 行字段名（Docker CLI 输出格式）
 type dockerStatsLine struct {
 	ID       string `json:"ID"`
 	CPUPerc  string `json:"CPUPerc"`
@@ -495,8 +447,8 @@ func metricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "无效 ID")
 			return
 		}
-		var app model.Application
-		if err := db.First(&app, id).Error; err != nil {
+		app, err := repo.GetApplicationByID(c.Request.Context(), db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "应用不存在")
 			return
 		}
@@ -504,7 +456,7 @@ func metricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.OK(c, appMetrics{Available: false, Reason: "未关联容器"})
 			return
 		}
-		client, err := runnerForServer(db, cfg, app.ServerID)
+		client, err := runnerForServer(c, db, cfg, app.ServerID)
 		if err != nil {
 			resp.OK(c, appMetrics{Available: false, Reason: "连接失败: " + err.Error()})
 			return
@@ -543,6 +495,26 @@ func metricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
+// ── ingresses 反向视图 ───────────────────────────────────────────────────────
+
+func listAppIngressesHandler(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		id, err := strconv.Atoi(c.Param("id"))
+		if err != nil || id <= 0 {
+			resp.BadRequest(c, "无效 ID")
+			return
+		}
+		out, err := usecase.ListAppIngresses(c.Request.Context(), db, uint(id))
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
+		resp.OK(c, out)
+	}
+}
+
+// ── 工具函数 ─────────────────────────────────────────────────────────────────
+
 func shellQuoteSafe(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'"'"'`) + "'"
 }
@@ -557,101 +529,6 @@ func parsePercent(s string) float64 {
 		return 0
 	}
 	return f
-}
-
-// listAppIngressesHandler 反向视图:返回引用了本 app 任一 Service 的所有 Ingress,
-// 每条 Ingress 附带 EdgeServerName + MatchingRoutes(只命中本 app 的那些子路由,
-// 因为同一 Ingress 可能既路由到本 app 又路由到其它 app/raw,前端反向视图只关心
-// 本 app 的部分)。
-//
-// 实现思路:Upstream 是 JSON text 列,直接 SQL 查 service_id 不可靠。两步走:
-//   1) services WHERE application_id=? → service_id 集合
-//   2) ingress_routes 全表扫(GORM 反序列化 Upstream),内存过滤 type=service &&
-//      service_id ∈ 集合,聚到 ingress_id;再回拉 Ingress + Server.Name。
-//
-// 数据量评估:Ingress 是低频实体(一台 edge 几十条上限),全表扫可接受;后续若涨到
-// 千级,可改为 SQL JSON 函数(SQLite/PG 都支持)或新建反向索引列。
-func listAppIngressesHandler(db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		id, err := strconv.Atoi(c.Param("id"))
-		if err != nil || id <= 0 {
-			resp.BadRequest(c, "无效 ID")
-			return
-		}
-		var serviceIDs []uint
-		if err := db.Model(&model.Service{}).
-			Where("application_id = ?", id).
-			Pluck("id", &serviceIDs).Error; err != nil {
-			resp.InternalError(c, err.Error())
-			return
-		}
-		type appIngressDTO struct {
-			model.Ingress
-			EdgeServerName string               `json:"edge_server_name"`
-			MatchingRoutes []model.IngressRoute `json:"matching_routes"`
-		}
-		if len(serviceIDs) == 0 {
-			resp.OK(c, []appIngressDTO{})
-			return
-		}
-		sidSet := make(map[uint]struct{}, len(serviceIDs))
-		for _, s := range serviceIDs {
-			sidSet[s] = struct{}{}
-		}
-		var routes []model.IngressRoute
-		if err := db.Order("ingress_id, sort, id").Find(&routes).Error; err != nil {
-			resp.InternalError(c, err.Error())
-			return
-		}
-		routesByIngress := map[uint][]model.IngressRoute{}
-		for _, rt := range routes {
-			if rt.Upstream.Type != "service" || rt.Upstream.ServiceID == nil {
-				continue
-			}
-			if _, ok := sidSet[*rt.Upstream.ServiceID]; !ok {
-				continue
-			}
-			routesByIngress[rt.IngressID] = append(routesByIngress[rt.IngressID], rt)
-		}
-		if len(routesByIngress) == 0 {
-			resp.OK(c, []appIngressDTO{})
-			return
-		}
-		ingressIDs := make([]uint, 0, len(routesByIngress))
-		for id := range routesByIngress {
-			ingressIDs = append(ingressIDs, id)
-		}
-		var ingresses []model.Ingress
-		if err := db.Where("id IN ?", ingressIDs).Order("id").Find(&ingresses).Error; err != nil {
-			resp.InternalError(c, err.Error())
-			return
-		}
-		serverIDSet := map[uint]struct{}{}
-		for _, ig := range ingresses {
-			serverIDSet[ig.EdgeServerID] = struct{}{}
-		}
-		nameByID := map[uint]string{}
-		if len(serverIDSet) > 0 {
-			sids := make([]uint, 0, len(serverIDSet))
-			for id := range serverIDSet {
-				sids = append(sids, id)
-			}
-			var servers []model.Server
-			db.Select("id, name").Where("id IN ?", sids).Find(&servers)
-			for _, s := range servers {
-				nameByID[s.ID] = s.Name
-			}
-		}
-		out := make([]appIngressDTO, 0, len(ingresses))
-		for _, ig := range ingresses {
-			out = append(out, appIngressDTO{
-				Ingress:        ig,
-				EdgeServerName: nameByID[ig.EdgeServerID],
-				MatchingRoutes: routesByIngress[ig.ID],
-			})
-		}
-		resp.OK(c, out)
-	}
 }
 
 func atoiSafe(s string) int {

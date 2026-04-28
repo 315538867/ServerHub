@@ -74,6 +74,14 @@ func DeleteIngressCascade(ctx context.Context, db *gorm.DB, ingressID uint) erro
 	})
 }
 
+func ListAllRoutes(ctx context.Context, db *gorm.DB) ([]model.IngressRoute, error) {
+	var out []model.IngressRoute
+	if err := db.WithContext(ctx).Order("ingress_id asc, sort asc, id asc").Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func ListRoutesByIngressID(ctx context.Context, db *gorm.DB, ingressID uint) ([]model.IngressRoute, error) {
 	var out []model.IngressRoute
 	if err := db.WithContext(ctx).Where("ingress_id = ?", ingressID).Order("sort asc, id asc").Find(&out).Error; err != nil {
