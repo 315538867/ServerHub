@@ -1,17 +1,12 @@
 package auth
 
 import (
-	"net/http"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/middleware"
-	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/auditq"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/totp"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
@@ -47,19 +42,15 @@ func totpConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "密钥和验证码不能为空")
 			return
 		}
-		if !totp.Verify(body.Secret, body.Code) {
-			resp.Fail(c, http.StatusUnprocessableEntity, 1010, "验证码格式错误")
-			return
-		}
-		encSecret, err := crypto.Encrypt(body.Secret, cfg.Security.AESKey)
+		status, code, err := usecase.ConfirmTOTP(c.Request.Context(), db, cfg, claims.UserID, body.Secret, body.Code)
 		if err != nil {
-			resp.InternalError(c, "加密失败")
+			if status != 0 {
+				resp.Fail(c, status, code, err.Error())
+			} else {
+				resp.InternalError(c, err.Error())
+			}
 			return
 		}
-		db.Model(&model.User{}).Where("id = ?", claims.UserID).Updates(map[string]any{
-			"mfa_secret":  encSecret,
-			"mfa_enabled": true,
-		})
 		resp.OK(c, nil)
 	}
 }
@@ -71,10 +62,10 @@ func totpDisableHandler(db *gorm.DB, _ *config.Config) gin.HandlerFunc {
 			resp.Unauthorized(c, "not authenticated")
 			return
 		}
-		db.Model(&model.User{}).Where("id = ?", claims.UserID).Updates(map[string]any{
-			"mfa_secret":  "",
-			"mfa_enabled": false,
-		})
+		if err := usecase.DisableTOTP(c.Request.Context(), db, claims.UserID); err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, nil)
 	}
 }
@@ -89,52 +80,19 @@ func totpLoginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "临时 Token 和验证码不能为空")
 			return
 		}
-		// Parse tmp token (role=tmp_totp)
-		claims, err := middleware.ParseToken(body.TmpToken, cfg.Security.JWTSecret)
-		if err != nil || claims.Role != "tmp_totp" {
-			auditq.Security("", c.ClientIP(), "security:mfa_token_invalid", 401, nil)
-			resp.Fail(c, http.StatusUnauthorized, 1001, "Token 无效")
-			return
-		}
-		var user model.User
-		if err := db.First(&user, claims.UserID).Error; err != nil {
-			auditq.Security(claims.Username, c.ClientIP(), "security:mfa_token_invalid", 401,
-				map[string]any{"reason": "user_not_found"})
-			resp.Fail(c, http.StatusUnauthorized, 1001, "用户不存在")
-			return
-		}
-		secret, err := crypto.Decrypt(user.MFASecret, cfg.Security.AESKey)
+		out, status, code, err := usecase.LoginWithTOTP(
+			c.Request.Context(), db, cfg,
+			body.TmpToken, body.Code, c.ClientIP(),
+			middleware.ParseToken, signToken,
+		)
 		if err != nil {
-			auditq.Security(user.Username, c.ClientIP(), "security:totp_failed", 401,
-				map[string]any{"reason": "secret_decrypt_failed"})
-			resp.Fail(c, http.StatusUnauthorized, 1011, "TOTP 密钥无效")
+			if status != 0 {
+				resp.Fail(c, status, code, err.Error())
+			} else {
+				resp.InternalError(c, err.Error())
+			}
 			return
 		}
-		step, ok := totp.VerifyAt(secret, body.Code, time.Now())
-		if !ok {
-			auditq.Security(user.Username, c.ClientIP(), "security:totp_failed", 401,
-				map[string]any{"reason": "bad_code"})
-			resp.Fail(c, http.StatusUnauthorized, 1011, "验证码错误")
-			return
-		}
-		// Replay guard: reject codes at or before the last accepted step.
-		res := db.Model(&user).
-			Where("id = ? AND last_totp_step < ?", user.ID, step).
-			Update("last_totp_step", step)
-		if res.Error != nil || res.RowsAffected == 0 {
-			auditq.Security(user.Username, c.ClientIP(), "security:totp_replay", 401,
-				map[string]any{"step": step})
-			resp.Fail(c, http.StatusUnauthorized, 1011, "验证码已被使用")
-			return
-		}
-		user.LastTOTPStep = step
-		token, err := signToken(&user, cfg.Security.JWTSecret)
-		if err != nil {
-			resp.InternalError(c, "生成 Token 失败")
-			return
-		}
-		now := time.Now()
-		db.Model(&user).Updates(model.User{LastLogin: &now, LastIP: c.ClientIP()})
-		resp.OK(c, loginResp{Token: token, User: user})
+		resp.OK(c, loginResp{Token: out.Token, User: out.User})
 	}
 }

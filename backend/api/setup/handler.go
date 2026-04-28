@@ -5,26 +5,13 @@
 // in v0.3.7-beta.16 — the host is now managed via the docker.sock + /host
 // mounts probed at boot by sysinfo.LocalCapability(), so no user-driven
 // "bind SSH back to the host" step is necessary.
-//
-// Endpoints:
-//
-//	1. GET  /panel/api/v1/setup/status → { needs_admin, containerized }
-//	2. POST /panel/api/v1/setup/admin  → creates the first admin user
-//
-// Safety gate: /admin is rejected once any user exists.
 package setup
 
 import (
-	"net/http"
-	"strings"
-	"time"
-
 	"github.com/gin-gonic/gin"
-	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/auditq"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/sysinfo"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
@@ -40,11 +27,14 @@ type statusResp struct {
 
 func statusHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var userCount int64
-		db.Model(&model.User{}).Count(&userCount)
+		needsAdmin, err := usecase.SetupStatus(c.Request.Context(), db)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, statusResp{
 			Containerized: sysinfo.IsContainerized(),
-			NeedsAdmin:    userCount == 0,
+			NeedsAdmin:    needsAdmin,
 		})
 	}
 }
@@ -61,37 +51,15 @@ func createAdminHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "用户名和密码不能为空")
 			return
 		}
-		req.Username = strings.TrimSpace(req.Username)
-		if len(req.Username) < 3 || len(req.Password) < 6 {
-			resp.BadRequest(c, "用户名至少 3 字符，密码至少 6 字符")
-			return
-		}
-
-		var count int64
-		db.Model(&model.User{}).Count(&count)
-		if count > 0 {
-			auditq.Security(req.Username, c.ClientIP(), "security:setup_admin_blocked", 409, nil)
-			resp.Fail(c, http.StatusConflict, 1003, "已经初始化过管理员")
-			return
-		}
-
-		hash, err := crypto.BcryptHash(req.Password)
+		user, status, code, err := usecase.CreateFirstAdmin(c.Request.Context(), db, req.Username, req.Password, c.ClientIP())
 		if err != nil {
-			resp.InternalError(c, "密码加密失败")
+			if status != 0 {
+				resp.Fail(c, status, code, err.Error())
+			} else {
+				resp.InternalError(c, err.Error())
+			}
 			return
 		}
-		now := time.Now()
-		user := model.User{
-			Username:  req.Username,
-			Password:  hash,
-			Role:      "admin",
-			LastLogin: &now,
-		}
-		if err := db.Create(&user).Error; err != nil {
-			resp.InternalError(c, "创建管理员失败: "+err.Error())
-			return
-		}
-		auditq.Security(req.Username, c.ClientIP(), "security:setup_admin_created", 200, nil)
 		resp.OK(c, gin.H{"username": user.Username})
 	}
 }

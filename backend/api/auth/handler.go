@@ -1,18 +1,15 @@
 package auth
 
 import (
-	"net/http"
-	"time"
-
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/middleware"
 	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/auditq"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
+	"time"
 )
 
 func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
@@ -43,56 +40,24 @@ func loginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "用户名和密码不能为空")
 			return
 		}
-
-		// Per-account lockout — supplements the per-IP RateLimit middleware.
-		// Stops attackers who rotate IPs (botnets, residential proxies) from
-		// brute-forcing a single account.
-		if middleware.AccountLocked(req.Username) {
-			auditq.Security(req.Username, c.ClientIP(), "security:account_locked", 429, nil)
-			resp.Fail(c, http.StatusTooManyRequests, 1005, "账号暂时锁定，请稍后再试")
-			return
-		}
-
-		var user model.User
-		if err := db.Where("username = ?", req.Username).First(&user).Error; err != nil {
-			middleware.RecordAccountFailure(req.Username)
-			auditq.Security(req.Username, c.ClientIP(), "security:login_failed", 401,
-				map[string]any{"reason": "user_not_found"})
-			resp.Fail(c, http.StatusUnauthorized, 1001, "用户名或密码错误")
-			return
-		}
-
-		if !crypto.BcryptVerify(req.Password, user.Password) {
-			middleware.RecordAccountFailure(req.Username)
-			auditq.Security(req.Username, c.ClientIP(), "security:login_failed", 401,
-				map[string]any{"reason": "bad_password"})
-			resp.Fail(c, http.StatusUnauthorized, 1001, "用户名或密码错误")
-			return
-		}
-
-		middleware.RecordAccountSuccess(req.Username)
-
-		// MFA: return tmp token for second step
-		if user.MFAEnabled && user.MFASecret != "" {
-			tmpToken, err := signTmpToken(&user, cfg.Security.JWTSecret)
-			if err != nil {
-				resp.InternalError(c, "生成 Token 失败")
-				return
-			}
-			resp.OK(c, gin.H{"require_totp": true, "tmp_token": tmpToken})
-			return
-		}
-
-		token, err := signToken(&user, cfg.Security.JWTSecret)
+		out, status, code, err := usecase.Login(
+			c.Request.Context(), db, cfg,
+			req.Username, req.Password, c.ClientIP(),
+			signToken, signTmpToken,
+		)
 		if err != nil {
-			resp.InternalError(c, "生成 Token 失败")
+			if status != 0 {
+				resp.Fail(c, status, code, err.Error())
+			} else {
+				resp.InternalError(c, err.Error())
+			}
 			return
 		}
-
-		now := time.Now()
-		db.Model(&user).Updates(model.User{LastLogin: &now, LastIP: c.ClientIP()})
-
-		resp.OK(c, loginResp{Token: token, User: user})
+		if out.RequireTOTP {
+			resp.OK(c, gin.H{"require_totp": true, "tmp_token": out.TmpToken})
+			return
+		}
+		resp.OK(c, loginResp{Token: out.Token, User: out.User})
 	}
 }
 
@@ -103,8 +68,8 @@ func meHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.Unauthorized(c, "not authenticated")
 			return
 		}
-		var user model.User
-		if err := db.First(&user, claims.UserID).Error; err != nil {
+		user, err := usecase.GetCurrentUser(c.Request.Context(), db, claims.UserID)
+		if err != nil {
 			resp.NotFound(c, "用户不存在")
 			return
 		}
@@ -130,45 +95,18 @@ func updateProfileHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "旧密码不能为空")
 			return
 		}
-
-		var user model.User
-		if err := db.First(&user, claims.UserID).Error; err != nil {
-			resp.NotFound(c, "用户不存在")
+		user, status, code, err := usecase.UpdateProfile(
+			c.Request.Context(), db, claims.UserID,
+			req.OldPassword, req.NewUsername, req.NewPassword,
+		)
+		if err != nil {
+			if status != 0 {
+				resp.Fail(c, status, code, err.Error())
+			} else {
+				resp.InternalError(c, err.Error())
+			}
 			return
 		}
-
-		if !crypto.BcryptVerify(req.OldPassword, user.Password) {
-			resp.Fail(c, http.StatusUnprocessableEntity, 1002, "旧密码错误")
-			return
-		}
-
-		updates := map[string]any{}
-		if req.NewUsername != "" && req.NewUsername != user.Username {
-			var count int64
-			db.Model(&model.User{}).Where("username = ? AND id != ?", req.NewUsername, user.ID).Count(&count)
-			if count > 0 {
-				resp.Fail(c, http.StatusConflict, 1003, "用户名已存在")
-				return
-			}
-			updates["username"] = req.NewUsername
-		}
-		if req.NewPassword != "" {
-			hash, err := crypto.BcryptHash(req.NewPassword)
-			if err != nil {
-				resp.InternalError(c, "密码加密失败")
-				return
-			}
-			updates["password"] = hash
-		}
-
-		if len(updates) > 0 {
-			if err := db.Model(&user).Updates(updates).Error; err != nil {
-				resp.InternalError(c, "更新失败")
-				return
-			}
-		}
-
-		db.First(&user, claims.UserID)
 		resp.OK(c, user)
 	}
 }
