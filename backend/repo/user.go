@@ -47,6 +47,17 @@ func SaveUser(ctx context.Context, db *gorm.DB, u *model.User) error {
 	return db.WithContext(ctx).Save(u).Error
 }
 
+func ListUsersByIDs(ctx context.Context, db *gorm.DB, ids []uint) ([]model.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var out []model.User
+	if err := db.WithContext(ctx).Select("id, username").Where("id IN ?", ids).Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func UpdateUserFields(ctx context.Context, db *gorm.DB, id uint, updates map[string]any) error {
 	return db.WithContext(ctx).Model(&model.User{}).Where("id = ?", id).Updates(updates).Error
 }

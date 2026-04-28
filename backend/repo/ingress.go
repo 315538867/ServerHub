@@ -113,6 +113,47 @@ func DeleteRoute(ctx context.Context, db *gorm.DB, ingressID, routeID uint) erro
 	return db.WithContext(ctx).Where("ingress_id = ? AND id = ?", ingressID, routeID).Delete(&model.IngressRoute{}).Error
 }
 
+// CountRouteConflicts 检查同 ingress 下是否已存在相同 path 的路由。
+// excludeRouteID > 0 时排除自身（update 场景）。
+func CountRouteConflicts(ctx context.Context, db *gorm.DB, ingressID uint, path string, excludeRouteID uint) (int64, error) {
+	q := db.WithContext(ctx).Model(&model.IngressRoute{}).
+		Where("ingress_id = ? AND path = ?", ingressID, path)
+	if excludeRouteID > 0 {
+		q = q.Where("id <> ?", excludeRouteID)
+	}
+	var cnt int64
+	if err := q.Count(&cnt).Error; err != nil {
+		return 0, err
+	}
+	return cnt, nil
+}
+
+// CountStreamPortConflicts 检查同 edge 下是否已存在相同 listen_port 的 tcp/udp 路由。
+// excludeRouteID > 0 时排除自身（update 场景）。
+func CountStreamPortConflicts(ctx context.Context, db *gorm.DB, edgeServerID uint, listenPort int, excludeRouteID uint) (int64, error) {
+	var siblingIDs []uint
+	if err := db.WithContext(ctx).Model(&model.Ingress{}).
+		Where("edge_server_id = ?", edgeServerID).
+		Pluck("id", &siblingIDs).Error; err != nil {
+		return 0, err
+	}
+	if len(siblingIDs) == 0 {
+		return 0, nil
+	}
+	q := db.WithContext(ctx).Model(&model.IngressRoute{}).
+		Where("ingress_id IN ?", siblingIDs).
+		Where("protocol IN ?", []string{"tcp", "udp"}).
+		Where("listen_port = ?", listenPort)
+	if excludeRouteID > 0 {
+		q = q.Where("id <> ?", excludeRouteID)
+	}
+	var cnt int64
+	if err := q.Count(&cnt).Error; err != nil {
+		return 0, err
+	}
+	return cnt, nil
+}
+
 func CreateIngressWithRoutes(ctx context.Context, db *gorm.DB, ig *model.Ingress, routes []model.IngressRoute) error {
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(ig).Error; err != nil {

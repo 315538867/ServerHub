@@ -16,6 +16,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
+	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/usecase"
 )
 
@@ -62,8 +63,9 @@ func importCandidatesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		var s model.Server
-		if err := db.First(&s, edgeID).Error; err != nil {
+		ctx := c.Request.Context()
+		s, err := repo.GetServerByID(ctx, db, edgeID)
+		if err != nil {
 			resp.NotFound(c, "edge_server 不存在")
 			return
 		}
@@ -72,7 +74,7 @@ func importCandidatesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, "runner: "+err.Error())
 			return
 		}
-		result := usecase.DiscoverIngresses(c.Request.Context(), db, infra.AdaptV1(rn), edgeID)
+		result := usecase.DiscoverIngresses(ctx, db, infra.AdaptV1(rn), edgeID)
 		resp.OK(c, ImportCandidatesResp{
 			Candidates: result.Candidates,
 			Errors:     result.Errors,
@@ -87,10 +89,10 @@ func importCandidatesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 // 加上 server_id 路径段定位 edge。设计取舍:不复用 createReq,因为
 // 接管路径必须先 mv 原文件再写 DB,逻辑链路与"纯新建"不同。
 type importConfirmReq struct {
-	ConfigFile string                `json:"config_file" binding:"required"`
-	ServerName string                `json:"server_name" binding:"required"`
-	Listen     string                `json:"listen"`
-	Routes     []importConfirmRoute  `json:"routes"`
+	ConfigFile string               `json:"config_file" binding:"required"`
+	ServerName string               `json:"server_name" binding:"required"`
+	Listen     string               `json:"listen"`
+	Routes     []importConfirmRoute `json:"routes"`
 }
 
 type importConfirmRoute struct {
@@ -177,17 +179,19 @@ func importConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			}
 		}
 
-		var s model.Server
-		if err := db.First(&s, edgeID).Error; err != nil {
+		ctx := c.Request.Context()
+		s, err := repo.GetServerByID(ctx, db, edgeID)
+		if err != nil {
 			resp.NotFound(c, "edge_server 不存在")
 			return
 		}
 
 		// 同 edge 同 domain 已被接管 → 拒,避免 unique(edge_id, domain) 冲突 500。
-		var dup int64
-		db.Model(&model.Ingress{}).
-			Where("edge_server_id = ? AND domain = ?", edgeID, req.ServerName).
-			Count(&dup)
+		dup, err := usecase.CountIngressByEdgeAndDomain(ctx, db, edgeID, req.ServerName)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		if dup > 0 {
 			resp.BadRequest(c, "该 server_name 已存在 Ingress")
 			return
@@ -224,34 +228,25 @@ func importConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			ArchivePath:        archPath,
 			OriginalConfigPath: req.ConfigFile,
 		}
-		txErr := db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Create(&ig).Error; err != nil {
-				return err
-			}
-			for idx, r := range req.Routes {
-				ir := model.IngressRoute{
-					IngressID: ig.ID,
-					Sort:      idx * 10,
-					Path:      r.Path,
-					Protocol:  "http",
-					Upstream:  model.IngressUpstream{Type: "raw", RawURL: r.ProxyPass},
-					WebSocket: r.WebSocket,
-					Extra:     r.Extra,
-				}
-				if err := tx.Create(&ir).Error; err != nil {
-					return err
-				}
-			}
-			return nil
-		})
-		if txErr != nil {
+		routes := make([]model.IngressRoute, 0, len(req.Routes))
+		for idx, r := range req.Routes {
+			routes = append(routes, model.IngressRoute{
+				Sort:      idx * 10,
+				Path:      r.Path,
+				Protocol:  "http",
+				Upstream:  model.IngressUpstream{Type: "raw", RawURL: r.ProxyPass},
+				WebSocket: r.WebSocket,
+				Extra:     r.Extra,
+			})
+		}
+		if err := usecase.ImportCreateIngress(ctx, db, &ig, routes); err != nil {
 			rollback := fmt.Sprintf(
 				"sudo -n mv %s %s",
 				safeshell.Quote(archPath),
 				safeshell.Quote(req.ConfigFile),
 			)
 			_, _ = rn.Run(rollback)
-			resp.InternalError(c, "落库失败,已尝试回滚归档: "+txErr.Error())
+			resp.InternalError(c, "落库失败,已尝试回滚归档: "+err.Error())
 			return
 		}
 		resp.OK(c, ig)
@@ -259,8 +254,8 @@ func importConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 }
 
 // restoreHandler 把"接管而来"的 Ingress 还原:
-//   1. 把 ArchivePath 文件 mv 回 OriginalConfigPath
-//   2. 删除 Ingress + Routes
+//  1. 把 ArchivePath 文件 mv 回 OriginalConfigPath
+//  2. 删除 Ingress + Routes
 //
 // 注意:**不**自动调用 nginxops.Apply——还原后 .serverhub.d/<edge>/sites/
 // 下本 Ingress 渲染产物会在下次 apply 时由 reconciler 检测到本地"应有"列表
@@ -271,7 +266,8 @@ func restoreHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if !ok {
 			return
 		}
-		ig, err := loadIngress(db, id)
+		ctx := c.Request.Context()
+		ig, _, err := usecase.GetIngressWithRoutes(ctx, db, id)
 		if err != nil {
 			resp.NotFound(c, "ingress 不存在")
 			return
@@ -286,8 +282,8 @@ func restoreHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, "Ingress.original_config_path 不在白名单,拒绝还原")
 			return
 		}
-		var s model.Server
-		if err := db.First(&s, ig.EdgeServerID).Error; err != nil {
+		s, err := repo.GetServerByID(ctx, db, ig.EdgeServerID)
+		if err != nil {
 			resp.InternalError(c, "edge_server 加载失败: "+err.Error())
 			return
 		}
@@ -305,12 +301,7 @@ func restoreHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, "还原失败: "+err.Error()+" / "+out)
 			return
 		}
-		if err := db.Transaction(func(tx *gorm.DB) error {
-			if err := tx.Where("ingress_id = ?", id).Delete(&model.IngressRoute{}).Error; err != nil {
-				return err
-			}
-			return tx.Delete(&model.Ingress{}, id).Error
-		}); err != nil {
+		if err := usecase.ImportDeleteIngress(ctx, db, id); err != nil {
 			// DB 删失败时归档文件已经 mv 回去了——状态变成"文件已还原但 DB
 			// 还认 Ingress 存在",下次 apply 会渲染冲突 vhost。把错误暴露给
 			// 用户,比静默回滚 mv 更安全(后者可能把用户刚还原的文件再 mv 走)。
