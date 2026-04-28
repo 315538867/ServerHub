@@ -13,6 +13,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/safehttp"
 	"github.com/serverhub/serverhub/pkg/scheduler"
+	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
 
@@ -28,7 +29,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	r.DELETE("/events", clearEvents(db))
 
 	// Channels
-	r.GET("/channels", listChannels(db, cfg))
+	r.GET("/channels", listChannels(db))
 	r.POST("/channels", createChannel(db, cfg))
 	r.PUT("/channels/:id", updateChannel(db, cfg))
 	r.DELETE("/channels/:id", deleteChannel(db))
@@ -39,8 +40,11 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 func listRules(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var rules []model.AlertRule
-		db.Order("id asc").Limit(500).Find(&rules)
+		rules, err := repo.ListAllAlertRules(c.Request.Context(), db)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, rules)
 	}
 }
@@ -68,7 +72,10 @@ func createRule(db *gorm.DB) gin.HandlerFunc {
 			ServerID: body.ServerID, Metric: body.Metric, Operator: body.Operator,
 			Threshold: body.Threshold, Duration: body.Duration, Enabled: true,
 		}
-		db.Create(&rule)
+		if err := repo.CreateAlertRule(c.Request.Context(), db, &rule); err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, rule)
 	}
 }
@@ -76,8 +83,8 @@ func createRule(db *gorm.DB) gin.HandlerFunc {
 func updateRule(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
-		var rule model.AlertRule
-		if err := db.First(&rule, id).Error; err != nil {
+		rule, err := repo.GetAlertRuleByID(c.Request.Context(), db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "资源不存在")
 			return
 		}
@@ -103,7 +110,10 @@ func updateRule(db *gorm.DB) gin.HandlerFunc {
 		if body.Enabled != nil {
 			rule.Enabled = *body.Enabled
 		}
-		db.Save(&rule)
+		if err := repo.SaveAlertRule(c.Request.Context(), db, &rule); err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, rule)
 	}
 }
@@ -111,7 +121,7 @@ func updateRule(db *gorm.DB) gin.HandlerFunc {
 func deleteRule(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
-		db.Delete(&model.AlertRule{}, id)
+		_ = repo.DeleteAlertRule(c.Request.Context(), db, uint(id))
 		resp.OK(c, nil)
 	}
 }
@@ -128,17 +138,18 @@ func listEvents(db *gorm.DB) gin.HandlerFunc {
 		if size < 1 || size > 200 {
 			size = 50
 		}
-		var events []model.AlertEvent
-		var total int64
-		db.Model(&model.AlertEvent{}).Count(&total)
-		db.Order("sent_at desc").Offset((page - 1) * size).Limit(size).Find(&events)
+		events, total, err := repo.ListAlertEventsPaginated(c.Request.Context(), db, (page-1)*size, size)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, gin.H{"total": total, "events": events})
 	}
 }
 
 func clearEvents(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		db.Where("sent_at < ?", time.Now().AddDate(0, 0, -30)).Delete(&model.AlertEvent{})
+		_ = repo.PruneAlertEventsBefore(c.Request.Context(), db, time.Now().AddDate(0, 0, -30))
 		resp.OK(c, nil)
 	}
 }
@@ -154,10 +165,13 @@ type channelResp struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func listChannels(db *gorm.DB, _ *config.Config) gin.HandlerFunc {
+func listChannels(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var channels []model.NotifyChannel
-		db.Order("id asc").Limit(500).Find(&channels)
+		channels, err := repo.ListAllNotifyChannels(c.Request.Context(), db)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		result := make([]channelResp, len(channels))
 		for i, ch := range channels {
 			result[i] = channelResp{ID: ch.ID, Name: ch.Name, Type: ch.Type,
@@ -190,7 +204,10 @@ func createChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		ch := model.NotifyChannel{Name: body.Name, Type: body.Type, URL: encURL,
 			Template: body.Template, Enabled: true}
-		db.Create(&ch)
+		if err := repo.CreateNotifyChannel(c.Request.Context(), db, &ch); err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, channelResp{ID: ch.ID, Name: ch.Name, Type: ch.Type,
 			Template: ch.Template, Enabled: ch.Enabled, CreatedAt: ch.CreatedAt})
 	}
@@ -199,8 +216,8 @@ func createChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 func updateChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
-		var ch model.NotifyChannel
-		if err := db.First(&ch, id).Error; err != nil {
+		ch, err := repo.GetNotifyChannelByID(c.Request.Context(), db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "资源不存在")
 			return
 		}
@@ -233,7 +250,10 @@ func updateChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		if body.Enabled != nil {
 			ch.Enabled = *body.Enabled
 		}
-		db.Save(&ch)
+		if err := repo.SaveNotifyChannel(c.Request.Context(), db, &ch); err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		resp.OK(c, channelResp{ID: ch.ID, Name: ch.Name, Type: ch.Type,
 			Template: ch.Template, Enabled: ch.Enabled, CreatedAt: ch.CreatedAt})
 	}
@@ -242,7 +262,7 @@ func updateChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 func deleteChannel(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
-		db.Delete(&model.NotifyChannel{}, id)
+		_ = repo.DeleteNotifyChannel(c.Request.Context(), db, uint(id))
 		resp.OK(c, nil)
 	}
 }
@@ -250,8 +270,8 @@ func deleteChannel(db *gorm.DB) gin.HandlerFunc {
 func testChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
-		var ch model.NotifyChannel
-		if err := db.First(&ch, id).Error; err != nil {
+		ch, err := repo.GetNotifyChannelByID(c.Request.Context(), db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "资源不存在")
 			return
 		}

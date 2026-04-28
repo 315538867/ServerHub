@@ -10,6 +10,14 @@ import (
 
 // rules
 
+func ListAllAlertRules(ctx context.Context, db *gorm.DB) ([]model.AlertRule, error) {
+	var out []model.AlertRule
+	if err := db.WithContext(ctx).Order("id asc").Limit(500).Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func GetAlertRuleByID(ctx context.Context, db *gorm.DB, id uint) (model.AlertRule, error) {
 	var r model.AlertRule
 	if err := db.WithContext(ctx).First(&r, id).Error; err != nil {
@@ -44,6 +52,18 @@ func DeleteAlertRule(ctx context.Context, db *gorm.DB, id uint) error {
 
 // events
 
+func ListAlertEventsPaginated(ctx context.Context, db *gorm.DB, offset, limit int) ([]model.AlertEvent, int64, error) {
+	var total int64
+	if err := db.WithContext(ctx).Model(&model.AlertEvent{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var out []model.AlertEvent
+	if err := db.WithContext(ctx).Order("sent_at desc").Offset(offset).Limit(limit).Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}
+
 func ListAlertEvents(ctx context.Context, db *gorm.DB, serverID *uint, limit int) ([]model.AlertEvent, error) {
 	q := db.WithContext(ctx).Order("id desc")
 	if serverID != nil {
@@ -68,6 +88,14 @@ func PruneAlertEventsBefore(ctx context.Context, db *gorm.DB, before time.Time) 
 }
 
 // channels
+
+func ListAllNotifyChannels(ctx context.Context, db *gorm.DB) ([]model.NotifyChannel, error) {
+	var out []model.NotifyChannel
+	if err := db.WithContext(ctx).Order("id asc").Limit(500).Find(&out).Error; err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 func ListNotifyChannels(ctx context.Context, db *gorm.DB) ([]model.NotifyChannel, error) {
 	var out []model.NotifyChannel

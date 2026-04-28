@@ -7,6 +7,7 @@ import (
 	"github.com/serverhub/serverhub/derive"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
 
@@ -15,9 +16,6 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB) {
 }
 
 // serverOverview 是 /api/metrics/overview 的列表项。
-//
-// R3 起 Status / LastCheckAt 不再来自 model.Server(列已下线),改由 derive.ServerStatus
-// 从 server_probes 时序表派生。JSON 字段名保持向前兼容。
 type serverOverview struct {
 	ID          uint          `json:"id"`
 	Name        string        `json:"name"`
@@ -30,17 +28,18 @@ type serverOverview struct {
 
 func overviewHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		var servers []model.Server
-		db.Order("id asc").Find(&servers)
+		ctx := c.Request.Context()
+		servers, err := repo.ListAllServers(ctx, db)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 
-		// Fetch the latest metric per server in one query (was N+1 before:
-		// one SELECT per server on large fleets).
-		var latest []model.Metric
-		db.Where("id IN (?)",
-			db.Model(&model.Metric{}).
-				Select("MAX(id)").
-				Group("server_id"),
-		).Find(&latest)
+		latest, err := repo.ListLatestMetricPerServer(ctx, db)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
+		}
 		byServer := make(map[uint]*model.Metric, len(latest))
 		for i := range latest {
 			byServer[latest[i].ServerID] = &latest[i]

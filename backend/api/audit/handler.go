@@ -4,8 +4,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
 
@@ -24,23 +24,15 @@ func logsHandler(db *gorm.DB) gin.HandlerFunc {
 			size = 50
 		}
 
-		q := db.Model(&model.AuditLog{})
-		if u := c.Query("username"); u != "" {
-			q = q.Where("username LIKE ?", u+"%")
+		logs, total, err := repo.ListAuditLogsFiltered(
+			c.Request.Context(), db,
+			c.Query("username"), c.Query("path"), c.Query("status"),
+			(page-1)*size, size,
+		)
+		if err != nil {
+			resp.InternalError(c, err.Error())
+			return
 		}
-		if p := c.Query("path"); p != "" {
-			q = q.Where("path LIKE ?", p+"%")
-		}
-		if s := c.Query("status"); s != "" {
-			q = q.Where("status = ?", s)
-		}
-
-		var total int64
-		q.Count(&total)
-
-		var logs []model.AuditLog
-		q.Order("created_at desc").Offset((page - 1) * size).Limit(size).Find(&logs)
-
 		resp.OK(c, gin.H{"total": total, "logs": logs})
 	}
 }

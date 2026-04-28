@@ -9,6 +9,29 @@ import (
 
 // audit_log
 
+// ListAuditLogsFiltered 按可选条件分页列出审计日志。
+func ListAuditLogsFiltered(ctx context.Context, db *gorm.DB, username, path, status string, offset, limit int) ([]model.AuditLog, int64, error) {
+	q := db.WithContext(ctx).Model(&model.AuditLog{})
+	if username != "" {
+		q = q.Where("username LIKE ?", username+"%")
+	}
+	if path != "" {
+		q = q.Where("path LIKE ?", path+"%")
+	}
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var out []model.AuditLog
+	if err := q.Order("created_at desc").Offset(offset).Limit(limit).Find(&out).Error; err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
+}
+
 func ListAuditLogs(ctx context.Context, db *gorm.DB, offset, limit int) ([]model.AuditLog, int64, error) {
 	var out []model.AuditLog
 	var total int64
