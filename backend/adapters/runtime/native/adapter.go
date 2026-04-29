@@ -6,7 +6,6 @@ package native
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -37,7 +36,11 @@ func (Adapter) BuildStartCmd(_ *domain.Service, rel *domain.Release) (string, er
 	if rel == nil {
 		return "", fmt.Errorf("native adapter: nil rel")
 	}
-	cmd := parseStartSpec(rel.StartSpec)["cmd"]
+	spec, ok := rel.StartSpec.(*domain.NativeSpec)
+	if !ok {
+		return "", fmt.Errorf("native adapter: StartSpec is not NativeSpec")
+	}
+	cmd := spec.Cmd
 	if cmd == "" {
 		return "", errors.New("native start_spec.cmd required")
 	}
@@ -73,19 +76,3 @@ func (Adapter) Stop(ctx context.Context, r infra.Runner, svc *domain.Service) er
 	return nil
 }
 
-func parseStartSpec(raw string) map[string]string {
-	out := map[string]string{}
-	if raw == "" {
-		return out
-	}
-	var m map[string]any
-	if err := json.Unmarshal([]byte(raw), &m); err != nil {
-		return out
-	}
-	for k, v := range m {
-		if s, ok := v.(string); ok {
-			out[k] = s
-		}
-	}
-	return out
-}

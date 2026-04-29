@@ -15,17 +15,17 @@ func TestBuildStartCmd_Golden(t *testing.T) {
 	}{
 		{
 			name: "simple_cmd",
-			rel:  domain.Release{StartSpec: `{"cmd":"./start.sh"}`},
+			rel:  domain.Release{StartSpec: &domain.NativeSpec{Cmd: "./start.sh"}},
 			want: `./start.sh 2>&1`,
 		},
 		{
 			name: "cmd_with_args",
-			rel:  domain.Release{StartSpec: `{"cmd":"./bin -p 8080 --foo=bar"}`},
+			rel:  domain.Release{StartSpec: &domain.NativeSpec{Cmd: "./bin -p 8080 --foo=bar"}},
 			want: `./bin -p 8080 --foo=bar 2>&1`,
 		},
 		{
 			name:    "empty_cmd_errors",
-			rel:     domain.Release{StartSpec: `{}`},
+			rel:     domain.Release{StartSpec: &domain.NativeSpec{}},
 			wantErr: true,
 		},
 	}

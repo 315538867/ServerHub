@@ -11,6 +11,7 @@ const (
 	ServiceTypeCompose       ServiceType = "compose" // adapter Kind 值
 	ServiceTypeNative        ServiceType = "native"
 	ServiceTypeStatic        ServiceType = "static"
+	ServiceTypePodman        ServiceType = "podman"
 )
 
 // Service 是领域实体。

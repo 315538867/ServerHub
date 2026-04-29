@@ -70,6 +70,7 @@ import (
 	_ "github.com/serverhub/serverhub/adapters/runtime/compose"
 	_ "github.com/serverhub/serverhub/adapters/runtime/docker"
 	_ "github.com/serverhub/serverhub/adapters/runtime/native"
+	_ "github.com/serverhub/serverhub/adapters/runtime/podman"
 	_ "github.com/serverhub/serverhub/adapters/runtime/static"
 	_ "github.com/serverhub/serverhub/adapters/source/compose"
 	_ "github.com/serverhub/serverhub/adapters/source/docker"

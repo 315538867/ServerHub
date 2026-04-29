@@ -188,6 +188,8 @@ func mapServiceTypeToKind(t domain.ServiceType) string {
 		return string(domain.ServiceTypeNative)
 	case domain.ServiceTypeStatic:
 		return string(domain.ServiceTypeStatic)
+	case domain.ServiceTypePodman:
+		return string(domain.ServiceTypePodman)
 	}
 	return ""
 }

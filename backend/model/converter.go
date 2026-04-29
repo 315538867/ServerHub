@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/serverhub/serverhub/domain"
@@ -250,6 +251,7 @@ func FromDomainIngressRoute(d domain.IngressRoute) IngressRoute {
 // ── Release ─────────────────────────────────────────────────────────────
 
 func ToDomainRelease(r Release) domain.Release {
+	spec, _ := domain.UnmarshalStartSpec(r.StartSpec)
 	return domain.Release{
 		ID:          r.ID,
 		ServiceID:   r.ServiceID,
@@ -258,7 +260,7 @@ func ToDomainRelease(r Release) domain.Release {
 		ArtifactID:  r.ArtifactID,
 		EnvSetID:    r.EnvSetID,
 		ConfigSetID: r.ConfigSetID,
-		StartSpec:   r.StartSpec,
+		StartSpec:   spec,
 		Note:        r.Note,
 		CreatedBy:   r.CreatedBy,
 		Status:      r.Status,
@@ -268,6 +270,7 @@ func ToDomainRelease(r Release) domain.Release {
 }
 
 func FromDomainRelease(d domain.Release) Release {
+	raw, _ := json.Marshal(d.StartSpec)
 	return Release{
 		ID:          d.ID,
 		ServiceID:   d.ServiceID,
@@ -275,7 +278,7 @@ func FromDomainRelease(d domain.Release) Release {
 		ArtifactID:  d.ArtifactID,
 		EnvSetID:    d.EnvSetID,
 		ConfigSetID: d.ConfigSetID,
-		StartSpec:   d.StartSpec,
+		StartSpec:   string(raw),
 		Note:        d.Note,
 		CreatedBy:   d.CreatedBy,
 		Status:      d.Status,

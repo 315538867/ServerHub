@@ -1,8 +1,11 @@
-// Package docker 实现 RuntimeAdapter 端口的 docker(单容器)运行时。
+// Package podman 实现 RuntimeAdapter 端口的 podman(无 root 容器)运行时。
 //
+// podman CLI 与 docker 高度兼容,本 adapter 是 docker adapter 的 podman 化变体。
 // 注册:由 init.go 自注册到 core/runtime.Default。
-// 命令拼装行为与 v1 pkg/deployer.buildStartPart(case ServiceTypeDocker) 字节级等价。
-package docker
+//
+// 此 adapter 作为 R8 GA 验收的"第三方拓展验证",证明仅需实现 RuntimeAdapter
+// port + 注册即可新增运行时支持,无需修改任何 core/usecase/api 代码。
+package podman
 
 import (
 	"context"
@@ -16,32 +19,25 @@ import (
 	"github.com/serverhub/serverhub/internal/cmdbuild"
 )
 
-// Adapter 是 docker 单容器运行时适配器。
+// Adapter 是 podman 运行时适配器。
 type Adapter struct{}
 
-// Kind 返回 "docker",对应 model.ServiceType="docker"。
-func (Adapter) Kind() string { return string(domain.ServiceTypeDocker) }
+// Kind 返回 "podman"。
+func (Adapter) Kind() string { return string(domain.ServiceTypePodman) }
 
-// PlanStart 返回单步 BashCmdStep,Cmd 即 BuildStartCmd 输出。
-// R6 起拆为 PullImageStep / RunContainerStep。
+// PlanStart 返回单步 BashCmdStep。
 func (a Adapter) PlanStart(svc *domain.Service, rel *domain.Release) ([]runtime.Step, error) {
 	cmd, err := a.BuildStartCmd(svc, rel)
 	if err != nil {
 		return nil, err
 	}
-	return []runtime.Step{&runtime.BashCmdStep{StepName: "docker-start", Command: cmd}}, nil
+	return []runtime.Step{&runtime.BashCmdStep{StepName: "podman-start", Command: cmd}}, nil
 }
 
-// BuildStartCmd 拼装单条 "docker rm -f X || true; docker run -d --name X IMG [extra]"。
-//
-// 与 v1 行为差异:无。包括:
-//   - StartSpec.image 为空时回退 rel.ArtifactRef
-//   - StartSpec.cmd 非空时空格前缀拼接到镜像名后
-//   - 容器名固定 "serverhub-svc-<svc.ID>"
-//   - 末尾 "2>&1"
+// BuildStartCmd 拼装 podman run 命令(与 docker adapter 等价,替换 podman 命令)。
 func (Adapter) BuildStartCmd(svc *domain.Service, rel *domain.Release) (string, error) {
 	if svc == nil || rel == nil {
-		return "", fmt.Errorf("docker adapter: nil svc/rel")
+		return "", fmt.Errorf("podman adapter: nil svc/rel")
 	}
 	spec, _ := rel.StartSpec.(*domain.DockerSpec)
 	image := ""
@@ -56,23 +52,23 @@ func (Adapter) BuildStartCmd(svc *domain.Service, rel *domain.Release) (string, 
 		image = rel.ArtifactRef
 	}
 	if image == "" {
-		return "", fmt.Errorf("docker adapter: image empty (StartSpec.image and ArtifactRef both blank)")
+		return "", fmt.Errorf("podman adapter: image empty (StartSpec.image and ArtifactRef both blank)")
 	}
 	name := "serverhub-svc-" + fmt.Sprint(svc.ID)
 	return fmt.Sprintf(
-		"docker rm -f %s 2>/dev/null || true; docker run -d --name %s %s%s 2>&1",
+		"podman rm -f %s 2>/dev/null || true; podman run -d --name %s %s%s 2>&1",
 		cmdbuild.ShellQuote(name), cmdbuild.ShellQuote(name), cmdbuild.ShellQuote(image), extra,
 	), nil
 }
 
-// Probe 通过 docker inspect 拿运行状态。远端不可达返回 Status{Running:false} + nil。
+// Probe 通过 podman inspect 探活。
 func (Adapter) Probe(ctx context.Context, r infra.Runner, svc *domain.Service) (runtime.Status, error) {
 	if svc == nil {
-		return runtime.Status{}, fmt.Errorf("docker adapter: nil svc")
+		return runtime.Status{}, fmt.Errorf("podman adapter: nil svc")
 	}
 	name := "serverhub-svc-" + fmt.Sprint(svc.ID)
 	probe := fmt.Sprintf(
-		"docker inspect %s --format '{{.State.Running}}|{{.Config.Image}}|{{.State.StartedAt}}'",
+		"podman inspect %s --format '{{.State.Running}}|{{.Config.Image}}|{{.State.StartedAt}}'",
 		cmdbuild.ShellQuote(name),
 	)
 	stdout, _, err := r.Run(ctx, probe)
@@ -98,10 +94,9 @@ func (Adapter) Probe(ctx context.Context, r infra.Runner, svc *domain.Service) (
 // Stop 强删容器(幂等)。
 func (Adapter) Stop(ctx context.Context, r infra.Runner, svc *domain.Service) error {
 	if svc == nil {
-		return fmt.Errorf("docker adapter: nil svc")
+		return fmt.Errorf("podman adapter: nil svc")
 	}
 	name := "serverhub-svc-" + fmt.Sprint(svc.ID)
-	_, _, err := r.Run(ctx, fmt.Sprintf("docker rm -f %s", cmdbuild.ShellQuote(name)))
+	_, _, err := r.Run(ctx, fmt.Sprintf("podman rm -f %s", cmdbuild.ShellQuote(name)))
 	return err
 }
-

@@ -76,14 +76,14 @@ make dev-frontend       # cd frontend && bun run dev      → :5173
 
 ## 文档
 
-- [架构概览](docs/architecture.md) — 模块分层、数据流、并发与限流
+- [架构概览](docs/architecture/v2/00-overview.md) — Hexagonal 架构 v2（R0-R8 重构后）
 - [技术栈](docs/tech-stack.md) — 后端/前端依赖清单
 - [模块说明](docs/modules.md) — backend/api、backend/pkg 每包职责
-- [数据模型](docs/database-design.md) — GORM 模型与索引
+- [数据模型](docs/architecture/v2/03-domain-model.md) — 领域模型与不变量
 - [API 参考](docs/api-design.md) — 路由分组、请求/响应约定
 - [前端设计](docs/frontend-design.md) — 路由、状态、UI 组件约定
 - [部署](docs/deployment.md) — install.sh / Docker / 手动三种方式、systemd 加固、升级与备份
-- [功能清单](docs/features.md) — 按模块枚举
+- [功能清单](docs/architecture/v2/01-features.md) — 70+ 功能矩阵
 
 ## 协议
 

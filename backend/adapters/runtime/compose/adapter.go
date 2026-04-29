@@ -6,7 +6,6 @@ package compose
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -37,7 +36,11 @@ func (Adapter) BuildStartCmd(_ *domain.Service, rel *domain.Release) (string, er
 	if rel == nil {
 		return "", fmt.Errorf("compose adapter: nil rel")
 	}
-	file := parseStartSpec(rel.StartSpec)["file_name"]
+	spec, ok := rel.StartSpec.(*domain.ComposeSpec)
+	if !ok {
+		return "", fmt.Errorf("compose adapter: StartSpec is not ComposeSpec")
+	}
+	file := spec.FileName
 	if file == "" {
 		file = "docker-compose.yml"
 	}
@@ -73,19 +76,3 @@ func (Adapter) Stop(ctx context.Context, r infra.Runner, svc *domain.Service) er
 	return err
 }
 
-func parseStartSpec(raw string) map[string]string {
-	out := map[string]string{}
-	if raw == "" {
-		return out
-	}
-	var m map[string]any
-	if err := json.Unmarshal([]byte(raw), &m); err != nil {
-		return out
-	}
-	for k, v := range m {
-		if s, ok := v.(string); ok {
-			out[k] = s
-		}
-	}
-	return out
-}

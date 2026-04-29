@@ -11,7 +11,7 @@ const (
 )
 
 // Release 是一次可部署的最小完整单位。
-// StartSpec 在 R8 改为 typed interface;R7 阶段保持 string。
+// StartSpec 为 typed interface(R8),持久化 JSON string 由 model/converter 处理。
 type Release struct {
 	ID               uint      `json:"id"`
 	ServiceID        uint      `json:"service_id"`
@@ -20,7 +20,7 @@ type Release struct {
 	ArtifactID       uint      `json:"artifact_id"`
 	EnvSetID         *uint     `json:"env_set_id"`
 	ConfigSetID      *uint     `json:"config_set_id"`
-	StartSpec        string    `json:"start_spec"`
+	StartSpec        StartSpec `json:"-"` // typed interface, 持久化由 model/converter 处理
 	Note             string    `json:"note"`
 	CreatedBy        string    `json:"created_by"`
 	Status           string    `json:"status"`

@@ -50,13 +50,18 @@ func CreateRelease(ctx context.Context, db *gorm.DB, p CreateReleaseParams) (dom
 		label = releaseAutoLabel(ctx, db, p.ServiceID)
 	}
 
+	spec, err := domain.UnmarshalStartSpec(p.StartSpec)
+	if err != nil {
+		return domain.Release{}, err
+	}
+
 	rel := domain.Release{
 		ServiceID:   p.ServiceID,
 		Label:       label,
 		ArtifactID:  p.ArtifactID,
 		EnvSetID:    p.EnvSetID,
 		ConfigSetID: p.ConfigSetID,
-		StartSpec:   p.StartSpec,
+		StartSpec:   spec,
 		Note:        p.Note,
 		Status:      domain.ReleaseStatusDraft,
 	}

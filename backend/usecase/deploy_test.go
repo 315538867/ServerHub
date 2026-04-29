@@ -41,6 +41,7 @@ func TestMapServiceTypeToKind(t *testing.T) {
 		{domain.ServiceTypeDockerCompose, string(domain.ServiceTypeCompose)},
 		{domain.ServiceTypeNative, string(domain.ServiceTypeNative)},
 		{domain.ServiceTypeStatic, string(domain.ServiceTypeStatic)},
+		{domain.ServiceTypePodman, string(domain.ServiceTypePodman)},
 		{"unknown", ""},
 	}
 	for _, c := range cases {
@@ -68,7 +69,7 @@ func TestBuildReleaseCmd_DockerHTTP(t *testing.T) {
 	}
 	art.ID = am.ID
 
-	rel := domain.Release{ServiceID: 1, ArtifactID: art.ID, StartSpec: `{"image":"nginx:1.27"}`}
+	rel := domain.Release{ServiceID: 1, ArtifactID: art.ID, StartSpec: &domain.DockerSpec{Image: "nginx:1.27"}}
 	rm := relToModel(rel)
 	if err := db.Create(&rm).Error; err != nil {
 		t.Fatal(err)
@@ -122,7 +123,7 @@ func TestBuildReleaseCmd_Compose(t *testing.T) {
 	db.Create(&am)
 	art.ID = am.ID
 
-	rel := domain.Release{ServiceID: 2, ArtifactID: art.ID, StartSpec: `{"file_name":"prod.yml"}`}
+	rel := domain.Release{ServiceID: 2, ArtifactID: art.ID, StartSpec: &domain.ComposeSpec{FileName: "prod.yml"}}
 	rm := relToModel(rel)
 	db.Create(&rm)
 	rel.ID = rm.ID

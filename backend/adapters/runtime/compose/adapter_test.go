@@ -14,12 +14,12 @@ func TestBuildStartCmd_Golden(t *testing.T) {
 	}{
 		{
 			name: "default_filename",
-			rel:  domain.Release{StartSpec: ``},
+			rel:  domain.Release{StartSpec: &domain.ComposeSpec{}},
 			want: `docker compose -f 'docker-compose.yml' up -d --build 2>&1`,
 		},
 		{
 			name: "custom_filename",
-			rel:  domain.Release{StartSpec: `{"file_name":"prod.yml"}`},
+			rel:  domain.Release{StartSpec: &domain.ComposeSpec{FileName: "prod.yml"}},
 			want: `docker compose -f 'prod.yml' up -d --build 2>&1`,
 		},
 	}
