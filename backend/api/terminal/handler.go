@@ -15,12 +15,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/middleware"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/sshpool"
+	"github.com/serverhub/serverhub/repo"
 	gossh "golang.org/x/crypto/ssh"
-	"gorm.io/gorm"
 )
 
 var upgrader = websocket.Upgrader{
@@ -34,12 +34,12 @@ type resizeMsg struct {
 	Rows uint32 `json:"rows"`
 }
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	upgrader.CheckOrigin = middleware.WSCheckOrigin(cfg)
 	r.GET("/:id/terminal", handler(db, cfg))
 }
 
-func handler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func handler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// ── auth ──
 		// Prefer Sec-WebSocket-Protocol "bearer, <token>" — JWT then doesn't
@@ -74,8 +74,8 @@ func handler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"code": 400, "msg": "ID 格式错误"})
 			return
 		}
-		var s model.Server
-		if err := db.First(&s, id).Error; err != nil {
+		s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
+		if err != nil {
 			c.JSON(http.StatusNotFound, gin.H{"code": 404, "msg": "服务器不存在"})
 			return
 		}
@@ -122,7 +122,7 @@ func runLocal(ws *websocket.Conn) {
 }
 
 // runSSH proxies the WS to a dedicated SSH PTY session against a remote server.
-func runSSH(ws *websocket.Conn, s *model.Server, cfg *config.Config) {
+func runSSH(ws *websocket.Conn, s *domain.Server, cfg *config.Config) {
 	var cred string
 	var err error
 	switch s.AuthType {

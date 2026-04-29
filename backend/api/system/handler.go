@@ -10,16 +10,15 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/middleware"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/wsstream"
-	"gorm.io/gorm"
+	"github.com/serverhub/serverhub/repo"
 )
 
 var upgrader = websocket.Upgrader{}
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	upgrader.CheckOrigin = middleware.WSCheckOrigin(cfg)
 	r.GET("/:id/system/firewall/rules", firewallListHandler(db, cfg))
 	r.POST("/:id/system/firewall/rules", firewallAddHandler(db, cfg))
@@ -40,14 +39,14 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ── common helpers ────────────────────────────────────────────────────────────
 
-func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
+func getRunner(c *gin.Context, db repo.DB, cfg *config.Config) (runner.Runner, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
 		return nil, false
 	}
-	var s model.Server
-	if err := db.First(&s, id).Error; err != nil {
+	s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
+	if err != nil {
 		resp.NotFound(c, "服务器不存在")
 		return nil, false
 	}
@@ -85,7 +84,7 @@ func detectFirewall(rn runner.Runner) string {
 	return "unknown"
 }
 
-func firewallListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func firewallListHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -133,7 +132,7 @@ func firewallListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func firewallAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func firewallAddHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -179,7 +178,7 @@ func firewallAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func firewallDelHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func firewallDelHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -249,7 +248,7 @@ func writeCrontab(rn runner.Runner, content string) error {
 	return err
 }
 
-func cronListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func cronListHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -263,7 +262,7 @@ func cronListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func cronAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func cronAddHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -291,7 +290,7 @@ func cronAddHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func cronUpdateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func cronUpdateHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -322,7 +321,7 @@ func cronUpdateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func cronDelHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func cronDelHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -365,7 +364,7 @@ type ProcessItem struct {
 	Command string  `json:"command"`
 }
 
-func processListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func processListHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -396,7 +395,7 @@ func processListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func processKillHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func processKillHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -426,7 +425,7 @@ type ServiceItem struct {
 	Description string `json:"description"`
 }
 
-func serviceListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func serviceListHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -465,7 +464,7 @@ func serviceListHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func serviceActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func serviceActionHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -493,7 +492,7 @@ func serviceActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func serviceLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func serviceLogsHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// services logs tail — use dedicated runner to avoid pool MaxSessions.
 		id, err := strconv.Atoi(c.Param("id"))
@@ -501,8 +500,8 @@ func serviceLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "服务器 ID 无效")
 			return
 		}
-		var s model.Server
-		if err := db.First(&s, id).Error; err != nil {
+		s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "服务器不存在")
 			return
 		}

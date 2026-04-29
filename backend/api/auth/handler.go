@@ -4,15 +4,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/middleware"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/usecase"
-	"gorm.io/gorm"
+	"github.com/serverhub/serverhub/repo"
 	"time"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	r.POST("/login", loginHandler(db, cfg))
 	r.POST("/logout", func(c *gin.Context) { resp.OK(c, nil) })
 	r.GET("/me", middleware.Auth(cfg), meHandler(db))
@@ -30,10 +30,10 @@ type loginReq struct {
 
 type loginResp struct {
 	Token string     `json:"token"`
-	User  model.User `json:"user"`
+	User  domain.User `json:"user"`
 }
 
-func loginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func loginHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req loginReq
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -61,7 +61,7 @@ func loginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func meHandler(db *gorm.DB) gin.HandlerFunc {
+func meHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims := middleware.GetClaims(c)
 		if claims == nil {
@@ -83,7 +83,7 @@ type updateProfileReq struct {
 	NewPassword string `json:"new_password"`
 }
 
-func updateProfileHandler(db *gorm.DB) gin.HandlerFunc {
+func updateProfileHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims := middleware.GetClaims(c)
 		if claims == nil {
@@ -111,7 +111,7 @@ func updateProfileHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func signToken(user *model.User, secret string) (string, error) {
+func signToken(user *domain.User, secret string) (string, error) {
 	claims := middleware.Claims{
 		UserID:   user.ID,
 		Username: user.Username,
@@ -124,7 +124,7 @@ func signToken(user *model.User, secret string) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
 }
 
-func signTmpToken(user *model.User, secret string) (string, error) {
+func signTmpToken(user *domain.User, secret string) (string, error) {
 	claims := middleware.Claims{
 		UserID:   user.ID,
 		Username: user.Username,

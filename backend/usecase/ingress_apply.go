@@ -12,6 +12,7 @@ package usecase
 
 import (
 	"context"
+	"time"
 
 	nginxingress "github.com/serverhub/serverhub/adapters/ingress/nginx"
 	"github.com/serverhub/serverhub/config"
@@ -28,6 +29,9 @@ type IngressChange = nginxingress.Change
 //
 // TODO R6: 切 ports.IngressRepo,移除 db *gorm.DB 入参;Backend.Render port 重构后回归走端口。
 func ApplyIngress(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, actor *uint) (ApplyIngressResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	return nginxingress.Apply(ctx, db, cfg, edgeID, actor)
 }
 
@@ -35,5 +39,8 @@ func ApplyIngress(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID u
 //
 // TODO R6: 同 ApplyIngress。
 func DryRunIngress(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint) ([]IngressChange, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	return nginxingress.DryRun(ctx, db, cfg, edgeID)
 }

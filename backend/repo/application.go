@@ -3,19 +3,20 @@ package repo
 import (
 	"context"
 
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"gorm.io/gorm"
 )
 
-func GetApplicationByID(ctx context.Context, db *gorm.DB, id uint) (model.Application, error) {
+func GetApplicationByID(ctx context.Context, db *gorm.DB, id uint) (domain.Application, error) {
 	var a model.Application
 	if err := db.WithContext(ctx).First(&a, id).Error; err != nil {
-		return model.Application{}, err
+		return domain.Application{}, err
 	}
-	return a, nil
+	return model.ToDomainApplication(a), nil
 }
 
-func ListApplications(ctx context.Context, db *gorm.DB, serverID *uint) ([]model.Application, error) {
+func ListApplications(ctx context.Context, db *gorm.DB, serverID *uint) ([]domain.Application, error) {
 	q := db.WithContext(ctx).Order("id asc")
 	if serverID != nil {
 		q = q.Where("server_id = ?", *serverID)
@@ -24,18 +25,26 @@ func ListApplications(ctx context.Context, db *gorm.DB, serverID *uint) ([]model
 	if err := q.Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.Application, len(out))
+	for i, a := range out {
+		result[i] = model.ToDomainApplication(a)
+	}
+	return result, nil
 }
 
-func ListAllApplications(ctx context.Context, db *gorm.DB) ([]model.Application, error) {
+func ListAllApplications(ctx context.Context, db *gorm.DB) ([]domain.Application, error) {
 	var out []model.Application
 	if err := db.WithContext(ctx).Order("id asc").Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.Application, len(out))
+	for i, a := range out {
+		result[i] = model.ToDomainApplication(a)
+	}
+	return result, nil
 }
 
-func ListApplicationsByIDs(ctx context.Context, db *gorm.DB, ids []uint) ([]model.Application, error) {
+func ListApplicationsByIDs(ctx context.Context, db *gorm.DB, ids []uint) ([]domain.Application, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -43,19 +52,42 @@ func ListApplicationsByIDs(ctx context.Context, db *gorm.DB, ids []uint) ([]mode
 	if err := db.WithContext(ctx).Where("id IN ?", ids).Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.Application, len(out))
+	for i, a := range out {
+		result[i] = model.ToDomainApplication(a)
+	}
+	return result, nil
 }
 
-func CreateApplication(ctx context.Context, db *gorm.DB, a *model.Application) error {
-	return db.WithContext(ctx).Create(a).Error
+func CreateApplication(ctx context.Context, db *gorm.DB, a *domain.Application) error {
+	m := model.FromDomainApplication(*a)
+	if err := db.WithContext(ctx).Create(&m).Error; err != nil {
+		return err
+	}
+	*a = model.ToDomainApplication(m)
+	return nil
 }
 
-func SaveApplication(ctx context.Context, db *gorm.DB, a *model.Application) error {
-	return db.WithContext(ctx).Save(a).Error
+func SaveApplication(ctx context.Context, db *gorm.DB, a *domain.Application) error {
+	m := model.FromDomainApplication(*a)
+	if err := db.WithContext(ctx).Save(&m).Error; err != nil {
+		return err
+	}
+	*a = model.ToDomainApplication(m)
+	return nil
 }
 
 func DeleteApplication(ctx context.Context, db *gorm.DB, id uint) error {
 	return db.WithContext(ctx).Delete(&model.Application{}, id).Error
+}
+
+// GetApplicationByName 按名称查 Application。
+func GetApplicationByName(ctx context.Context, db *gorm.DB, name string) (domain.Application, error) {
+	var a model.Application
+	if err := db.WithContext(ctx).Where("name = ?", name).First(&a).Error; err != nil {
+		return domain.Application{}, err
+	}
+	return model.ToDomainApplication(a), nil
 }
 
 func UpdateApplicationFields(ctx context.Context, db *gorm.DB, id uint, updates map[string]any) error {

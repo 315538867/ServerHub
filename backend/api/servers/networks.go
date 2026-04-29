@@ -5,13 +5,12 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/repo"
-	"gorm.io/gorm"
 )
 
-func listNetworksHandler(db *gorm.DB) gin.HandlerFunc {
+func listNetworksHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -25,17 +24,17 @@ func listNetworksHandler(db *gorm.DB) gin.HandlerFunc {
 		}
 		out := s.Networks
 		if out == nil {
-			out = model.Networks{}
+			out = []domain.Network{}
 		}
 		resp.OK(c, gin.H{"networks": out})
 	}
 }
 
 type updateNetworksReq struct {
-	Networks []model.Network `json:"networks"`
+	Networks []domain.Network `json:"networks"`
 }
 
-func updateNetworksHandler(db *gorm.DB) gin.HandlerFunc {
+func updateNetworksHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		id, err := strconv.Atoi(c.Param("id"))
@@ -57,9 +56,9 @@ func updateNetworksHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.BadRequest(c, "networks 条目过多（>32）")
 			return
 		}
-		filtered := make(model.Networks, 0, len(req.Networks))
+		filtered := make([]domain.Network, 0, len(req.Networks))
 		for _, n := range req.Networks {
-			if n.Kind == model.NetworkKindLoopback {
+			if n.Kind == domain.NetworkKindLoopback {
 				continue
 			}
 			filtered = append(filtered, n)

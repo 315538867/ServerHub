@@ -14,12 +14,13 @@ import (
 
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/repo"
 )
 
 // 仅覆盖 GET / PUT 路径——POST /probe 需要远端 runner，已由 pkg/nginxops.ParseNginxV
 // 单测覆盖，这里不重复。
 
-func setupProfile(t *testing.T) (*gin.Engine, *gorm.DB, uint) {
+func setupProfile(t *testing.T) (*gin.Engine, repo.DB, uint) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{

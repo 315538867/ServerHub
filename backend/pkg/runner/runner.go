@@ -12,7 +12,7 @@ import (
 	"os/exec"
 
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/sysinfo"
@@ -51,7 +51,7 @@ type Runner interface {
 }
 
 // For returns a pooled Runner suitable for one-shot commands.
-func For(s *model.Server, cfg *config.Config) (Runner, error) {
+func For(s *domain.Server, cfg *config.Config) (Runner, error) {
 	if s == nil {
 		return nil, errors.New("nil server")
 	}
@@ -76,7 +76,7 @@ func For(s *model.Server, cfg *config.Config) (Runner, error) {
 // ForDedicated returns a Runner whose underlying connection is NOT shared
 // with the pool. Caller MUST Close. Use for long-lived sessions (terminal,
 // streaming logs, certbot) to avoid contending on MaxSessions.
-func ForDedicated(s *model.Server, cfg *config.Config) (Runner, error) {
+func ForDedicated(s *domain.Server, cfg *config.Config) (Runner, error) {
 	if s == nil {
 		return nil, errors.New("nil server")
 	}
@@ -98,7 +98,7 @@ func ForDedicated(s *model.Server, cfg *config.Config) (Runner, error) {
 	return &sshRunner{client: cli, dedicated: true}, nil
 }
 
-func decryptCred(s *model.Server, cfg *config.Config) (string, error) {
+func decryptCred(s *domain.Server, cfg *config.Config) (string, error) {
 	switch s.AuthType {
 	case "key":
 		if s.PrivateKey == "" {

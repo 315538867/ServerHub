@@ -10,9 +10,10 @@ package usecase
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/serverhub/serverhub/derive"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
@@ -21,21 +22,24 @@ import (
 
 // AppWithStatus 是 Application + 派生状态。
 type AppWithStatus struct {
-	model.Application
+	domain.Application
 	Status string `json:"status"`
 }
 
 // AppIngressDTO 是 application 反向 ingress 视图的返回结构。
 type AppIngressDTO struct {
-	model.Ingress
-	EdgeServerName string               `json:"edge_server_name"`
-	MatchingRoutes []model.IngressRoute `json:"matching_routes"`
+	domain.Ingress
+	EdgeServerName string                `json:"edge_server_name"`
+	MatchingRoutes []domain.IngressRoute `json:"matching_routes"`
 }
 
 // ── list / get ──────────────────────────────────────────────────────────────
 
 // ListApplications 列出应用,可按 serverID 过滤,并附带派生状态。
 func ListApplications(ctx context.Context, db *gorm.DB, serverID *uint) ([]AppWithStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	apps, err := repo.ListApplications(ctx, db, serverID)
 	if err != nil {
 		return nil, err
@@ -54,6 +58,9 @@ func ListApplications(ctx context.Context, db *gorm.DB, serverID *uint) ([]AppWi
 
 // GetApplication 返回单个应用及派生状态。
 func GetApplication(ctx context.Context, db *gorm.DB, id uint) (AppWithStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	app, err := repo.GetApplicationByID(ctx, db, id)
 	if err != nil {
 		return AppWithStatus{}, err
@@ -65,7 +72,10 @@ func GetApplication(ctx context.Context, db *gorm.DB, id uint) (AppWithStatus, e
 // ── create / update / delete ────────────────────────────────────────────────
 
 // CreateApplication 校验 server 存在性 + 创建应用。
-func CreateApplication(ctx context.Context, db *gorm.DB, app *model.Application) error {
+func CreateApplication(ctx context.Context, db *gorm.DB, app *domain.Application) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	if _, err := repo.GetServerByID(ctx, db, app.ServerID); err != nil {
 		return errors.New("服务器不存在")
 	}
@@ -73,7 +83,10 @@ func CreateApplication(ctx context.Context, db *gorm.DB, app *model.Application)
 }
 
 // UpdateApplication 加载 + 保存应用,并返回带状态的结果。
-func UpdateApplication(ctx context.Context, db *gorm.DB, app *model.Application) (AppWithStatus, error) {
+func UpdateApplication(ctx context.Context, db *gorm.DB, app *domain.Application) (AppWithStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	if err := repo.SaveApplication(ctx, db, app); err != nil {
 		return AppWithStatus{}, err
 	}
@@ -83,27 +96,33 @@ func UpdateApplication(ctx context.Context, db *gorm.DB, app *model.Application)
 
 // DeleteApplication 删除应用。
 func DeleteApplication(ctx context.Context, db *gorm.DB, id uint) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	return repo.DeleteApplication(ctx, db, id)
 }
 
 // ── service 挂载/卸载 ───────────────────────────────────────────────────────
 
 // AttachService 把 service 挂到 application;若 app 没有主服务则自动设置。
-func AttachService(ctx context.Context, db *gorm.DB, appID, serviceID uint) (model.Service, error) {
+func AttachService(ctx context.Context, db *gorm.DB, appID, serviceID uint) (domain.Service, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	app, err := repo.GetApplicationByID(ctx, db, appID)
 	if err != nil {
-		return model.Service{}, errors.New("应用不存在")
+		return domain.Service{}, errors.New("应用不存在")
 	}
 	svc, err := repo.GetServiceByID(ctx, db, serviceID)
 	if err != nil {
-		return model.Service{}, errors.New("服务不存在")
+		return domain.Service{}, errors.New("服务不存在")
 	}
 	if svc.ServerID != app.ServerID {
-		return model.Service{}, errors.New("服务与应用不在同一服务器，不可挂载")
+		return domain.Service{}, errors.New("服务与应用不在同一服务器，不可挂载")
 	}
 	svc.ApplicationID = &appID
 	if err := repo.SaveService(ctx, db, &svc); err != nil {
-		return model.Service{}, err
+		return domain.Service{}, err
 	}
 	if app.PrimaryServiceID == nil {
 		_ = repo.UpdatePrimaryService(ctx, db, appID, &svc.ID)
@@ -113,6 +132,9 @@ func AttachService(ctx context.Context, db *gorm.DB, appID, serviceID uint) (mod
 
 // DetachService 把 service 从 application 卸载;若是主服务则清空。
 func DetachService(ctx context.Context, db *gorm.DB, appID, serviceID uint) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	svc, err := repo.GetServiceByID(ctx, db, serviceID)
 	if err != nil {
 		return errors.New("服务不存在")
@@ -135,6 +157,9 @@ func DetachService(ctx context.Context, db *gorm.DB, appID, serviceID uint) erro
 //
 // SQL 预算：4 条（services + allRoutes + ingresses + servers）。
 func ListAppIngresses(ctx context.Context, db *gorm.DB, appID uint) ([]AppIngressDTO, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	services, err := repo.ListServicesByApplicationID(ctx, db, appID)
 	if err != nil {
 		return nil, err
@@ -152,7 +177,7 @@ func ListAppIngresses(ctx context.Context, db *gorm.DB, appID uint) ([]AppIngres
 	if err != nil {
 		return nil, err
 	}
-	routesByIngress := map[uint][]model.IngressRoute{}
+	routesByIngress := map[uint][]domain.IngressRoute{}
 	for _, rt := range routes {
 		if rt.Upstream.Type != "service" || rt.Upstream.ServiceID == nil {
 			continue

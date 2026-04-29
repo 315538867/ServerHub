@@ -62,6 +62,7 @@ import (
 	"github.com/serverhub/serverhub/pkg/scheduler"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/retention"
+	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/pkg/auditq"
 	"github.com/serverhub/serverhub/usecase"
 
@@ -128,7 +129,7 @@ func main() {
 		}
 	}
 
-	db := database.Init(cfg)
+	db := repo.NewDB(database.Init(cfg))
 
 	// 版本化数据迁移收口:把 v0.3.7 之前散落在 db.Init 的"启动期一次性补丁"
 	// (drop setup_states / backfill fingerprints / backfill run_server_id /

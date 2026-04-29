@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 )
 
 // WorkdirSetup 返回 [mkdir -p X, cd X] 两条命令。WorkDir 为空时退化为
 // /tmp/serverhub-svc-<id>(与 v1 默认一致)。
-func WorkdirSetup(svc model.Service) []string {
+func WorkdirSetup(svc domain.Service) []string {
 	wd := svc.WorkDir
 	if wd == "" {
 		wd = "/tmp/serverhub-svc-" + fmt.Sprint(svc.ID)
@@ -21,7 +21,7 @@ func WorkdirSetup(svc model.Service) []string {
 }
 
 // Workdir 返回最终工作目录(供 native pgrep 等场景复用)。
-func Workdir(svc model.Service) string {
+func Workdir(svc domain.Service) string {
 	if svc.WorkDir != "" {
 		return svc.WorkDir
 	}

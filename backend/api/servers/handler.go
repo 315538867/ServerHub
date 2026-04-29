@@ -8,16 +8,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/derive"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/svcstatus"
 	"github.com/serverhub/serverhub/repo"
-	"gorm.io/gorm"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	r.GET("", listHandler(db))
 	r.POST("", createHandler(db, cfg))
 	r.GET("/:id", getHandler(db))
@@ -46,7 +45,7 @@ type serverResp struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
-func toResp(s model.Server, st derive.ServerStatusEntry) serverResp {
+func toResp(s domain.Server, st derive.ServerStatusEntry) serverResp {
 	r := serverResp{
 		ID: s.ID, Name: s.Name, Type: s.Type, Host: s.Host, Port: s.Port,
 		Username: s.Username, AuthType: s.AuthType, Remark: s.Remark,
@@ -71,7 +70,7 @@ type createReq struct {
 	Remark     string `json:"remark"`
 }
 
-func listHandler(db *gorm.DB) gin.HandlerFunc {
+func listHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		servers, err := repo.ListAllServers(ctx, db)
@@ -92,7 +91,7 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func createHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createReq
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -117,7 +116,7 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		s := model.Server{
+		s := domain.Server{
 			Name: req.Name, Host: req.Host, Port: req.Port,
 			Username: req.Username, AuthType: req.AuthType,
 			Password: encPwd, PrivateKey: encKey,
@@ -131,7 +130,7 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func getHandler(db *gorm.DB) gin.HandlerFunc {
+func getHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -142,7 +141,7 @@ func getHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func updateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func updateHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -189,7 +188,7 @@ func updateHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func deleteHandler(db *gorm.DB) gin.HandlerFunc {
+func deleteHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -208,7 +207,7 @@ func deleteHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func testHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -216,7 +215,7 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		ctx := c.Request.Context()
 		if s.Type == "local" {
-			_ = repo.CreateProbe(ctx, db, &model.ServerProbe{ServerID: s.ID, Result: "online", CreatedAt: time.Now()})
+			_ = repo.CreateProbe(ctx, db, &domain.ServerProbe{ServerID: s.ID, Result: "online", CreatedAt: time.Now()})
 			resp.OK(c, gin.H{"status": "online"})
 			return
 		}
@@ -232,7 +231,7 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		client, err := sshpool.Connect(s.ID, s.Host, s.Port, s.Username, s.AuthType, cred)
 		latencyMs := int(time.Since(start).Milliseconds())
 		if err != nil {
-			_ = repo.CreateProbe(ctx, db, &model.ServerProbe{
+			_ = repo.CreateProbe(ctx, db, &domain.ServerProbe{
 				ServerID: s.ID, Result: "offline",
 				LatencyMs: latencyMs, ErrMsg: err.Error(), CreatedAt: time.Now(),
 			})
@@ -240,7 +239,7 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 		_ = client
-		_ = repo.CreateProbe(ctx, db, &model.ServerProbe{
+		_ = repo.CreateProbe(ctx, db, &domain.ServerProbe{
 			ServerID: s.ID, Result: "online",
 			LatencyMs: latencyMs, CreatedAt: time.Now(),
 		})
@@ -248,7 +247,7 @@ func testHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func collectMetricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func collectMetricsHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -277,7 +276,7 @@ func collectMetricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			return
 		}
 
-		m := model.Metric{
+		m := domain.Metric{
 			ServerID: s.ID,
 			CPU:      metrics.CPU, Mem: metrics.Mem, Disk: metrics.Disk,
 			Load1: metrics.Load1, Uptime: metrics.Uptime,
@@ -287,7 +286,7 @@ func collectMetricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func listMetricsHandler(db *gorm.DB) gin.HandlerFunc {
+func listMetricsHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -310,7 +309,7 @@ func listMetricsHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
+func listServicesHandler(db repo.DB) gin.HandlerFunc {
 	type svcItem struct {
 		ID              uint   `json:"id"`
 		Name            string `json:"name"`
@@ -364,7 +363,7 @@ func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 				status = "success"
 			}
 			it := svcItem{
-				ID: sv.ID, Name: sv.Name, Type: sv.Type,
+				ID: sv.ID, Name: sv.Name, Type: string(sv.Type),
 				ApplicationID: sv.ApplicationID,
 				ExposedPort:   sv.ExposedPort,
 				ImageName:     e.Image,
@@ -382,16 +381,16 @@ func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-func findServer(c *gin.Context, db *gorm.DB) (model.Server, bool) {
+func findServer(c *gin.Context, db repo.DB) (domain.Server, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "ID 格式错误")
-		return model.Server{}, false
+		return domain.Server{}, false
 	}
 	s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
 	if err != nil {
 		resp.NotFound(c, "服务器不存在")
-		return model.Server{}, false
+		return domain.Server{}, false
 	}
 	return s, true
 }
@@ -409,7 +408,7 @@ func encryptCreds(password, privateKey, aesKey string) (encPwd, encKey string, e
 	return
 }
 
-func getDecryptedCred(s model.Server, aesKey string) (string, error) {
+func getDecryptedCred(s domain.Server, aesKey string) (string, error) {
 	switch s.AuthType {
 	case "key":
 		if s.PrivateKey == "" {

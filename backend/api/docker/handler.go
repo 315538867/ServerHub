@@ -10,12 +10,12 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/middleware"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/wsstream"
-	"gorm.io/gorm"
+	"github.com/serverhub/serverhub/repo"
 )
 
 var upgrader = websocket.Upgrader{
@@ -42,7 +42,7 @@ type ImageItem struct {
 	Created    string `json:"created_at"`
 }
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	upgrader.CheckOrigin = middleware.WSCheckOrigin(cfg)
 	r.GET("/:id/docker/containers", listContainersHandler(db, cfg))
 	r.POST("/:id/docker/containers/:cid/action", containerActionHandler(db, cfg))
@@ -56,14 +56,14 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 // loadServer fetches the server by :id param, writing any error response itself.
-func loadServer(c *gin.Context, db *gorm.DB) (*model.Server, bool) {
+func loadServer(c *gin.Context, db repo.DB) (*domain.Server, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
 		return nil, false
 	}
-	var s model.Server
-	if err := db.First(&s, id).Error; err != nil {
+	s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
+	if err != nil {
 		resp.NotFound(c, "服务器不存在")
 		return nil, false
 	}
@@ -71,7 +71,7 @@ func loadServer(c *gin.Context, db *gorm.DB) (*model.Server, bool) {
 }
 
 // getRunner returns a pooled Runner for one-shot operations.
-func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
+func getRunner(c *gin.Context, db repo.DB, cfg *config.Config) (runner.Runner, bool) {
 	s, ok := loadServer(c, db)
 	if !ok {
 		return nil, false
@@ -85,7 +85,7 @@ func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, 
 }
 
 // getDedicatedRunner returns a dedicated Runner for long-lived streams.
-func getDedicatedRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
+func getDedicatedRunner(c *gin.Context, db repo.DB, cfg *config.Config) (runner.Runner, bool) {
 	s, ok := loadServer(c, db)
 	if !ok {
 		return nil, false
@@ -105,7 +105,7 @@ func shellQuote(s string) string {
 
 // ── handlers ─────────────────────────────────────────────────────────────────
 
-func listContainersHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func listContainersHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -139,7 +139,7 @@ func listContainersHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func containerActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func containerActionHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -176,7 +176,7 @@ func containerActionHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func containerLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func containerLogsHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {
@@ -198,7 +198,7 @@ func containerLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func containerInspectHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func containerInspectHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -219,7 +219,7 @@ func containerInspectHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func listImagesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func listImagesHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -253,7 +253,7 @@ func listImagesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func pullImageHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func pullImageHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {
@@ -279,7 +279,7 @@ func pullImageHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func deleteImageHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func deleteImageHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rn, ok := getRunner(c, db, cfg)
 		if !ok {

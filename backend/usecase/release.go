@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
@@ -30,16 +30,19 @@ type CreateReleaseParams struct {
 
 // CreateRelease 校验 service 存在性 + artifact 归属 + 非 imported,
 // 若 label 为空则自动生成,最后创建 Release。
-func CreateRelease(ctx context.Context, db *gorm.DB, p CreateReleaseParams) (model.Release, error) {
+func CreateRelease(ctx context.Context, db *gorm.DB, p CreateReleaseParams) (domain.Release, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	if _, err := repo.GetServiceByID(ctx, db, p.ServiceID); err != nil {
-		return model.Release{}, errors.New("service not found")
+		return domain.Release{}, errors.New("service not found")
 	}
 	art, err := repo.GetArtifactByIDAndServiceID(ctx, db, p.ArtifactID, p.ServiceID)
 	if err != nil {
-		return model.Release{}, errors.New("artifact not found")
+		return domain.Release{}, errors.New("artifact not found")
 	}
-	if art.Provider == model.ArtifactProviderImported {
-		return model.Release{}, errors.New("imported artifact cannot be used for new release; pick a real provider")
+	if art.Provider == domain.ArtifactProviderImported {
+		return domain.Release{}, errors.New("imported artifact cannot be used for new release; pick a real provider")
 	}
 
 	label := p.Label
@@ -47,7 +50,7 @@ func CreateRelease(ctx context.Context, db *gorm.DB, p CreateReleaseParams) (mod
 		label = releaseAutoLabel(ctx, db, p.ServiceID)
 	}
 
-	rel := model.Release{
+	rel := domain.Release{
 		ServiceID:   p.ServiceID,
 		Label:       label,
 		ArtifactID:  p.ArtifactID,
@@ -55,10 +58,10 @@ func CreateRelease(ctx context.Context, db *gorm.DB, p CreateReleaseParams) (mod
 		ConfigSetID: p.ConfigSetID,
 		StartSpec:   p.StartSpec,
 		Note:        p.Note,
-		Status:      model.ReleaseStatusDraft,
+		Status:      domain.ReleaseStatusDraft,
 	}
 	if err := repo.CreateRelease(ctx, db, &rel); err != nil {
-		return model.Release{}, err
+		return domain.Release{}, err
 	}
 	return rel, nil
 }

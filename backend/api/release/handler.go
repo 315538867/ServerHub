@@ -25,17 +25,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/usecase"
-	"gorm.io/gorm"
 )
 
 // RegisterRoutes 挂载 Release 模型相关的子路由。
 // 调用方需把 r 传成 protected.Group("/services") 。
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	// Service 列表 + 单条只读。M2 之前由 apideploy 包提供;现在 service 写路径
 	// 已经全部归 Release 链路,这两个只读端点也跟着收到这里——避免再起一个
 	// "服务基础信息"的小包,保持 /services/:id 子树语义内聚。
@@ -82,7 +81,7 @@ func parseServiceID(c *gin.Context) (uint, bool) {
 }
 
 // listServices 返回所有 Service。
-func listServices(db *gorm.DB) gin.HandlerFunc {
+func listServices(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		services, err := repo.ListAllServices(c.Request.Context(), db)
 		if err != nil {
@@ -94,7 +93,7 @@ func listServices(db *gorm.DB) gin.HandlerFunc {
 }
 
 // getService 返回单条 Service。
-func getService(db *gorm.DB) gin.HandlerFunc {
+func getService(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -120,7 +119,7 @@ type releaseReq struct {
 	Note        string `json:"note"`
 }
 
-func listReleases(db *gorm.DB) gin.HandlerFunc {
+func listReleases(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -135,7 +134,7 @@ func listReleases(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func createRelease(db *gorm.DB) gin.HandlerFunc {
+func createRelease(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -172,7 +171,7 @@ type applyReq struct {
 	TriggerSource string `json:"trigger_source"` // 默认 manual
 }
 
-func applyRelease(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func applyRelease(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -186,7 +185,7 @@ func applyRelease(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		var req applyReq
 		_ = c.ShouldBindJSON(&req)
 		if req.TriggerSource == "" {
-			req.TriggerSource = model.TriggerSourceManual
+			req.TriggerSource = domain.TriggerSourceManual
 		}
 		run, err := usecase.ApplyRelease(db, cfg, sid, uint(rid), req.TriggerSource, nil)
 		if err != nil && run == nil {
@@ -205,7 +204,7 @@ type artifactReq struct {
 	PullScript string `json:"pull_script"`
 }
 
-func listArtifacts(db *gorm.DB) gin.HandlerFunc {
+func listArtifacts(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -223,7 +222,7 @@ func listArtifacts(db *gorm.DB) gin.HandlerFunc {
 // createArtifact 支持两种请求格式：
 //   - Content-Type: multipart/form-data （含文件）=> provider=upload
 //   - Content-Type: application/json （声明 docker/script/http/git）
-func createArtifact(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func createArtifact(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -256,11 +255,11 @@ func createArtifact(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "unsupported provider: "+req.Provider)
 			return
 		}
-		if req.Provider == model.ArtifactProviderUpload {
+		if req.Provider == domain.ArtifactProviderUpload {
 			resp.BadRequest(c, "upload provider requires multipart body")
 			return
 		}
-		art := model.Artifact{
+		art := domain.Artifact{
 			ServiceID:  sid,
 			Provider:   req.Provider,
 			Ref:        req.Ref,
@@ -276,18 +275,18 @@ func createArtifact(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 func validProvider(p string) bool {
 	switch p {
-	case model.ArtifactProviderUpload,
-		model.ArtifactProviderScript,
-		model.ArtifactProviderGit,
-		model.ArtifactProviderHTTP,
-		model.ArtifactProviderDocker:
+	case domain.ArtifactProviderUpload,
+		domain.ArtifactProviderScript,
+		domain.ArtifactProviderGit,
+		domain.ArtifactProviderHTTP,
+		domain.ArtifactProviderDocker:
 		return true
 	}
 	return false
 }
 
 // saveUploadArtifact 把上传文件保存到 data_dir/artifacts/${sid}/${sha256}.${ext}
-func saveUploadArtifact(c *gin.Context, db *gorm.DB, cfg *config.Config, sid uint) (*model.Artifact, error) {
+func saveUploadArtifact(c *gin.Context, db repo.DB, cfg *config.Config, sid uint) (*domain.Artifact, error) {
 	fh, err := c.FormFile("file")
 	if err != nil {
 		return nil, errors.New("file field required")
@@ -323,9 +322,9 @@ func saveUploadArtifact(c *gin.Context, db *gorm.DB, cfg *config.Config, sid uin
 		os.Remove(tmpPath)
 	}
 	rel := filepath.Join("artifacts", strconv.FormatUint(uint64(sid), 10), hash+ext)
-	art := model.Artifact{
+	art := domain.Artifact{
 		ServiceID: sid,
-		Provider:  model.ArtifactProviderUpload,
+		Provider:  domain.ArtifactProviderUpload,
 		Ref:       rel,
 		Checksum:  hash,
 		SizeBytes: size,
@@ -358,7 +357,7 @@ type envVar struct {
 	Secret bool   `json:"secret"`
 }
 
-func listEnvSets(db *gorm.DB) gin.HandlerFunc {
+func listEnvSets(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -373,7 +372,7 @@ func listEnvSets(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func createEnvSet(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func createEnvSet(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -390,7 +389,7 @@ func createEnvSet(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, "encrypt: "+err.Error())
 			return
 		}
-		row := model.EnvVarSet{ServiceID: sid, Label: req.Label, Content: enc}
+		row := domain.EnvVarSet{ServiceID: sid, Label: req.Label, Content: enc}
 		if err := repo.CreateEnvSet(c.Request.Context(), db, &row); err != nil {
 			resp.InternalError(c, err.Error())
 			return
@@ -411,7 +410,7 @@ type configFile struct {
 	Mode       int    `json:"mode"`
 }
 
-func listConfigSets(db *gorm.DB) gin.HandlerFunc {
+func listConfigSets(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -426,7 +425,7 @@ func listConfigSets(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func createConfigSet(db *gorm.DB) gin.HandlerFunc {
+func createConfigSet(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -438,7 +437,7 @@ func createConfigSet(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		raw, _ := json.Marshal(req.Files)
-		row := model.ConfigFileSet{ServiceID: sid, Label: req.Label, Files: string(raw)}
+		row := domain.ConfigFileSet{ServiceID: sid, Label: req.Label, Files: string(raw)}
 		if err := repo.CreateConfigSet(c.Request.Context(), db, &row); err != nil {
 			resp.InternalError(c, err.Error())
 			return
@@ -449,7 +448,7 @@ func createConfigSet(db *gorm.DB) gin.HandlerFunc {
 
 // ── DeployRun handlers ────────────────────────────────────────────────────
 
-func listDeployRuns(db *gorm.DB) gin.HandlerFunc {
+func listDeployRuns(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -464,7 +463,7 @@ func listDeployRuns(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func getDeployRun(db *gorm.DB) gin.HandlerFunc {
+func getDeployRun(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {
@@ -490,7 +489,7 @@ type autoRollbackReq struct {
 	Enabled bool `json:"enabled"`
 }
 
-func patchAutoRollback(db *gorm.DB) gin.HandlerFunc {
+func patchAutoRollback(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sid, ok := parseServiceID(c)
 		if !ok {

@@ -25,21 +25,21 @@ rules:
 
   - id: api-no-gorm
     desc: "api/ 全包不得 import gorm.io/gorm"
-    enabled: false   # R6 启用
+    enabled: true   # R6 启用
     pattern: 'api/.*\.go'
     forbid_import_regex: '"gorm\.io/gorm"'
     severity: error
 
   - id: usecase-no-gin
     desc: "usecase/ 不得 import gin"
-    enabled: false   # R6 启用
+    enabled: true   # R6 启用
     pattern: 'usecase/.*\.go'
     forbid_import_regex: '"github\.com/gin-gonic/gin"'
     severity: error
 
   - id: handler-no-adapter
     desc: "handler 不得直接 import adapters/"
-    enabled: false   # R6 启用
+    enabled: true   # R6 启用
     pattern: 'api/.*\.go'
     forbid_import_regex: '"github\.com/serverhub/serverhub/adapters/'
     severity: error

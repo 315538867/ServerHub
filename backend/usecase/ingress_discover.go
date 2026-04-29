@@ -8,18 +8,18 @@
 //     时回填 (id, name),前端提示"建议接管后切 service upstream"
 //
 // 平移自 api/ingresses/import_handler.go::importCandidatesHandler + annotateCrossServer。
-//
-// TODO R6: 切 ports.IngressRepo + ports.ServerRepo,移除 db *gorm.DB 入参。
 package usecase
 
 import (
 	"context"
 	"strings"
+	"time"
 
 	nginxingress "github.com/serverhub/serverhub/adapters/ingress/nginx"
 	"github.com/serverhub/serverhub/core/ingress"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/infra"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
 
@@ -33,6 +33,9 @@ type DiscoverIngressesResult struct {
 //
 // kind 当前固定 "nginx"(R5 范围);未来扩展 traefik/caddy 时改成接 kind 参数。
 func DiscoverIngresses(ctx context.Context, db *gorm.DB, r infra.Runner, edgeID uint) DiscoverIngressesResult {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	out := DiscoverIngressesResult{}
 	be, gerr := ingress.Default.Get("nginx")
 	if gerr != nil {
@@ -47,19 +50,16 @@ func DiscoverIngresses(ctx context.Context, db *gorm.DB, r infra.Runner, edgeID 
 	if len(out.Candidates) == 0 {
 		return out
 	}
-	annotateAlreadyManaged(out.Candidates, db, edgeID)
-	annotateCrossServer(out.Candidates, db, edgeID)
+	annotateAlreadyManaged(cands, db, edgeID)
+	annotateCrossServer(cands, db, edgeID)
 	return out
 }
 
 // annotateAlreadyManaged 把同 edge 下已存在同 domain 的 Ingress 标为 AlreadyManaged,
 // 前端据此置灰"导入"按钮,避免重复落库导致 unique(edge_id, domain) 冲突 500。
 func annotateAlreadyManaged(cands []ingress.IngressCandidate, db *gorm.DB, edgeID uint) {
-	var existing []string
-	db.Model(&model.Ingress{}).
-		Where("edge_server_id = ?", edgeID).
-		Pluck("domain", &existing)
-	if len(existing) == 0 {
+	existing, err := repo.ListIngressDomainsByEdgeID(context.Background(), db, edgeID)
+	if err != nil || len(existing) == 0 {
 		return
 	}
 	known := make(map[string]struct{}, len(existing))
@@ -79,8 +79,8 @@ func annotateAlreadyManaged(cands []ingress.IngressCandidate, db *gorm.DB, edgeI
 // 平移自 api/ingresses/import_handler.go::annotateCrossServer。本函数不返回 error
 // (best-effort,DB 抖一下不影响主流程)。
 func annotateCrossServer(cands []ingress.IngressCandidate, db *gorm.DB, edgeID uint) {
-	var servers []model.Server
-	if err := db.Find(&servers).Error; err != nil {
+	servers, err := repo.ListAllServers(context.Background(), db)
+	if err != nil {
 		return
 	}
 	type srvRef struct {
@@ -96,7 +96,7 @@ func annotateCrossServer(cands []ingress.IngressCandidate, db *gorm.DB, edgeID u
 		for _, n := range s.Networks {
 			// loopback 永远是 127.0.0.1,不能用来跨机匹配 — 任何 edge 上看到
 			// proxy_pass http://127.0.0.1 都是"自家进程"。
-			if n.Kind == model.NetworkKindLoopback {
+			if n.Kind == domain.NetworkKindLoopback {
 				continue
 			}
 			if a := strings.TrimSpace(n.Address); a != "" {

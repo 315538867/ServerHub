@@ -4,16 +4,17 @@ import (
 	"context"
 	"errors"
 
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"gorm.io/gorm"
 )
 
-func GetNginxProfileByEdgeID(ctx context.Context, db *gorm.DB, edgeID uint) (model.NginxProfile, error) {
+func GetNginxProfileByEdgeID(ctx context.Context, db *gorm.DB, edgeID uint) (domain.NginxProfile, error) {
 	var p model.NginxProfile
 	if err := db.WithContext(ctx).Where("edge_server_id = ?", edgeID).First(&p).Error; err != nil {
-		return model.NginxProfile{}, err
+		return domain.NginxProfile{}, err
 	}
-	return p, nil
+	return model.ToDomainNginxProfile(p), nil
 }
 
 func UpsertNginxProfile(ctx context.Context, db *gorm.DB, edgeID uint, updates map[string]any) error {

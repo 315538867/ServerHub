@@ -15,19 +15,19 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/core/source"
 	"github.com/serverhub/serverhub/infra"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/resp"
+	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/usecase"
-	"gorm.io/gorm"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	r.GET(":id/discover", scanHandler(db, cfg))
 	r.POST(":id/discover/import", importHandler(db, cfg))
 	r.POST(":id/discover/takeover", takeoverHandler(db, cfg))
 }
 
-func scanHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func scanHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -54,7 +54,7 @@ type importReq struct {
 	Nginx   []source.Candidate `json:"nginx"`
 }
 
-func importHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func importHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -85,7 +85,7 @@ type takeoverReq struct {
 	AppName string `json:"app_name,omitempty"`
 }
 
-func takeoverHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func takeoverHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		s, ok := findServer(c, db)
 		if !ok {
@@ -112,16 +112,16 @@ func takeoverHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func findServer(c *gin.Context, db *gorm.DB) (model.Server, bool) {
+func findServer(c *gin.Context, db repo.DB) (domain.Server, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "ID 格式错误")
-		return model.Server{}, false
+		return domain.Server{}, false
 	}
-	var s model.Server
-	if err := db.First(&s, id).Error; err != nil {
+	s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
+	if err != nil {
 		resp.NotFound(c, "服务器不存在")
-		return model.Server{}, false
+		return domain.Server{}, false
 	}
 	return s, true
 }

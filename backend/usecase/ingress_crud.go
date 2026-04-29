@@ -11,8 +11,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/safeshell"
 	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
@@ -36,7 +37,7 @@ type RouteParams struct {
 	Sort       int
 	Path       string
 	Protocol   string
-	Upstream   model.IngressUpstream
+	Upstream   domain.IngressUpstream
 	WebSocket  bool
 	Extra      string
 	ListenPort *int
@@ -53,7 +54,7 @@ type UpdateIngressParams struct {
 
 // AuditApplyWithActor 在 AuditApply 基础上拼 username。
 type AuditApplyWithActor struct {
-	model.AuditApply
+	domain.AuditApply
 	ActorUsername string `json:"actor_username"`
 }
 
@@ -139,38 +140,47 @@ func validateRouteUniqueness(
 // ── CRUD ────────────────────────────────────────────────────────────────────
 
 // ListIngresses 列出 ingress,可按 edgeServerID 过滤。
-func ListIngresses(ctx context.Context, db *gorm.DB, edgeServerID *uint) ([]model.Ingress, error) {
+func ListIngresses(ctx context.Context, db *gorm.DB, edgeServerID *uint) ([]domain.Ingress, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	return repo.ListIngresses(ctx, db, edgeServerID)
 }
 
 // GetIngressWithRoutes 返回单条 ingress 及其路由列表。
-func GetIngressWithRoutes(ctx context.Context, db *gorm.DB, id uint) (model.Ingress, []model.IngressRoute, error) {
+func GetIngressWithRoutes(ctx context.Context, db *gorm.DB, id uint) (domain.Ingress, []domain.IngressRoute, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	ig, err := repo.GetIngressByID(ctx, db, id)
 	if err != nil {
-		return model.Ingress{}, nil, err
+		return domain.Ingress{}, nil, err
 	}
 	routes, err := repo.ListRoutesByIngressID(ctx, db, id)
 	if err != nil {
-		return model.Ingress{}, nil, err
+		return domain.Ingress{}, nil, err
 	}
 	return ig, routes, nil
 }
 
 // CreateIngress 校验 + 事务创建 Ingress 及其路由。
-func CreateIngress(ctx context.Context, db *gorm.DB, p CreateIngressParams) (model.Ingress, error) {
+func CreateIngress(ctx context.Context, db *gorm.DB, p CreateIngressParams) (domain.Ingress, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	if err := validateMatchKind(p.MatchKind); err != nil {
-		return model.Ingress{}, err
+		return domain.Ingress{}, err
 	}
 	if err := validateTLS(ctx, db, p.EdgeServerID, p.MatchKind, p.CertID, p.ForceHTTPS); err != nil {
-		return model.Ingress{}, err
+		return domain.Ingress{}, err
 	}
 	// 同 edge 同 domain 的 match_kind 一致性
 	existing, err := repo.FindIngressByEdgeAndDomain(ctx, db, p.EdgeServerID, p.Domain)
 	if err == nil && existing.MatchKind != p.MatchKind {
-		return model.Ingress{}, errors.New("同一 edge+domain 下 match_kind 不允许混用，已存在 " + existing.MatchKind)
+		return domain.Ingress{}, errors.New("同一 edge+domain 下 match_kind 不允许混用，已存在 " + existing.MatchKind)
 	}
 
-	ig := model.Ingress{
+	ig := domain.Ingress{
 		EdgeServerID: p.EdgeServerID,
 		MatchKind:    p.MatchKind,
 		Domain:       p.Domain,
@@ -201,7 +211,7 @@ func CreateIngress(ctx context.Context, db *gorm.DB, p CreateIngressParams) (mod
 				r.Path, proto, r.ListenPort, 0); err != nil {
 				return err
 			}
-			ir := model.IngressRoute{
+			ir := domain.IngressRoute{
 				IngressID: ig.ID, Sort: r.Sort, Path: r.Path,
 				Protocol: proto, Upstream: r.Upstream,
 				WebSocket: r.WebSocket, Extra: r.Extra,
@@ -213,27 +223,30 @@ func CreateIngress(ctx context.Context, db *gorm.DB, p CreateIngressParams) (mod
 		}
 		return nil
 	}); err != nil {
-		return model.Ingress{}, err
+		return domain.Ingress{}, err
 	}
 	return ig, nil
 }
 
 // UpdateIngress 校验 TLS + 更新字段 + 返回刷新后的 ingress。
 // handler 负责 DTO 三态解析和 updates map 组装,usecase 负责 TLS 校验与 DB 写入。
-func UpdateIngress(ctx context.Context, db *gorm.DB, id uint, p UpdateIngressParams) (model.Ingress, error) {
+func UpdateIngress(ctx context.Context, db *gorm.DB, id uint, p UpdateIngressParams) (domain.Ingress, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	ig, err := repo.GetIngressByID(ctx, db, id)
 	if err != nil {
-		return model.Ingress{}, err
+		return domain.Ingress{}, err
 	}
 	if err := validateTLS(ctx, db, ig.EdgeServerID, p.NextMatchKind, p.NextCertID, p.NextForceHTTPS); err != nil {
-		return model.Ingress{}, err
+		return domain.Ingress{}, err
 	}
 	if len(p.Updates) == 0 {
 		return ig, nil
 	}
 	p.Updates["status"] = "pending"
 	if err := repo.UpdateIngressFields(ctx, db, id, p.Updates); err != nil {
-		return model.Ingress{}, err
+		return domain.Ingress{}, err
 	}
 	ig, _ = repo.GetIngressByID(ctx, db, id)
 	return ig, nil
@@ -241,22 +254,28 @@ func UpdateIngress(ctx context.Context, db *gorm.DB, id uint, p UpdateIngressPar
 
 // DeleteIngress 级联删除 ingress 及其路由。
 func DeleteIngress(ctx context.Context, db *gorm.DB, id uint) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	return repo.DeleteIngressCascade(ctx, db, id)
 }
 
 // ── Route 子资源 ────────────────────────────────────────────────────────────
 
 // AddIngressRoute 校验 + 创建路由 + 标记 ingress pending。
-func AddIngressRoute(ctx context.Context, db *gorm.DB, ingressID uint, p RouteParams) (model.IngressRoute, error) {
+func AddIngressRoute(ctx context.Context, db *gorm.DB, ingressID uint, p RouteParams) (domain.IngressRoute, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	ig, err := repo.GetIngressByID(ctx, db, ingressID)
 	if err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	if err := validateProtocol(p.Protocol, p.ListenPort); err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	if err := validateExtra(p.Extra); err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	proto := p.Protocol
 	if proto == "" {
@@ -264,36 +283,39 @@ func AddIngressRoute(ctx context.Context, db *gorm.DB, ingressID uint, p RoutePa
 	}
 	if err := validateRouteUniqueness(ctx, db, ingressID, ig.EdgeServerID,
 		p.Path, proto, p.ListenPort, 0); err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
-	ir := model.IngressRoute{
+	ir := domain.IngressRoute{
 		IngressID: ingressID, Sort: p.Sort, Path: p.Path,
 		Protocol: proto, Upstream: p.Upstream,
 		WebSocket: p.WebSocket, Extra: p.Extra,
 		ListenPort: p.ListenPort,
 	}
 	if err := repo.CreateRoute(ctx, db, &ir); err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	_ = repo.MarkIngressPending(ctx, db, ingressID)
 	return ir, nil
 }
 
 // UpdateIngressRoute 校验 + 保存路由 + 标记 ingress pending。
-func UpdateIngressRoute(ctx context.Context, db *gorm.DB, ingressID, routeID uint, p RouteParams) (model.IngressRoute, error) {
+func UpdateIngressRoute(ctx context.Context, db *gorm.DB, ingressID, routeID uint, p RouteParams) (domain.IngressRoute, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	ir, err := repo.GetRouteByID(ctx, db, ingressID, routeID)
 	if err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	if err := validateProtocol(p.Protocol, p.ListenPort); err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	if err := validateExtra(p.Extra); err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	ig, err := repo.GetIngressByID(ctx, db, ingressID)
 	if err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	proto := p.Protocol
 	if proto == "" {
@@ -301,7 +323,7 @@ func UpdateIngressRoute(ctx context.Context, db *gorm.DB, ingressID, routeID uin
 	}
 	if err := validateRouteUniqueness(ctx, db, ingressID, ig.EdgeServerID,
 		p.Path, proto, p.ListenPort, ir.ID); err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	ir.Sort = p.Sort
 	ir.Path = p.Path
@@ -313,7 +335,7 @@ func UpdateIngressRoute(ctx context.Context, db *gorm.DB, ingressID, routeID uin
 	ir.Extra = p.Extra
 	ir.ListenPort = p.ListenPort
 	if err := repo.SaveRoute(ctx, db, &ir); err != nil {
-		return model.IngressRoute{}, err
+		return domain.IngressRoute{}, err
 	}
 	_ = repo.MarkIngressPending(ctx, db, ingressID)
 	return ir, nil
@@ -321,6 +343,9 @@ func UpdateIngressRoute(ctx context.Context, db *gorm.DB, ingressID, routeID uin
 
 // DeleteIngressRoute 删除路由 + 标记 ingress pending。
 func DeleteIngressRoute(ctx context.Context, db *gorm.DB, ingressID, routeID uint) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	if err := repo.DeleteRoute(ctx, db, ingressID, routeID); err != nil {
 		return err
 	}
@@ -332,6 +357,9 @@ func DeleteIngressRoute(ctx context.Context, db *gorm.DB, ingressID, routeID uin
 
 // ListAuditWithActors 列出 apply 审计记录,并批量拼接 actor username。
 func ListAuditWithActors(ctx context.Context, db *gorm.DB, edgeID uint, limit int) ([]AuditApplyWithActor, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	rows, err := repo.ListAuditAppliesByEdge(ctx, db, edgeID, limit)
 	if err != nil {
 		return nil, err
@@ -368,7 +396,10 @@ func ListAuditWithActors(ctx context.Context, db *gorm.DB, edgeID uint, limit in
 }
 
 // ListUpstreamServices 列出指定 server 下的 service 列表(ingress upstream 下拉用)。
-func ListUpstreamServices(ctx context.Context, db *gorm.DB, serverID uint) ([]model.Service, error) {
+func ListUpstreamServices(ctx context.Context, db *gorm.DB, serverID uint) ([]domain.Service, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	return repo.ListServicesByServerID(ctx, db, serverID)
 }
 
@@ -376,6 +407,9 @@ func ListUpstreamServices(ctx context.Context, db *gorm.DB, serverID uint) ([]mo
 
 // CountIngressByEdgeAndDomain 检查同 edge+domain 是否已有 Ingress。
 func CountIngressByEdgeAndDomain(ctx context.Context, db *gorm.DB, edgeID uint, domain string) (int64, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	_, err := repo.FindIngressByEdgeAndDomain(ctx, db, edgeID, domain)
 	if err != nil {
 		if repo.IsNotFound(err) {
@@ -388,11 +422,17 @@ func CountIngressByEdgeAndDomain(ctx context.Context, db *gorm.DB, edgeID uint, 
 
 // ImportCreateIngress 事务创建接管来源的 Ingress 及路由(不做路由唯一性校验,
 // 因为接管来源的配置已在线上运行)。
-func ImportCreateIngress(ctx context.Context, db *gorm.DB, ig *model.Ingress, routes []model.IngressRoute) error {
+func ImportCreateIngress(ctx context.Context, db *gorm.DB, ig *domain.Ingress, routes []domain.IngressRoute) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	return repo.CreateIngressWithRoutes(ctx, db, ig, routes)
 }
 
 // ImportDeleteIngress 级联删除接管来源的 Ingress(还原场景)。
 func ImportDeleteIngress(ctx context.Context, db *gorm.DB, ingressID uint) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	return repo.DeleteIngressCascade(ctx, db, ingressID)
 }

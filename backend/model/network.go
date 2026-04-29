@@ -3,9 +3,7 @@ package model
 import (
 	"database/sql/driver"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 )
 
 // Network 描述一台 Server 上的一个可达入口（loopback / 内网 / VPN / 隧道 / 公网）。
@@ -47,39 +45,6 @@ func DefaultPriority(kind string) int {
 	default:
 		return 50
 	}
-}
-
-// Validate 校验单条 Network 的字段约束。
-//
-//	- kind 必须是已知值
-//	- address 非空
-//	- private/vpn 必填 NetworkID
-//	- tunnel 必填 ReachableFrom
-//	- public 自动用固定 NetworkID="public"
-func (n *Network) Validate() error {
-	switch n.Kind {
-	case NetworkKindLoopback, NetworkKindPrivate, NetworkKindVPN,
-		NetworkKindTunnel, NetworkKindPublic:
-	default:
-		return fmt.Errorf("network: 未知 kind %q", n.Kind)
-	}
-	if strings.TrimSpace(n.Address) == "" {
-		return errors.New("network: address 不能为空")
-	}
-	switch n.Kind {
-	case NetworkKindPrivate, NetworkKindVPN:
-		if strings.TrimSpace(n.NetworkID) == "" {
-			return fmt.Errorf("network: kind=%s 必须填 network_id", n.Kind)
-		}
-	case NetworkKindTunnel:
-		if len(n.ReachableFrom) == 0 {
-			return errors.New("network: kind=tunnel 必须填 reachable_from")
-		}
-	case NetworkKindPublic:
-		// 强制覆盖以保持唯一约定
-		n.NetworkID = "public"
-	}
-	return nil
 }
 
 // Networks 是 []Network 的 GORM 友好包装：序列化为 JSON 文本存 SQLite text 列。

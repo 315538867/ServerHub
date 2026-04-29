@@ -4,29 +4,34 @@ import (
 	"context"
 	"time"
 
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"gorm.io/gorm"
 )
 
 // rules
 
-func ListAllAlertRules(ctx context.Context, db *gorm.DB) ([]model.AlertRule, error) {
+func ListAllAlertRules(ctx context.Context, db *gorm.DB) ([]domain.AlertRule, error) {
 	var out []model.AlertRule
 	if err := db.WithContext(ctx).Order("id asc").Limit(500).Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.AlertRule, len(out))
+	for i, r := range out {
+		result[i] = model.ToDomainAlertRule(r)
+	}
+	return result, nil
 }
 
-func GetAlertRuleByID(ctx context.Context, db *gorm.DB, id uint) (model.AlertRule, error) {
+func GetAlertRuleByID(ctx context.Context, db *gorm.DB, id uint) (domain.AlertRule, error) {
 	var r model.AlertRule
 	if err := db.WithContext(ctx).First(&r, id).Error; err != nil {
-		return model.AlertRule{}, err
+		return domain.AlertRule{}, err
 	}
-	return r, nil
+	return model.ToDomainAlertRule(r), nil
 }
 
-func ListAlertRules(ctx context.Context, db *gorm.DB, serverID *uint) ([]model.AlertRule, error) {
+func ListAlertRules(ctx context.Context, db *gorm.DB, serverID *uint) ([]domain.AlertRule, error) {
 	q := db.WithContext(ctx).Order("id desc")
 	if serverID != nil {
 		q = q.Where("server_id = ?", *serverID)
@@ -35,15 +40,29 @@ func ListAlertRules(ctx context.Context, db *gorm.DB, serverID *uint) ([]model.A
 	if err := q.Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.AlertRule, len(out))
+	for i, r := range out {
+		result[i] = model.ToDomainAlertRule(r)
+	}
+	return result, nil
 }
 
-func CreateAlertRule(ctx context.Context, db *gorm.DB, r *model.AlertRule) error {
-	return db.WithContext(ctx).Create(r).Error
+func CreateAlertRule(ctx context.Context, db *gorm.DB, r *domain.AlertRule) error {
+	m := model.FromDomainAlertRule(*r)
+	if err := db.WithContext(ctx).Create(&m).Error; err != nil {
+		return err
+	}
+	*r = model.ToDomainAlertRule(m)
+	return nil
 }
 
-func SaveAlertRule(ctx context.Context, db *gorm.DB, r *model.AlertRule) error {
-	return db.WithContext(ctx).Save(r).Error
+func SaveAlertRule(ctx context.Context, db *gorm.DB, r *domain.AlertRule) error {
+	m := model.FromDomainAlertRule(*r)
+	if err := db.WithContext(ctx).Save(&m).Error; err != nil {
+		return err
+	}
+	*r = model.ToDomainAlertRule(m)
+	return nil
 }
 
 func DeleteAlertRule(ctx context.Context, db *gorm.DB, id uint) error {
@@ -52,7 +71,7 @@ func DeleteAlertRule(ctx context.Context, db *gorm.DB, id uint) error {
 
 // events
 
-func ListAlertEventsPaginated(ctx context.Context, db *gorm.DB, offset, limit int) ([]model.AlertEvent, int64, error) {
+func ListAlertEventsPaginated(ctx context.Context, db *gorm.DB, offset, limit int) ([]domain.AlertEvent, int64, error) {
 	var total int64
 	if err := db.WithContext(ctx).Model(&model.AlertEvent{}).Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -61,10 +80,14 @@ func ListAlertEventsPaginated(ctx context.Context, db *gorm.DB, offset, limit in
 	if err := db.WithContext(ctx).Order("sent_at desc").Offset(offset).Limit(limit).Find(&out).Error; err != nil {
 		return nil, 0, err
 	}
-	return out, total, nil
+	result := make([]domain.AlertEvent, len(out))
+	for i, e := range out {
+		result[i] = model.ToDomainAlertEvent(e)
+	}
+	return result, total, nil
 }
 
-func ListAlertEvents(ctx context.Context, db *gorm.DB, serverID *uint, limit int) ([]model.AlertEvent, error) {
+func ListAlertEvents(ctx context.Context, db *gorm.DB, serverID *uint, limit int) ([]domain.AlertEvent, error) {
 	q := db.WithContext(ctx).Order("id desc")
 	if serverID != nil {
 		q = q.Where("server_id = ?", *serverID)
@@ -76,11 +99,20 @@ func ListAlertEvents(ctx context.Context, db *gorm.DB, serverID *uint, limit int
 	if err := q.Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.AlertEvent, len(out))
+	for i, e := range out {
+		result[i] = model.ToDomainAlertEvent(e)
+	}
+	return result, nil
 }
 
-func CreateAlertEvent(ctx context.Context, db *gorm.DB, e *model.AlertEvent) error {
-	return db.WithContext(ctx).Create(e).Error
+func CreateAlertEvent(ctx context.Context, db *gorm.DB, e *domain.AlertEvent) error {
+	m := model.FromDomainAlertEvent(*e)
+	if err := db.WithContext(ctx).Create(&m).Error; err != nil {
+		return err
+	}
+	*e = model.ToDomainAlertEvent(m)
+	return nil
 }
 
 func PruneAlertEventsBefore(ctx context.Context, db *gorm.DB, before time.Time) error {
@@ -89,36 +121,54 @@ func PruneAlertEventsBefore(ctx context.Context, db *gorm.DB, before time.Time) 
 
 // channels
 
-func ListAllNotifyChannels(ctx context.Context, db *gorm.DB) ([]model.NotifyChannel, error) {
+func ListAllNotifyChannels(ctx context.Context, db *gorm.DB) ([]domain.NotifyChannel, error) {
 	var out []model.NotifyChannel
 	if err := db.WithContext(ctx).Order("id asc").Limit(500).Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.NotifyChannel, len(out))
+	for i, c := range out {
+		result[i] = model.ToDomainNotifyChannel(c)
+	}
+	return result, nil
 }
 
-func ListNotifyChannels(ctx context.Context, db *gorm.DB) ([]model.NotifyChannel, error) {
+func ListNotifyChannels(ctx context.Context, db *gorm.DB) ([]domain.NotifyChannel, error) {
 	var out []model.NotifyChannel
 	if err := db.WithContext(ctx).Order("id desc").Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.NotifyChannel, len(out))
+	for i, c := range out {
+		result[i] = model.ToDomainNotifyChannel(c)
+	}
+	return result, nil
 }
 
-func GetNotifyChannelByID(ctx context.Context, db *gorm.DB, id uint) (model.NotifyChannel, error) {
+func GetNotifyChannelByID(ctx context.Context, db *gorm.DB, id uint) (domain.NotifyChannel, error) {
 	var c model.NotifyChannel
 	if err := db.WithContext(ctx).First(&c, id).Error; err != nil {
-		return model.NotifyChannel{}, err
+		return domain.NotifyChannel{}, err
 	}
-	return c, nil
+	return model.ToDomainNotifyChannel(c), nil
 }
 
-func CreateNotifyChannel(ctx context.Context, db *gorm.DB, c *model.NotifyChannel) error {
-	return db.WithContext(ctx).Create(c).Error
+func CreateNotifyChannel(ctx context.Context, db *gorm.DB, c *domain.NotifyChannel) error {
+	m := model.FromDomainNotifyChannel(*c)
+	if err := db.WithContext(ctx).Create(&m).Error; err != nil {
+		return err
+	}
+	*c = model.ToDomainNotifyChannel(m)
+	return nil
 }
 
-func SaveNotifyChannel(ctx context.Context, db *gorm.DB, c *model.NotifyChannel) error {
-	return db.WithContext(ctx).Save(c).Error
+func SaveNotifyChannel(ctx context.Context, db *gorm.DB, c *domain.NotifyChannel) error {
+	m := model.FromDomainNotifyChannel(*c)
+	if err := db.WithContext(ctx).Save(&m).Error; err != nil {
+		return err
+	}
+	*c = model.ToDomainNotifyChannel(m)
+	return nil
 }
 
 func DeleteNotifyChannel(ctx context.Context, db *gorm.DB, id uint) error {

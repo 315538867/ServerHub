@@ -13,20 +13,19 @@ import (
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/usecase"
-	"gorm.io/gorm"
 )
 
 // maxWebhookBody caps Git provider payloads we'll read into memory.
 const maxWebhookBody = 1 << 20 // 1 MiB
 
-func RegisterWebhookRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterWebhookRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	r.POST("/:token", webhookHandler(db, cfg))
 }
 
 // webhookHandler authenticates the sender via either:
 //   - X-Hub-Signature-256 (GitHub): HMAC-SHA256(webhookSecret, body)
 //   - X-Gitlab-Token (GitLab): raw secret compared with constant-time
-func webhookHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func webhookHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.Param("token")
 		svc, err := repo.GetServiceByWebhookSecret(c.Request.Context(), db, token)

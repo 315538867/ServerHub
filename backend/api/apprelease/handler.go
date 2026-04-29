@@ -21,10 +21,9 @@ import (
 	"github.com/serverhub/serverhub/pkg/sse"
 	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/usecase"
-	"gorm.io/gorm"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	r.GET("/:id/release-sets", listHandler(db))
 	r.POST("/:id/release-sets", createHandler(db))
 	r.GET("/:id/release-sets/:rsid", getHandler(db))
@@ -34,7 +33,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ─────────────────────────────── list / get / create ─────────────────────────
 
-func listHandler(db *gorm.DB) gin.HandlerFunc {
+func listHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		appID, err := parseUint(c.Param("id"))
 		if err != nil {
@@ -50,7 +49,7 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func getHandler(db *gorm.DB) gin.HandlerFunc {
+func getHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		appID, err := parseUint(c.Param("id"))
 		if err != nil {
@@ -76,7 +75,7 @@ type createReq struct {
 	Note  string `json:"note"`
 }
 
-func createHandler(db *gorm.DB) gin.HandlerFunc {
+func createHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		appID, err := parseUint(c.Param("id"))
 		if err != nil {
@@ -98,7 +97,7 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 
 // ─────────────────────────────── Apply / Rollback (SSE) ──────────────────────
 
-func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func applyHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		runSSE(c, db, func(w *sse.Writer, setID uint, trigger string) error {
 			return usecase.AppReleaseApply(c.Request.Context(), db, cfg, setID, trigger,
@@ -111,7 +110,7 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func rollbackHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func rollbackHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		runSSE(c, db, func(w *sse.Writer, setID uint, trigger string) error {
 			return usecase.AppReleaseRollback(c.Request.Context(), db, cfg, setID, trigger,
@@ -126,7 +125,7 @@ func rollbackHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 // runSSE 抽取 Apply/Rollback 共用的 SSE 启动流程：解析 ID → 校验归属 → 起 SSE 头
 // → 跑业务函数 → 发 done。
-func runSSE(c *gin.Context, db *gorm.DB,
+func runSSE(c *gin.Context, db repo.DB,
 	fn func(*sse.Writer, uint, string) error,
 ) {
 	appID, err := parseUint(c.Param("id"))

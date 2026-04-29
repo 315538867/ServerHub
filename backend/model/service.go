@@ -1,6 +1,11 @@
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/serverhub/serverhub/domain"
+	"gorm.io/gorm"
+)
 
 // Service represents a managed runtime entity (one start/stop unit) on a
 // Server. Replaces the former Deploy model; on-disk table name kept as
@@ -91,6 +96,25 @@ type Service struct {
 }
 
 func (Service) TableName() string { return "services" }
+
+// BeforeUpdate 钩子：校验 SyncStatus 状态迁移合法性（INV-1）。
+// GORM BeforeUpdate 不提供旧值，此处查 DB 取旧状态后调用 domain.CanTransitionTo。
+func (s *Service) BeforeUpdate(tx *gorm.DB) error {
+	if !tx.Statement.Changed("SyncStatus") {
+		return nil
+	}
+	var old Service
+	if err := tx.Session(&gorm.Session{}).Where("id = ?", s.ID).First(&old).Error; err != nil {
+		return err
+	}
+	return domain.CanTransitionTo(old.SyncStatus, s.SyncStatus)
+}
+
+// ValidateSyncTransition 供 repo 层在更新 SyncStatus 前显式调用（避免依赖 GORM hook）。
+func (s *Service) ValidateSyncTransition(newStatus string) error {
+	return domain.CanTransitionTo(s.SyncStatus, newStatus)
+}
+
 
 // ServiceType* 是 Service.Type 的合法取值集合。任何写 Service 行的代码路径
 // (4 个 takeover、importer、4 个 discovery suggester)以及 release_apply 里

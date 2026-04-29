@@ -14,12 +14,13 @@ import (
 
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/repo"
 )
 
 // 这层只覆盖 HTTP 路由 + DTO 校验 + DB 状态变化 — apply / dry-run 需要 runner，
 // 已在 pkg/nginxops 单测覆盖，这里不重复。
 
-func setup(t *testing.T) (*gin.Engine, *gorm.DB) {
+func setup(t *testing.T) (*gin.Engine, repo.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
@@ -60,7 +61,7 @@ func do(t *testing.T, r *gin.Engine, method, path string, body any) (*httptest.R
 	return w, out
 }
 
-func mkEdge(t *testing.T, db *gorm.DB) uint {
+func mkEdge(t *testing.T, db repo.DB) uint {
 	t.Helper()
 	s := model.Server{Name: "edge"}
 	if err := db.Create(&s).Error; err != nil {
@@ -543,7 +544,7 @@ func TestParseUintParam_BadID(t *testing.T) {
 // ── TLS / HTTPS（P2-D4）─────────────────────────────────────────────────────
 
 // mkCert 在指定 server 下建一张 SSLCert,返回 cert ID。
-func mkCert(t *testing.T, db *gorm.DB, serverID uint, domain, certPath, keyPath string) uint {
+func mkCert(t *testing.T, db repo.DB, serverID uint, domain, certPath, keyPath string) uint {
 	t.Helper()
 	c := model.SSLCert{
 		ServerID: serverID, Domain: domain,

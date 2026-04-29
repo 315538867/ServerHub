@@ -12,7 +12,7 @@ import (
 
 	"github.com/pkg/sftp"
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/sftppool"
 )
@@ -37,7 +37,7 @@ type Client interface {
 
 // For returns an FS client for the given server. Reuses pooled SFTP for SSH
 // servers; uses os for local. Caller need not Close pooled clients (no-op).
-func For(s *model.Server, cfg *config.Config) (Client, error) {
+func For(s *domain.Server, cfg *config.Config) (Client, error) {
 	if s == nil {
 		return nil, errors.New("nil server")
 	}

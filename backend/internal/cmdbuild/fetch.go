@@ -5,36 +5,36 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 )
 
 // BuildFetchPart 按 provider 生成"把制品弄到 workdir"的 shell 段。
 // 行为与 v1 pkg/deployer.buildFetchPart 字节级等价。
-func BuildFetchPart(art model.Artifact) (string, error) {
+func BuildFetchPart(art domain.Artifact) (string, error) {
 	switch art.Provider {
-	case model.ArtifactProviderDocker:
+	case domain.ArtifactProviderDocker:
 		if art.Ref == "" {
 			return "", errors.New("docker artifact ref empty")
 		}
 		return fmt.Sprintf("docker pull %s 2>&1", ShellQuote(art.Ref)), nil
-	case model.ArtifactProviderHTTP:
+	case domain.ArtifactProviderHTTP:
 		if art.Ref == "" {
 			return "", errors.New("http artifact ref empty")
 		}
 		dst := "artifact.bin"
 		return fmt.Sprintf("curl -fsSL -o %s %s", ShellQuote(dst), ShellQuote(art.Ref)), nil
-	case model.ArtifactProviderScript:
+	case domain.ArtifactProviderScript:
 		if art.PullScript == "" {
 			return "", errors.New("script artifact pull_script empty")
 		}
 		return art.PullScript, nil
-	case model.ArtifactProviderUpload:
+	case domain.ArtifactProviderUpload:
 		if art.Ref == "" {
 			return "", errors.New("upload artifact ref empty")
 		}
 		return fmt.Sprintf("test -f %s || (echo 'upload artifact missing on target; SFTP push not implemented in M1'; exit 1)",
 			ShellQuote(art.Ref)), nil
-	case model.ArtifactProviderGit:
+	case domain.ArtifactProviderGit:
 		if art.Ref == "" {
 			return "", errors.New("git artifact ref empty (expect 'repo_url' or 'repo_url@ref')")
 		}

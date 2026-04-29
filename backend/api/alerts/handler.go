@@ -8,16 +8,15 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/safehttp"
 	"github.com/serverhub/serverhub/pkg/scheduler"
 	"github.com/serverhub/serverhub/repo"
-	"gorm.io/gorm"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	// Rules
 	r.GET("/rules", listRules(db))
 	r.POST("/rules", createRule(db))
@@ -38,7 +37,7 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ── Rules ─────────────────────────────────────────────────────────────────────
 
-func listRules(db *gorm.DB) gin.HandlerFunc {
+func listRules(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		rules, err := repo.ListAllAlertRules(c.Request.Context(), db)
 		if err != nil {
@@ -49,7 +48,7 @@ func listRules(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func createRule(db *gorm.DB) gin.HandlerFunc {
+func createRule(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
 			ServerID  uint    `json:"server_id"`
@@ -68,7 +67,7 @@ func createRule(db *gorm.DB) gin.HandlerFunc {
 		if body.Duration < 1 {
 			body.Duration = 1
 		}
-		rule := model.AlertRule{
+		rule := domain.AlertRule{
 			ServerID: body.ServerID, Metric: body.Metric, Operator: body.Operator,
 			Threshold: body.Threshold, Duration: body.Duration, Enabled: true,
 		}
@@ -80,7 +79,7 @@ func createRule(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func updateRule(db *gorm.DB) gin.HandlerFunc {
+func updateRule(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
 		rule, err := repo.GetAlertRuleByID(c.Request.Context(), db, uint(id))
@@ -118,7 +117,7 @@ func updateRule(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func deleteRule(db *gorm.DB) gin.HandlerFunc {
+func deleteRule(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
 		_ = repo.DeleteAlertRule(c.Request.Context(), db, uint(id))
@@ -128,7 +127,7 @@ func deleteRule(db *gorm.DB) gin.HandlerFunc {
 
 // ── Events ────────────────────────────────────────────────────────────────────
 
-func listEvents(db *gorm.DB) gin.HandlerFunc {
+func listEvents(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		size, _ := strconv.Atoi(c.DefaultQuery("size", "50"))
@@ -147,7 +146,7 @@ func listEvents(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func clearEvents(db *gorm.DB) gin.HandlerFunc {
+func clearEvents(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_ = repo.PruneAlertEventsBefore(c.Request.Context(), db, time.Now().AddDate(0, 0, -30))
 		resp.OK(c, nil)
@@ -165,7 +164,7 @@ type channelResp struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func listChannels(db *gorm.DB) gin.HandlerFunc {
+func listChannels(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		channels, err := repo.ListAllNotifyChannels(c.Request.Context(), db)
 		if err != nil {
@@ -181,7 +180,7 @@ func listChannels(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func createChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func createChannel(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
 			Name     string `json:"name"     binding:"required"`
@@ -202,7 +201,7 @@ func createChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, "加密失败")
 			return
 		}
-		ch := model.NotifyChannel{Name: body.Name, Type: body.Type, URL: encURL,
+		ch := domain.NotifyChannel{Name: body.Name, Type: body.Type, URL: encURL,
 			Template: body.Template, Enabled: true}
 		if err := repo.CreateNotifyChannel(c.Request.Context(), db, &ch); err != nil {
 			resp.InternalError(c, err.Error())
@@ -213,7 +212,7 @@ func createChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func updateChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func updateChannel(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
 		ch, err := repo.GetNotifyChannelByID(c.Request.Context(), db, uint(id))
@@ -259,7 +258,7 @@ func updateChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func deleteChannel(db *gorm.DB) gin.HandlerFunc {
+func deleteChannel(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
 		_ = repo.DeleteNotifyChannel(c.Request.Context(), db, uint(id))
@@ -267,7 +266,7 @@ func deleteChannel(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func testChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func testChannel(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
 		ch, err := repo.GetNotifyChannelByID(c.Request.Context(), db, uint(id))
@@ -280,14 +279,14 @@ func testChannel(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.InternalError(c, "解密失败")
 			return
 		}
-		testRule := model.AlertRule{Metric: "cpu", Operator: "gt", Threshold: 80}
-		testSrv := model.Server{Name: "测试服务器"}
+		testRule := domain.AlertRule{Metric: "cpu", Operator: "gt", Threshold: 80}
+		testSrv := domain.Server{Name: "测试服务器"}
 		go sendTestWebhook(ch.Type, rawURL, ch.Template, testSrv, testRule)
 		resp.OK(c, gin.H{"message": "测试通知已发送"})
 	}
 }
 
-func sendTestWebhook(chType, rawURL, template string, srv model.Server, rule model.AlertRule) {
+func sendTestWebhook(chType, rawURL, template string, srv domain.Server, rule domain.AlertRule) {
 	msg := "[测试] ServerHub 告警通知测试消息"
 	if template != "" {
 		msg = strings.NewReplacer(

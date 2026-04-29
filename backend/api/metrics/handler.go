@@ -5,13 +5,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/derive"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/repo"
-	"gorm.io/gorm"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB) {
 	r.GET("/overview", overviewHandler(db))
 }
 
@@ -23,10 +22,10 @@ type serverOverview struct {
 	Port        int           `json:"port"`
 	Status      string        `json:"status"`
 	LastCheckAt *time.Time    `json:"last_check_at"`
-	Metric      *model.Metric `json:"metric"`
+	Metric      *domain.Metric `json:"metric"`
 }
 
-func overviewHandler(db *gorm.DB) gin.HandlerFunc {
+func overviewHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ctx := c.Request.Context()
 		servers, err := repo.ListAllServers(ctx, db)
@@ -40,7 +39,7 @@ func overviewHandler(db *gorm.DB) gin.HandlerFunc {
 			resp.InternalError(c, err.Error())
 			return
 		}
-		byServer := make(map[uint]*model.Metric, len(latest))
+		byServer := make(map[uint]*domain.Metric, len(latest))
 		for i := range latest {
 			byServer[latest[i].ServerID] = &latest[i]
 		}

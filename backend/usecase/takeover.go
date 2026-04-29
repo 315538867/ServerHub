@@ -11,15 +11,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/core/source"
 	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/infra"
 	"github.com/serverhub/serverhub/internal/stepkit"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/safeshell"
+	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
 
@@ -54,7 +55,10 @@ type TakeoverResult struct {
 // 远端步骤失败 → RolledBack=true,DB 不动。
 // DB 步骤失败 → 远端文件已就位但落库失败,Output 含警告,Error 提示运维手动重试 import。
 func RunTakeover(ctx context.Context, db *gorm.DB, cfg *config.Config,
-	srv *model.Server, r infra.Runner, req TakeoverRequest) TakeoverResult {
+	srv *domain.Server, r infra.Runner, req TakeoverRequest) TakeoverResult {
+
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
 
 	res := TakeoverResult{}
 	log := &stepkit.Log{}
@@ -84,11 +88,8 @@ func RunTakeover(ctx context.Context, db *gorm.DB, cfg *config.Config,
 		return res
 	}
 
-	var existing model.Service
-	q := db.Where("server_id = ? AND source_kind = ? AND source_id = ?",
-		srv.ID, req.Cand.Kind, req.Cand.SourceID).First(&existing)
-	if q.Error == nil {
-		res.Error = fmt.Sprintf("该服务已存在对应 Service(id=%d, name=%s)", existing.ID, existing.Name)
+	if _, err := repo.GetServiceBySource(ctx, db, srv.ID, req.Cand.Kind, req.Cand.SourceID); err == nil {
+		res.Error = fmt.Sprintf("该服务已存在对应 Service(kind=%s, source_id=%s)", req.Cand.Kind, req.Cand.SourceID)
 		res.Output = log.String()
 		return res
 	}
@@ -112,12 +113,12 @@ func RunTakeover(ctx context.Context, db *gorm.DB, cfg *config.Config,
 	// === 远端 OK,落库 ===
 	svcType := req.Cand.Suggested.Type
 	if svcType == "" {
-		svcType = model.ServiceTypeNative
+		svcType = string(domain.ServiceTypeNative)
 	}
-	svc := model.Service{
+	svc := domain.Service{
 		Name:              req.TargetName,
 		ServerID:          srv.ID,
-		Type:              svcType,
+		Type:              domain.ServiceType(svcType),
 		WorkDir:           target,
 		ExposedPort:       firstPortInt(req.Cand.Suggested.Ports),
 		SourceKind:        req.Cand.Kind,
@@ -125,29 +126,29 @@ func RunTakeover(ctx context.Context, db *gorm.DB, cfg *config.Config,
 		SourceFingerprint: sc.Fingerprint(req.Cand),
 		SyncStatus:        "synced",
 	}
-	appID, err := attachToApplication(db, &svc, req)
+	appID, err := attachToApplication(ctx, db, &svc, req)
 	if err != nil {
 		res.Error = "application 绑定失败: " + err.Error()
 		log.Printf("⚠ %s\n", res.Error)
 		res.Output = log.String()
 		return res
 	}
-	if err := db.Create(&svc).Error; err != nil {
+	if err := repo.CreateService(ctx, db, &svc); err != nil {
 		res.Error = "DB 写入失败: " + err.Error()
 		log.Printf("⚠ Service 写入失败(主机已迁移完成):%v\n", err)
 		res.Output = log.String()
 		return res
 	}
 	if appID > 0 {
-		finalizeApplicationLink(db, appID, svc.ID)
+		_ = repo.UpdatePrimaryService(context.Background(), db, appID, &svc.ID)
 	}
 	if envJSON, ok := encodeImportedEnv(req.Cand); ok && cfg.Security.AESKey != "" {
 		if enc, encErr := crypto.Encrypt(envJSON, cfg.Security.AESKey); encErr == nil {
-			_ = db.Create(&model.EnvVarSet{
+			_ = repo.CreateEnvSet(context.Background(), db, &domain.EnvVarSet{
 				ServiceID: svc.ID,
 				Label:     "imported",
 				Content:   enc,
-			}).Error
+			})
 		} else {
 			log.Printf("⚠ env-set 加密失败: %v\n", encErr)
 		}
@@ -167,7 +168,7 @@ func RunTakeover(ctx context.Context, db *gorm.DB, cfg *config.Config,
 
 // attachToApplication 在 Service 落库前按 AppMode 决定归属。返回的 appID > 0
 // 时,Service 写入后 caller 应调 finalizeApplicationLink。
-func attachToApplication(db *gorm.DB, svc *model.Service, req TakeoverRequest) (uint, error) {
+func attachToApplication(ctx context.Context, db *gorm.DB, svc *domain.Service, req TakeoverRequest) (uint, error) {
 	mode := req.AppMode
 	if mode == "" {
 		mode = "floating"
@@ -180,8 +181,8 @@ func attachToApplication(db *gorm.DB, svc *model.Service, req TakeoverRequest) (
 		if req.AppID == nil || *req.AppID == 0 {
 			return 0, errors.New("app_mode=existing 需要提供 app_id")
 		}
-		var app model.Application
-		if err := db.First(&app, *req.AppID).Error; err != nil {
+		app, err := repo.GetApplicationByID(ctx, db, *req.AppID)
+		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return 0, fmt.Errorf("app_id=%d 不存在", *req.AppID)
 			}
@@ -202,18 +203,12 @@ func attachToApplication(db *gorm.DB, svc *model.Service, req TakeoverRequest) (
 		if err := safeshell.ValidName(name, 64); err != nil {
 			return 0, fmt.Errorf("app_name 非法: %w", err)
 		}
-		var existing model.Application
-		err := db.Where("name = ?", name).First(&existing).Error
-		if err == nil {
-			return 0, fmt.Errorf("应用 %q 已存在(server_id=%d), 请用 existing 模式绑定",
-				name, existing.ServerID)
+		if _, err := repo.GetApplicationByName(ctx, db, name); err == nil {
+			return 0, fmt.Errorf("应用 %q 已存在, 请用 existing 模式绑定", name)
 		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
+		app := domain.Application{Name: name, ServerID: svc.ServerID}
+		if err := repo.CreateApplication(ctx, db, &app); err != nil {
 			return 0, err
-		}
-		app := model.Application{Name: name, ServerID: svc.ServerID}
-		if e := db.Create(&app).Error; e != nil {
-			return 0, e
 		}
 		appID := app.ID
 		svc.ApplicationID = &appID
@@ -221,12 +216,6 @@ func attachToApplication(db *gorm.DB, svc *model.Service, req TakeoverRequest) (
 	default:
 		return 0, fmt.Errorf("未知 app_mode=%q (可选 floating|existing|new)", mode)
 	}
-}
-
-func finalizeApplicationLink(db *gorm.DB, appID, serviceID uint) {
-	db.Model(&model.Application{}).
-		Where("id = ? AND primary_service_id IS NULL", appID).
-		Update("primary_service_id", serviceID)
 }
 
 func firstPortInt(ports []string) int {

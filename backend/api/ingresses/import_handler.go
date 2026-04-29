@@ -7,12 +7,11 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/core/ingress"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/infra"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
@@ -22,7 +21,7 @@ import (
 
 // importRunnerFactory 让单测覆盖 runner 获取——生产路径直接用 runner.For，
 // 测试通过 SetImportRunnerFactory 注入桩来摸 fake config 内容。
-type importRunnerFactory func(*model.Server, *config.Config) (runner.Runner, error)
+type importRunnerFactory func(*domain.Server, *config.Config) (runner.Runner, error)
 
 var defaultImportRunnerFactory importRunnerFactory = runner.For
 
@@ -43,7 +42,7 @@ func SetImportRunnerFactory(f importRunnerFactory) importRunnerFactory {
 // 解析结果（ServerName / Listen / 一组 IngressRoute 候选）回吐给前端，由前端
 // 走"新建 Ingress"模态完成最终落库——也就是说 import 端点本身不写 DB，落库
 // 仍走现有 POST /ingresses（保证一切校验/事务路径与人工新建完全一致）。
-func RegisterImportRoutes(group *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterImportRoutes(group *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	group.GET("edges/:server_id/import-candidates", importCandidatesHandler(db, cfg))
 	// Phase Nginx-P3D: 确认导入并归档原文件 / 还原归档
 	group.POST("edges/:server_id/import-confirm", importConfirmHandler(db, cfg))
@@ -57,7 +56,7 @@ type ImportCandidatesResp struct {
 	Errors     []string                   `json:"errors,omitempty"`
 }
 
-func importCandidatesHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func importCandidatesHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		edgeID, ok := parseUintParam(c, "server_id")
 		if !ok {
@@ -148,7 +147,7 @@ func archiveTarget(originalConfigPath string, now time.Time) string {
 	return filepath.Join(dir, filepath.Base(originalConfigPath))
 }
 
-func importConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func importConfirmHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		edgeID, ok := parseUintParam(c, "server_id")
 		if !ok {
@@ -219,7 +218,7 @@ func importConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 		// 落库失败时把文件 mv 回去——避免半状态(文件归档了但 DB 没有,用户只
 		// 能去 ssh 手动还原)。回滚 mv 失败时只能记日志,继续把 5xx 报给前端。
-		ig := model.Ingress{
+		ig := domain.Ingress{
 			EdgeServerID:       edgeID,
 			MatchKind:          "domain",
 			Domain:             req.ServerName,
@@ -228,13 +227,13 @@ func importConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			ArchivePath:        archPath,
 			OriginalConfigPath: req.ConfigFile,
 		}
-		routes := make([]model.IngressRoute, 0, len(req.Routes))
+		routes := make([]domain.IngressRoute, 0, len(req.Routes))
 		for idx, r := range req.Routes {
-			routes = append(routes, model.IngressRoute{
+			routes = append(routes, domain.IngressRoute{
 				Sort:      idx * 10,
 				Path:      r.Path,
 				Protocol:  "http",
-				Upstream:  model.IngressUpstream{Type: "raw", RawURL: r.ProxyPass},
+				Upstream:  domain.IngressUpstream{Type: "raw", RawURL: r.ProxyPass},
 				WebSocket: r.WebSocket,
 				Extra:     r.Extra,
 			})
@@ -260,7 +259,7 @@ func importConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 // 注意:**不**自动调用 nginxops.Apply——还原后 .serverhub.d/<edge>/sites/
 // 下本 Ingress 渲染产物会在下次 apply 时由 reconciler 检测到本地"应有"列表
 // 缺失自动删除。让用户显式点应用配置,与现有"删除 Ingress"语义一致。
-func restoreHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func restoreHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := parseUintParam(c, "id")
 		if !ok {

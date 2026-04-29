@@ -65,8 +65,53 @@ jobs:
               echo "  ok"
             fi
           fi
-      - name: future rules
-        run: echo "api-no-gorm / usecase-no-gin / handler-no-adapter pending R6"
+      - name: api-no-gorm
+        run: |
+          echo "[arch-lint] rule: api-no-gorm"
+          HITS=$(grep -rn '"gorm\.io/gorm"' \
+            backend/api/ 2>/dev/null \
+            | grep -v '_test.go:' || true)
+          if [ -n "$HITS" ]; then
+            echo "ERROR: api/ handler imports gorm.io/gorm:"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "  ok (0 gorm imports in api/ handlers)"
+      - name: usecase-no-gin
+        run: |
+          echo "[arch-lint] rule: usecase-no-gin"
+          HITS=$(grep -rn '"github\.com/gin-gonic/gin"' \
+            backend/usecase/ 2>/dev/null || true)
+          if [ -n "$HITS" ]; then
+            echo "ERROR: usecase/ imports gin:"
+            echo "$HITS"
+            exit 1
+          fi
+          echo "  ok (0 gin imports in usecase/)"
+      - name: handler-no-adapter (skip 模式)
+        run: |
+          echo "[arch-lint] rule: handler-no-adapter (skip: nginx/profile_handler 仍引用 adapter)"
+          HITS=$(grep -rn '"github\.com/serverhub/serverhub/adapters/' \
+            backend/api/ 2>/dev/null \
+            | grep -v '_test.go:' || true)
+          if [ -n "$HITS" ]; then
+            echo "WARN: handler imports adapter:"
+            echo "$HITS"
+            echo "  (skip 模式不阻断,R7 收紧)"
+          else
+            echo "  ok"
+          fi
+
+  handler-audit:
+    name: handler-audit (R6)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+      - name: run handler-audit
+        run: go -C backend run ./tools/handler-audit
 
   bench-gate:
     name: 性能退化(R0 占位)

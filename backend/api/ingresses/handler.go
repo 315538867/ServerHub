@@ -11,11 +11,10 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/middleware"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/usecase"
@@ -25,7 +24,7 @@ import (
 //
 // 资源型路由（CRUD + 路由子资源）使用 :id；apply / dry-run / audit / services
 // 是按 edge_server_id / server_id 维度的操作端点，挂在 /edges 与 /services 子组。
-func RegisterRoutes(group *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(group *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	group.GET("", listHandler(db))
 	group.POST("", createHandler(db))
 	group.GET(":id", getHandler(db))
@@ -50,8 +49,8 @@ func RegisterRoutes(group *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 // ── DTO ───────────────────────────────────────────────────────────────────
 
 type ingressDTO struct {
-	model.Ingress
-	Routes []model.IngressRoute `json:"routes,omitempty"`
+	domain.Ingress
+	Routes []domain.IngressRoute `json:"routes,omitempty"`
 }
 
 type createReq struct {
@@ -83,7 +82,7 @@ type routeReq struct {
 	Sort       int                   `json:"sort"`
 	Path       string                `json:"path" binding:"required"`
 	Protocol   string                `json:"protocol"`
-	Upstream   model.IngressUpstream `json:"upstream"`
+	Upstream   domain.IngressUpstream `json:"upstream"`
 	WebSocket  bool                  `json:"websocket"`
 	Extra      string                `json:"extra"`
 	ListenPort *int                  `json:"listen_port,omitempty"`
@@ -111,7 +110,7 @@ func toRouteParams(r routeReq) usecase.RouteParams {
 
 // ── handlers ──────────────────────────────────────────────────────────────
 
-func listHandler(db *gorm.DB) gin.HandlerFunc {
+func listHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var edgeID *uint
 		if v := c.Query("edge_server_id"); v != "" {
@@ -129,13 +128,13 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		if rows == nil {
-			rows = []model.Ingress{}
+			rows = []domain.Ingress{}
 		}
 		resp.OK(c, rows)
 	}
 }
 
-func getHandler(db *gorm.DB) gin.HandlerFunc {
+func getHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := parseUintParam(c, "id")
 		if !ok {
@@ -150,7 +149,7 @@ func getHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func createHandler(db *gorm.DB) gin.HandlerFunc {
+func createHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req createReq
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -178,7 +177,7 @@ func createHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func updateHandler(db *gorm.DB) gin.HandlerFunc {
+func updateHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := parseUintParam(c, "id")
 		if !ok {
@@ -247,7 +246,7 @@ func updateHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func deleteHandler(db *gorm.DB) gin.HandlerFunc {
+func deleteHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, ok := parseUintParam(c, "id")
 		if !ok {
@@ -261,7 +260,7 @@ func deleteHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
+func addRouteHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		igID, ok := parseUintParam(c, "id")
 		if !ok {
@@ -285,7 +284,7 @@ func addRouteHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func updateRouteHandler(db *gorm.DB) gin.HandlerFunc {
+func updateRouteHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		igID, ok := parseUintParam(c, "id")
 		if !ok {
@@ -313,7 +312,7 @@ func updateRouteHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func deleteRouteHandler(db *gorm.DB) gin.HandlerFunc {
+func deleteRouteHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		igID, ok := parseUintParam(c, "id")
 		if !ok {
@@ -342,7 +341,7 @@ func currentUserID(c *gin.Context) *uint {
 	return nil
 }
 
-func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func applyHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		edgeID, ok := parseUintParam(c, "server_id")
 		if !ok {
@@ -363,7 +362,7 @@ func applyHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func dryRunHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func dryRunHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		edgeID, ok := parseUintParam(c, "server_id")
 		if !ok {
@@ -381,7 +380,7 @@ func dryRunHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func auditHandler(db *gorm.DB) gin.HandlerFunc {
+func auditHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		edgeID, ok := parseUintParam(c, "server_id")
 		if !ok {
@@ -410,7 +409,7 @@ type serviceOpt struct {
 	ExposedPort int    `json:"exposed_port"`
 }
 
-func servicesHandler(db *gorm.DB) gin.HandlerFunc {
+func servicesHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		serverID, ok := parseUintParam(c, "server_id")
 		if !ok {

@@ -1,27 +1,38 @@
 package domain
 
+import "time"
+
 // ServiceType 标识服务的运行时种类,与 RuntimeAdapter.Kind() 一一对应。
 type ServiceType string
 
 const (
-	ServiceTypeDocker  ServiceType = "docker"
-	ServiceTypeCompose ServiceType = "compose"
-	ServiceTypeNative  ServiceType = "native"
-	ServiceTypeStatic  ServiceType = "static"
+	ServiceTypeDocker        ServiceType = "docker"
+	ServiceTypeDockerCompose ServiceType = "docker-compose"
+	ServiceTypeCompose       ServiceType = "compose" // adapter Kind 值
+	ServiceTypeNative        ServiceType = "native"
+	ServiceTypeStatic        ServiceType = "static"
 )
 
-// Service 是 R1 的最小占位,R7 充实。
+// Service 是领域实体。
 //
-// 字段仅满足 core/runtime 与 core/source 端口签名;
-// 业务代码请勿直接使用本结构,改走 model→domain 转换层(R7)。
+// Status 摘要字段已在 R3 下线:运行状态由 deploy_runs 最近一条派生。
 type Service struct {
-	ID       uint
-	Name     string
-	Type     ServiceType
-	ServerID uint
-
-	// R2 扩(为 adapter BuildStartCmd / PlanStart 纯函数化所需):
-	WorkDir            string // 远端工作目录(空则退化 /tmp/serverhub-svc-<id>)
-	AutoRollbackOnFail bool   // 部署失败是否自动回滚到上一条 active Release
-	CurrentReleaseID   *uint  // 当前 active Release(回滚选目标用)
+	ID                 uint       `json:"id"`
+	Name               string     `json:"name"`
+	ServerID           uint       `json:"server_id"`
+	Type               ServiceType `json:"type"`
+	ApplicationID      *uint      `json:"application_id"`
+	WorkDir            string     `json:"work_dir"`
+	ExposedPort        int        `json:"exposed_port"`
+	WebhookSecret      string     `json:"-"`
+	CurrentReleaseID   *uint      `json:"current_release_id"`
+	AutoRollbackOnFail bool       `json:"auto_rollback_on_fail"`
+	AutoSync           bool       `json:"auto_sync"`
+	SyncInterval       int        `json:"sync_interval"`
+	SyncStatus         string     `json:"sync_status"`
+	SourceKind         string     `json:"source_kind"`
+	SourceID           string     `json:"source_id"`
+	SourceFingerprint  string     `json:"source_fingerprint"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }

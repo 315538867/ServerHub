@@ -33,11 +33,14 @@ func newTestDB(t *testing.T) *gorm.DB {
 }
 
 func TestMapServiceTypeToKind(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{model.ServiceTypeDocker, string(domain.ServiceTypeDocker)},
-		{model.ServiceTypeDockerCompose, string(domain.ServiceTypeCompose)},
-		{model.ServiceTypeNative, string(domain.ServiceTypeNative)},
-		{model.ServiceTypeStatic, string(domain.ServiceTypeStatic)},
+	cases := []struct {
+		in   domain.ServiceType
+		want string
+	}{
+		{domain.ServiceTypeDocker, string(domain.ServiceTypeDocker)},
+		{domain.ServiceTypeDockerCompose, string(domain.ServiceTypeCompose)},
+		{domain.ServiceTypeNative, string(domain.ServiceTypeNative)},
+		{domain.ServiceTypeStatic, string(domain.ServiceTypeStatic)},
 		{"unknown", ""},
 	}
 	for _, c := range cases {
@@ -47,20 +50,32 @@ func TestMapServiceTypeToKind(t *testing.T) {
 	}
 }
 
+// domainToModel 系列辅助:测试里生成 domain 对象后,用 model.FromDomain* 落库。
+func svcToModel(s domain.Service) model.Service    { return model.FromDomainService(s) }
+func relToModel(r domain.Release) model.Release    { return model.FromDomainRelease(r) }
+func artToModel(a domain.Artifact) model.Artifact  { return model.FromDomainArtifact(a) }
+
 // TestBuildReleaseCmd_DockerHTTP 端到端验证 buildReleaseCmd 与 v1 一致:
 // docker 类型 + http artifact + 无 env / config:
-//   bash -c '<env>set -e; mkdir; cd; <fetch>; <start>'
+//
+//	bash -c '<env>set -e; mkdir; cd; <fetch>; <start>'
 func TestBuildReleaseCmd_DockerHTTP(t *testing.T) {
 	db := newTestDB(t)
-	art := model.Artifact{ServiceID: 1, Provider: model.ArtifactProviderHTTP, Ref: "https://example.com/x.tar"}
-	if err := db.Create(&art).Error; err != nil {
+	art := domain.Artifact{ServiceID: 1, Provider: domain.ArtifactProviderHTTP, Ref: "https://example.com/x.tar"}
+	am := artToModel(art)
+	if err := db.Create(&am).Error; err != nil {
 		t.Fatal(err)
 	}
-	rel := model.Release{ServiceID: 1, ArtifactID: art.ID, StartSpec: `{"image":"nginx:1.27"}`}
-	if err := db.Create(&rel).Error; err != nil {
+	art.ID = am.ID
+
+	rel := domain.Release{ServiceID: 1, ArtifactID: art.ID, StartSpec: `{"image":"nginx:1.27"}`}
+	rm := relToModel(rel)
+	if err := db.Create(&rm).Error; err != nil {
 		t.Fatal(err)
 	}
-	svc := model.Service{ID: 1, Type: model.ServiceTypeDocker, WorkDir: "/opt/x"}
+	rel.ID = rm.ID
+
+	svc := domain.Service{ID: 1, Type: domain.ServiceTypeDocker, WorkDir: "/opt/x"}
 
 	cmd, err := buildReleaseCmd(svc, rel, art, db, "")
 	if err != nil {
@@ -75,11 +90,17 @@ func TestBuildReleaseCmd_DockerHTTP(t *testing.T) {
 // TestBuildReleaseCmd_StaticDefault: static + 缺省 WorkDir 退化 /tmp/serverhub-svc-<id>
 func TestBuildReleaseCmd_StaticDefault(t *testing.T) {
 	db := newTestDB(t)
-	art := model.Artifact{ServiceID: 5, Provider: model.ArtifactProviderHTTP, Ref: "https://example.com/site.zip"}
-	db.Create(&art)
-	rel := model.Release{ServiceID: 5, ArtifactID: art.ID}
-	db.Create(&rel)
-	svc := model.Service{ID: 5, Type: model.ServiceTypeStatic}
+	art := domain.Artifact{ServiceID: 5, Provider: domain.ArtifactProviderHTTP, Ref: "https://example.com/site.zip"}
+	am := artToModel(art)
+	db.Create(&am)
+	art.ID = am.ID
+
+	rel := domain.Release{ServiceID: 5, ArtifactID: art.ID}
+	rm := relToModel(rel)
+	db.Create(&rm)
+	rel.ID = rm.ID
+
+	svc := domain.Service{ID: 5, Type: domain.ServiceTypeStatic}
 
 	cmd, err := buildReleaseCmd(svc, rel, art, db, "")
 	if err != nil {
@@ -96,11 +117,17 @@ func TestBuildReleaseCmd_StaticDefault(t *testing.T) {
 // TestBuildReleaseCmd_Compose: docker-compose 类型走 compose adapter
 func TestBuildReleaseCmd_Compose(t *testing.T) {
 	db := newTestDB(t)
-	art := model.Artifact{ServiceID: 2, Provider: model.ArtifactProviderHTTP, Ref: "https://example.com/x.zip"}
-	db.Create(&art)
-	rel := model.Release{ServiceID: 2, ArtifactID: art.ID, StartSpec: `{"file_name":"prod.yml"}`}
-	db.Create(&rel)
-	svc := model.Service{ID: 2, Type: model.ServiceTypeDockerCompose, WorkDir: "/srv/app"}
+	art := domain.Artifact{ServiceID: 2, Provider: domain.ArtifactProviderHTTP, Ref: "https://example.com/x.zip"}
+	am := artToModel(art)
+	db.Create(&am)
+	art.ID = am.ID
+
+	rel := domain.Release{ServiceID: 2, ArtifactID: art.ID, StartSpec: `{"file_name":"prod.yml"}`}
+	rm := relToModel(rel)
+	db.Create(&rm)
+	rel.ID = rm.ID
+
+	svc := domain.Service{ID: 2, Type: domain.ServiceTypeDockerCompose, WorkDir: "/srv/app"}
 
 	cmd, err := buildReleaseCmd(svc, rel, art, db, "")
 	if err != nil {
@@ -115,11 +142,17 @@ func TestBuildReleaseCmd_Compose(t *testing.T) {
 // 但 buildReleaseCmd 仍可装(provider 校验在调用方)
 func TestBuildReleaseCmd_ImportedFailsAtFetch(t *testing.T) {
 	db := newTestDB(t)
-	art := model.Artifact{ServiceID: 3, Provider: model.ArtifactProviderImported, Ref: "legacy"}
-	db.Create(&art)
-	rel := model.Release{ServiceID: 3, ArtifactID: art.ID}
-	db.Create(&rel)
-	svc := model.Service{ID: 3, Type: model.ServiceTypeDocker}
+	art := domain.Artifact{ServiceID: 3, Provider: domain.ArtifactProviderImported, Ref: "legacy"}
+	am := artToModel(art)
+	db.Create(&am)
+	art.ID = am.ID
+
+	rel := domain.Release{ServiceID: 3, ArtifactID: art.ID}
+	rm := relToModel(rel)
+	db.Create(&rm)
+	rel.ID = rm.ID
+
+	svc := domain.Service{ID: 3, Type: domain.ServiceTypeDocker}
 
 	if _, err := buildReleaseCmd(svc, rel, art, db, ""); err == nil {
 		t.Fatal("expected error for imported provider at fetch")

@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"gorm.io/gorm"
 )
@@ -10,7 +11,7 @@ import (
 // audit_log
 
 // ListAuditLogsFiltered 按可选条件分页列出审计日志。
-func ListAuditLogsFiltered(ctx context.Context, db *gorm.DB, username, path, status string, offset, limit int) ([]model.AuditLog, int64, error) {
+func ListAuditLogsFiltered(ctx context.Context, db *gorm.DB, username, path, status string, offset, limit int) ([]domain.AuditLog, int64, error) {
 	q := db.WithContext(ctx).Model(&model.AuditLog{})
 	if username != "" {
 		q = q.Where("username LIKE ?", username+"%")
@@ -29,10 +30,14 @@ func ListAuditLogsFiltered(ctx context.Context, db *gorm.DB, username, path, sta
 	if err := q.Order("created_at desc").Offset(offset).Limit(limit).Find(&out).Error; err != nil {
 		return nil, 0, err
 	}
-	return out, total, nil
+	result := make([]domain.AuditLog, len(out))
+	for i, l := range out {
+		result[i] = model.ToDomainAuditLog(l)
+	}
+	return result, total, nil
 }
 
-func ListAuditLogs(ctx context.Context, db *gorm.DB, offset, limit int) ([]model.AuditLog, int64, error) {
+func ListAuditLogs(ctx context.Context, db *gorm.DB, offset, limit int) ([]domain.AuditLog, int64, error) {
 	var out []model.AuditLog
 	var total int64
 	q := db.WithContext(ctx).Model(&model.AuditLog{})
@@ -46,16 +51,25 @@ func ListAuditLogs(ctx context.Context, db *gorm.DB, offset, limit int) ([]model
 	if err := q2.Find(&out).Error; err != nil {
 		return nil, 0, err
 	}
-	return out, total, nil
+	result := make([]domain.AuditLog, len(out))
+	for i, l := range out {
+		result[i] = model.ToDomainAuditLog(l)
+	}
+	return result, total, nil
 }
 
-func CreateAuditLog(ctx context.Context, db *gorm.DB, l *model.AuditLog) error {
-	return db.WithContext(ctx).Create(l).Error
+func CreateAuditLog(ctx context.Context, db *gorm.DB, l *domain.AuditLog) error {
+	m := model.FromDomainAuditLog(*l)
+	if err := db.WithContext(ctx).Create(&m).Error; err != nil {
+		return err
+	}
+	*l = model.ToDomainAuditLog(m)
+	return nil
 }
 
 // audit_apply
 
-func ListAuditAppliesByEdge(ctx context.Context, db *gorm.DB, edgeID uint, limit int) ([]model.AuditApply, error) {
+func ListAuditAppliesByEdge(ctx context.Context, db *gorm.DB, edgeID uint, limit int) ([]domain.AuditApply, error) {
 	q := db.WithContext(ctx).Where("edge_server_id = ?", edgeID).Order("id desc")
 	if limit > 0 {
 		q = q.Limit(limit)
@@ -64,9 +78,18 @@ func ListAuditAppliesByEdge(ctx context.Context, db *gorm.DB, edgeID uint, limit
 	if err := q.Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.AuditApply, len(out))
+	for i, a := range out {
+		result[i] = model.ToDomainAuditApply(a)
+	}
+	return result, nil
 }
 
-func CreateAuditApply(ctx context.Context, db *gorm.DB, a *model.AuditApply) error {
-	return db.WithContext(ctx).Create(a).Error
+func CreateAuditApply(ctx context.Context, db *gorm.DB, a *domain.AuditApply) error {
+	m := model.FromDomainAuditApply(*a)
+	if err := db.WithContext(ctx).Create(&m).Error; err != nil {
+		return err
+	}
+	*a = model.ToDomainAuditApply(m)
+	return nil
 }

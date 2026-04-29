@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
+	"github.com/serverhub/serverhub/repo"
 
 	"github.com/serverhub/serverhub/pkg/nginxpresets"
 	"github.com/serverhub/serverhub/pkg/resp"
@@ -19,7 +19,7 @@ import (
 //     就无法可靠回写,弱保留也只是技术债;
 //   - 不在 server 端把预设直接写进路由,保持"预设是 UI 便利层"的语义;
 //   - 渲染逻辑放在 nginxpresets 包,这里只做参数 binding + 错误转 400。
-func RegisterPresetRoutes(group *gin.RouterGroup, _ *gorm.DB) {
+func RegisterPresetRoutes(group *gin.RouterGroup, _ repo.DB) {
 	group.POST("presets/render", presetsRenderHandler())
 }
 

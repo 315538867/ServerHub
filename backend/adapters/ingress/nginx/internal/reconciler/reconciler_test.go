@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/adapters/ingress/nginx/internal/render"
 	"github.com/serverhub/serverhub/pkg/runner"
@@ -39,7 +40,7 @@ func newTestDB(t *testing.T) *gorm.DB {
 // installFakeRunner 暂时把 defaultRunnerFactory 替换为返回 fake；测试结束恢复。
 func installFakeRunner(t *testing.T, fr *fakeRunner) {
 	t.Helper()
-	old := SetRunnerFactory(func(*model.Server, *config.Config) (runner.Runner, error) { return fr, nil })
+	old := SetRunnerFactory(func(*domain.Server, *config.Config) (runner.Runner, error) { return fr, nil })
 	t.Cleanup(func() { SetRunnerFactory(old) })
 }
 

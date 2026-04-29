@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/acme"
 	"github.com/serverhub/serverhub/pkg/crypto"
@@ -21,7 +22,7 @@ import (
 const CertRenewWindow = 30 * 24 * time.Hour
 
 // certRunnerFactory 让测试能注入 fake runner，省去 SSH 依赖。
-type certRunnerFactory func(*model.Server, *config.Config) (runner.Runner, error)
+type certRunnerFactory func(*domain.Server, *config.Config) (runner.Runner, error)
 
 var defaultCertRunnerFactory certRunnerFactory = runner.ForDedicated
 
@@ -91,7 +92,8 @@ func renewOneCert(db *gorm.DB, cfg *config.Config, cert model.SSLCert) bool {
 		fmt.Printf("[cert-renew] cert id=%d server 加载失败: %v\n", cert.ID, err)
 		return false
 	}
-	rn, err := defaultCertRunnerFactory(&s, cfg)
+	edgeDomain := model.ToDomainServer(s)
+	rn, err := defaultCertRunnerFactory(&edgeDomain, cfg)
 	if err != nil {
 		fmt.Printf("[cert-renew] cert id=%d runner 失败: %v\n", cert.ID, err)
 		return false

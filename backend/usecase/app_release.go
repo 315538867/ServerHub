@@ -20,7 +20,7 @@ import (
 	"time"
 
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
@@ -36,21 +36,21 @@ var ErrNothingToRollback = errors.New("nothing to roll back")
 
 // ── JSON helpers ────────────────────────────────────────────────────────────
 
-func parseAppReleaseItems(raw string) []model.AppReleaseSetItem {
+func parseAppReleaseItems(raw string) []domain.AppReleaseSetItem {
 	if raw == "" {
 		return nil
 	}
-	var out []model.AppReleaseSetItem
+	var out []domain.AppReleaseSetItem
 	_ = json.Unmarshal([]byte(raw), &out)
 	return out
 }
 
-func encodeAppReleaseItems(items []model.AppReleaseSetItem) string {
+func encodeAppReleaseItems(items []domain.AppReleaseSetItem) string {
 	b, _ := json.Marshal(items)
 	return string(b)
 }
 
-func encodeAppReleaseSummary(items []model.AppReleaseSummaryItem) string {
+func encodeAppReleaseSummary(items []domain.AppReleaseSummaryItem) string {
 	b, _ := json.Marshal(items)
 	return string(b)
 }
@@ -67,17 +67,20 @@ func appReleaseAutoLabel(ctx context.Context, db *gorm.DB, appID uint) string {
 
 // CreateAppReleaseSetFromCurrent 扫描 App 下所有已绑定 CurrentReleaseID 的 Service，
 // 生成一份 Release 组合快照。未绑定 Release 的 Service 被跳过。
-func CreateAppReleaseSetFromCurrent(ctx context.Context, db *gorm.DB, appID uint, label, note, createdBy string) (*model.AppReleaseSet, error) {
+func CreateAppReleaseSetFromCurrent(ctx context.Context, db *gorm.DB, appID uint, label, note, createdBy string) (*domain.AppReleaseSet, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	svcs, err := repo.ListServicesByApplicationID(ctx, db, appID)
 	if err != nil {
 		return nil, err
 	}
-	items := make([]model.AppReleaseSetItem, 0, len(svcs))
+	items := make([]domain.AppReleaseSetItem, 0, len(svcs))
 	for _, s := range svcs {
 		if s.CurrentReleaseID == nil || *s.CurrentReleaseID == 0 {
 			continue
 		}
-		items = append(items, model.AppReleaseSetItem{
+		items = append(items, domain.AppReleaseSetItem{
 			ServiceID: s.ID,
 			ReleaseID: *s.CurrentReleaseID,
 		})
@@ -88,13 +91,13 @@ func CreateAppReleaseSetFromCurrent(ctx context.Context, db *gorm.DB, appID uint
 	if label == "" {
 		label = appReleaseAutoLabel(ctx, db, appID)
 	}
-	set := &model.AppReleaseSet{
+	set := &domain.AppReleaseSet{
 		ApplicationID: appID,
 		Label:         label,
 		Items:         encodeAppReleaseItems(items),
 		Note:          note,
 		CreatedBy:     createdBy,
-		Status:        model.AppReleaseSetStatusDraft,
+		Status:        domain.AppReleaseSetStatusDraft,
 	}
 	if err := repo.CreateAppReleaseSet(ctx, db, set); err != nil {
 		return nil, err
@@ -108,7 +111,7 @@ func appReleaseRunOne(
 	db *gorm.DB, cfg *config.Config,
 	svcID, relID uint, idx, total int,
 	triggerSource string, emit AppReleaseEmit,
-) (model.AppReleaseSummaryItem, bool) {
+) (domain.AppReleaseSummaryItem, bool) {
 	safeAppReleaseEmit(emit, "service_started", map[string]any{
 		"service_id": svcID,
 		"release_id": relID,
@@ -125,7 +128,7 @@ func appReleaseRunOne(
 		})
 	dur := int(time.Since(startedAt).Seconds())
 
-	sItem := model.AppReleaseSummaryItem{ServiceID: svcID}
+	sItem := domain.AppReleaseSummaryItem{ServiceID: svcID}
 	if run != nil {
 		sItem.RunID = &run.ID
 		sItem.Status = run.Status
@@ -135,7 +138,7 @@ func appReleaseRunOne(
 	case err != nil:
 		sItem.Status = "failed"
 		sItem.Error = err.Error()
-	case run != nil && run.Status == model.DeployRunStatusSuccess:
+	case run != nil && run.Status == domain.DeployRunStatusSuccess:
 		sItem.Status = "success"
 		ok = true
 	default:
@@ -156,7 +159,7 @@ func appReleaseRunOne(
 
 func appReleaseFinalizeStatus(
 	ctx context.Context, db *gorm.DB, setID uint, status string,
-	summary []model.AppReleaseSummaryItem,
+	summary []domain.AppReleaseSummaryItem,
 ) {
 	now := time.Now()
 	updates := map[string]any{
@@ -175,16 +178,19 @@ func appReleaseFinalizeStatus(
 
 // AppReleaseApply 同步执行一个 AppReleaseSet，按 Items 顺序串行部署。
 func AppReleaseApply(ctx context.Context, db *gorm.DB, cfg *config.Config, setID uint, triggerSource string, emit AppReleaseEmit) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	if err := repo.CASAppReleaseSetToApplying(ctx, db, setID); err != nil {
 		return err
 	}
 
-	status := model.AppReleaseSetStatusFailed
-	var summary []model.AppReleaseSummaryItem
+	status := domain.AppReleaseSetStatusFailed
+	var summary []domain.AppReleaseSummaryItem
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[apprelease] Apply panic set=%d: %v", setID, r)
-			appReleaseFinalizeStatus(ctx, db, setID, model.AppReleaseSetStatusFailed, nil)
+			appReleaseFinalizeStatus(ctx, db, setID, domain.AppReleaseSetStatusFailed, nil)
 			panic(r)
 		}
 		appReleaseFinalizeStatus(ctx, db, setID, status, summary)
@@ -203,7 +209,7 @@ func AppReleaseApply(ctx context.Context, db *gorm.DB, cfg *config.Config, setID
 		"items":  items,
 	})
 
-	summary = make([]model.AppReleaseSummaryItem, 0, total)
+	summary = make([]domain.AppReleaseSummaryItem, 0, total)
 	successCnt, failCnt := 0, 0
 	for idx, it := range items {
 		sItem, ok := appReleaseRunOne(db, cfg, it.ServiceID, it.ReleaseID, idx, total, triggerSource, emit)
@@ -226,13 +232,13 @@ func AppReleaseApply(ctx context.Context, db *gorm.DB, cfg *config.Config, setID
 func appReleaseDecideStatus(success, fail, total int) string {
 	switch {
 	case total == 0:
-		return model.AppReleaseSetStatusFailed
+		return domain.AppReleaseSetStatusFailed
 	case fail == 0:
-		return model.AppReleaseSetStatusSuccess
+		return domain.AppReleaseSetStatusSuccess
 	case success == 0:
-		return model.AppReleaseSetStatusFailed
+		return domain.AppReleaseSetStatusFailed
 	default:
-		return model.AppReleaseSetStatusPartial
+		return domain.AppReleaseSetStatusPartial
 	}
 }
 
@@ -240,6 +246,9 @@ func appReleaseDecideStatus(success, fail, total int) string {
 
 // AppReleaseRollback 对上次 Apply 成功的 Service 反向 Apply 到此前历史 Release。
 func AppReleaseRollback(ctx context.Context, db *gorm.DB, cfg *config.Config, setID uint, triggerSource string, emit AppReleaseEmit) error {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	set, err := repo.GetAppReleaseSetByID(ctx, db, setID)
 	if err != nil {
 		return err
@@ -247,7 +256,7 @@ func AppReleaseRollback(ctx context.Context, db *gorm.DB, cfg *config.Config, se
 	if set.LastSummary == "" {
 		return errors.New("set has not been applied yet; nothing to roll back")
 	}
-	var last []model.AppReleaseSummaryItem
+	var last []domain.AppReleaseSummaryItem
 	_ = json.Unmarshal([]byte(set.LastSummary), &last)
 	items := parseAppReleaseItems(set.Items)
 	itemByService := make(map[uint]uint, len(items))
@@ -260,7 +269,7 @@ func AppReleaseRollback(ctx context.Context, db *gorm.DB, cfg *config.Config, se
 		relID uint
 	}
 	var targets []rbTarget
-	var skipped []model.AppReleaseSummaryItem
+	var skipped []domain.AppReleaseSummaryItem
 	for _, s := range last {
 		if s.Status != "success" {
 			continue
@@ -268,7 +277,7 @@ func AppReleaseRollback(ctx context.Context, db *gorm.DB, cfg *config.Config, se
 		applied := itemByService[s.ServiceID]
 		prev := repo.FindPrevRelease(ctx, db, s.ServiceID, applied)
 		if prev == 0 {
-			skipped = append(skipped, model.AppReleaseSummaryItem{
+			skipped = append(skipped, domain.AppReleaseSummaryItem{
 				ServiceID: s.ServiceID,
 				Status:    "skipped",
 				Error:     "no previous release found",
@@ -285,12 +294,12 @@ func AppReleaseRollback(ctx context.Context, db *gorm.DB, cfg *config.Config, se
 	if err := repo.CASAppReleaseSetToApplying(ctx, db, setID); err != nil {
 		return err
 	}
-	status := model.AppReleaseSetStatusFailed
-	summary := append([]model.AppReleaseSummaryItem(nil), skipped...)
+	status := domain.AppReleaseSetStatusFailed
+	summary := append([]domain.AppReleaseSummaryItem(nil), skipped...)
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[apprelease] Rollback panic set=%d: %v", setID, r)
-			appReleaseFinalizeStatus(ctx, db, setID, model.AppReleaseSetStatusFailed, nil)
+			appReleaseFinalizeStatus(ctx, db, setID, domain.AppReleaseSetStatusFailed, nil)
 			panic(r)
 		}
 		appReleaseFinalizeStatus(ctx, db, setID, status, summary)
@@ -320,7 +329,7 @@ func AppReleaseRollback(ctx context.Context, db *gorm.DB, cfg *config.Config, se
 		summary = append(summary, sItem)
 	}
 
-	status = model.AppReleaseSetStatusRolledBack
+	status = domain.AppReleaseSetStatusRolledBack
 	safeAppReleaseEmit(emit, "set_done", map[string]any{
 		"status":  status,
 		"summary": summary,

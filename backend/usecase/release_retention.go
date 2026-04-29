@@ -8,13 +8,16 @@
 package usecase
 
 import (
+	"context"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/serverhub/serverhub/model"
 	"gorm.io/gorm"
+
+	"github.com/serverhub/serverhub/domain"
+	"github.com/serverhub/serverhub/repo"
 )
 
 // MaxReleasesPerService Release 默认保留窗口。可由 settings.release_keep_per_service 覆盖。
@@ -34,8 +37,9 @@ func PruneReleases(db *gorm.DB, serviceID uint, keep int) {
 		return
 	}
 
-	var svc model.Service
-	if err := db.Select("id", "current_release_id").First(&svc, serviceID).Error; err != nil {
+	ctx := context.Background()
+	svc, err := repo.GetServiceByID(ctx, db, serviceID)
+	if err != nil {
 		return
 	}
 
@@ -43,20 +47,17 @@ func PruneReleases(db *gorm.DB, serviceID uint, keep int) {
 	if svc.CurrentReleaseID != nil {
 		protected[*svc.CurrentReleaseID] = struct{}{}
 	}
-	var activeIDs []uint
-	db.Model(&model.Release{}).
-		Where("service_id = ? AND status = ?", serviceID, model.ReleaseStatusActive).
-		Pluck("id", &activeIDs)
-	for _, id := range activeIDs {
-		protected[id] = struct{}{}
+	activeIDs, err := repo.ListActiveReleaseIDsByService(ctx, db, serviceID)
+	if err == nil {
+		for _, id := range activeIDs {
+			protected[id] = struct{}{}
+		}
 	}
 
-	var candidates []model.Release
-	db.Where("service_id = ?", serviceID).
-		Order("created_at DESC").
-		Offset(keep).
-		Find(&candidates)
-
+	candidates, err := repo.ListExcessReleases(ctx, db, serviceID, keep)
+	if err != nil {
+		return
+	}
 	for _, rel := range candidates {
 		if _, ok := protected[rel.ID]; ok {
 			continue
@@ -70,60 +71,46 @@ func PruneAllReleases(db *gorm.DB, keep int) {
 	if keep <= 0 {
 		return
 	}
-	var ids []uint
-	db.Model(&model.Service{}).Pluck("id", &ids)
+	ctx := context.Background()
+	ids, err := repo.ListAllServiceIDs(ctx, db)
+	if err != nil {
+		return
+	}
 	for _, id := range ids {
 		PruneReleases(db, id, keep)
 	}
 }
 
-func deleteRelease(db *gorm.DB, rel model.Release) {
+func deleteRelease(db *gorm.DB, rel domain.Release) {
+	ctx := context.Background()
 	artifactID := rel.ArtifactID
 	envSetID := rel.EnvSetID
 	cfgSetID := rel.ConfigSetID
 
-	if err := db.Delete(&rel).Error; err != nil {
+	if err := repo.DeleteReleaseByID(ctx, db, rel.ID); err != nil {
 		log.Printf("[release-prune] delete release#%d: %v", rel.ID, err)
 		return
 	}
 
 	if artifactID != 0 {
-		if count := countReleasesByArtifact(db, artifactID); count == 0 {
-			var art model.Artifact
-			if err := db.First(&art, artifactID).Error; err == nil {
-				_ = db.Delete(&art).Error
+		if count, err := repo.CountReleasesByArtifactID(ctx, db, artifactID); err == nil && count == 0 {
+			art, err := repo.GetArtifactByID(ctx, db, artifactID)
+			if err == nil {
+				_ = repo.DeleteArtifactByID(ctx, db, artifactID)
 				tryRemoveUploadFile(art)
 			}
 		}
 	}
 	if envSetID != nil {
-		if count := countReleasesByEnvSet(db, *envSetID); count == 0 {
-			db.Delete(&model.EnvVarSet{}, *envSetID)
+		if count, err := repo.CountReleasesByEnvSetID(ctx, db, *envSetID); err == nil && count == 0 {
+			_ = repo.DeleteEnvVarSetByID(ctx, db, *envSetID)
 		}
 	}
 	if cfgSetID != nil {
-		if count := countReleasesByConfigSet(db, *cfgSetID); count == 0 {
-			db.Delete(&model.ConfigFileSet{}, *cfgSetID)
+		if count, err := repo.CountReleasesByConfigSetID(ctx, db, *cfgSetID); err == nil && count == 0 {
+			_ = repo.DeleteConfigFileSetByID(ctx, db, *cfgSetID)
 		}
 	}
-}
-
-func countReleasesByArtifact(db *gorm.DB, id uint) int64 {
-	var n int64
-	db.Model(&model.Release{}).Where("artifact_id = ?", id).Count(&n)
-	return n
-}
-
-func countReleasesByEnvSet(db *gorm.DB, id uint) int64 {
-	var n int64
-	db.Model(&model.Release{}).Where("env_set_id = ?", id).Count(&n)
-	return n
-}
-
-func countReleasesByConfigSet(db *gorm.DB, id uint) int64 {
-	var n int64
-	db.Model(&model.Release{}).Where("config_set_id = ?", id).Count(&n)
-	return n
 }
 
 // PruneOrphanArtifactFiles 扫描 data_dir/artifacts/ 下所有文件,删除 DB 中没有
@@ -141,10 +128,7 @@ func PruneOrphanArtifactFiles(db *gorm.DB) {
 		return
 	}
 
-	var refs []string
-	db.Model(&model.Artifact{}).
-		Where("provider = ?", model.ArtifactProviderUpload).
-		Pluck("ref", &refs)
+	refs, err := repo.ListUploadArtifactRefs(context.Background(), db)
 	known := make(map[string]struct{}, len(refs))
 	for _, r := range refs {
 		known[filepath.Clean(r)] = struct{}{}
@@ -170,8 +154,8 @@ func PruneOrphanArtifactFiles(db *gorm.DB) {
 
 // tryRemoveUploadFile 仅对 upload provider 有效;Ref 是相对 data_dir 的路径。
 // 其余 provider(docker/http/git/script/imported)没有面板本地物理文件可删。
-func tryRemoveUploadFile(art model.Artifact) {
-	if art.Provider != model.ArtifactProviderUpload || art.Ref == "" {
+func tryRemoveUploadFile(art domain.Artifact) {
+	if art.Provider != domain.ArtifactProviderUpload || art.Ref == "" {
 		return
 	}
 	clean := filepath.Clean(art.Ref)

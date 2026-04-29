@@ -11,16 +11,15 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/derive"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
 	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/usecase"
-	"gorm.io/gorm"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	r.GET("", listHandler(db))
 	r.POST("", createHandler(db, cfg))
 	r.GET("/:id", getHandler(db))
@@ -50,7 +49,7 @@ type appReq struct {
 
 // ── SSH helper ────────────────────────────────────────────────────────────────
 
-func runnerForServer(ctx *gin.Context, db *gorm.DB, cfg *config.Config, serverID uint) (runner.Runner, error) {
+func runnerForServer(ctx *gin.Context, db repo.DB, cfg *config.Config, serverID uint) (runner.Runner, error) {
 	s, err := repo.GetServerByID(ctx.Request.Context(), db, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("服务器不存在")
@@ -58,7 +57,7 @@ func runnerForServer(ctx *gin.Context, db *gorm.DB, cfg *config.Config, serverID
 	return runner.For(&s, cfg)
 }
 
-func initAppDirs(c *gin.Context, db *gorm.DB, cfg *config.Config, app *model.Application) error {
+func initAppDirs(c *gin.Context, db repo.DB, cfg *config.Config, app *domain.Application) error {
 	if err := safeshell.AbsPath(app.BaseDir); err != nil {
 		return fmt.Errorf("base_dir 非法: %w", err)
 	}
@@ -103,7 +102,7 @@ func validateAppReq(req *appReq) error {
 
 // ── list ──────────────────────────────────────────────────────────────────────
 
-func listHandler(db *gorm.DB) gin.HandlerFunc {
+func listHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var serverID *uint
 		if sid := c.Query("server_id"); sid != "" {
@@ -126,7 +125,7 @@ func listHandler(db *gorm.DB) gin.HandlerFunc {
 
 // ── services 子路由 ───────────────────────────────────────────────────────────
 
-func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
+func listServicesHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -142,7 +141,7 @@ func listServicesHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func attachServiceHandler(db *gorm.DB) gin.HandlerFunc {
+func attachServiceHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		appID, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -167,7 +166,7 @@ func attachServiceHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func detachServiceHandler(db *gorm.DB) gin.HandlerFunc {
+func detachServiceHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		appID, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -193,7 +192,7 @@ func detachServiceHandler(db *gorm.DB) gin.HandlerFunc {
 
 // ── create ────────────────────────────────────────────────────────────────────
 
-func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func createHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req appReq
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -216,7 +215,7 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "base_dir 非法: "+err.Error())
 			return
 		}
-		app := model.Application{
+		app := domain.Application{
 			Name:          req.Name,
 			Description:   req.Description,
 			ServerID:      req.ServerID,
@@ -241,7 +240,7 @@ func createHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 // ── get ───────────────────────────────────────────────────────────────────────
 
-func getHandler(db *gorm.DB) gin.HandlerFunc {
+func getHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -259,7 +258,7 @@ func getHandler(db *gorm.DB) gin.HandlerFunc {
 
 // ── update ────────────────────────────────────────────────────────────────────
 
-func updateHandler(db *gorm.DB) gin.HandlerFunc {
+func updateHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -303,7 +302,7 @@ func updateHandler(db *gorm.DB) gin.HandlerFunc {
 
 // ── delete ────────────────────────────────────────────────────────────────────
 
-func deleteHandler(db *gorm.DB) gin.HandlerFunc {
+func deleteHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -328,7 +327,7 @@ type dirEntry struct {
 	Mtime  string `json:"mtime"`
 }
 
-func dirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func dirsHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -391,7 +390,7 @@ done`, bd)
 	}
 }
 
-func initDirsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func initDirsHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -440,7 +439,7 @@ type dockerStatsLine struct {
 	PIDs     string `json:"PIDs"`
 }
 
-func metricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func metricsHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil {
@@ -497,7 +496,7 @@ func metricsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 // ── ingresses 反向视图 ───────────────────────────────────────────────────────
 
-func listAppIngressesHandler(db *gorm.DB) gin.HandlerFunc {
+func listAppIngressesHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, err := strconv.Atoi(c.Param("id"))
 		if err != nil || id <= 0 {

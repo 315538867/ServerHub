@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/adapters/ingress/nginx/internal/render"
 	"github.com/serverhub/serverhub/pkg/runner"
@@ -18,7 +19,7 @@ import (
 
 // runnerFactory 让测试可以注入 fake runner，省去 SSH 依赖。
 // 默认实现绑定到 runner.For（线上路径）。
-type runnerFactory func(*model.Server, *config.Config) (runner.Runner, error)
+type runnerFactory func(*domain.Server, *config.Config) (runner.Runner, error)
 
 var defaultRunnerFactory runnerFactory = runner.For
 
@@ -56,7 +57,8 @@ func Apply(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint, ac
 		return ApplyResult{}, fmt.Errorf("加载 edge server id=%d: %w", edgeID, err)
 	}
 
-	r, err := defaultRunnerFactory(&edge, cfg)
+	edgeDomain := model.ToDomainServer(edge)
+	r, err := defaultRunnerFactory(&edgeDomain, cfg)
 	if err != nil {
 		return ApplyResult{}, fmt.Errorf("无法连接 edge: %w", err)
 	}
@@ -179,7 +181,8 @@ func DryRun(ctx context.Context, db *gorm.DB, cfg *config.Config, edgeID uint) (
 	if err := db.First(&edge, edgeID).Error; err != nil {
 		return nil, fmt.Errorf("加载 edge server id=%d: %w", edgeID, err)
 	}
-	r, err := defaultRunnerFactory(&edge, cfg)
+	edgeDomain := model.ToDomainServer(edge)
+	r, err := defaultRunnerFactory(&edgeDomain, cfg)
 	if err != nil {
 		return nil, fmt.Errorf("无法连接 edge: %w", err)
 	}

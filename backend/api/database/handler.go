@@ -8,14 +8,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
-	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/resp"
-	"github.com/serverhub/serverhub/pkg/runner"
-	"gorm.io/gorm"
+	"github.com/serverhub/serverhub/usecase"
+	"github.com/serverhub/serverhub/repo"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	g := r.Group("/dbconns")
 	g.GET("", listConnsHandler(db))
 	g.POST("", createConnHandler(db, cfg))
@@ -43,103 +41,43 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 	g.POST("/:id/redis/flushdb", redisFlushDB(db, cfg))
 }
 
-// ── conn helpers ──────────────────────────────────────────────────────────────
+// ── DB conn context helper ──────────────────────────────────────────────────
 
-type connCtx struct {
-	conn   model.DBConn
-	pass   string
-	runner runner.Runner
-}
-
-func getConnCtx(c *gin.Context, db *gorm.DB, cfg *config.Config) (*connCtx, bool) {
+func getConnCtx(c *gin.Context, db repo.DB, cfg *config.Config) (*usecase.ConnContext, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "ID 格式错误")
 		return nil, false
 	}
-	var conn model.DBConn
-	if err := db.First(&conn, id).Error; err != nil {
-		resp.NotFound(c, "数据库连接不存在")
-		return nil, false
-	}
-	var pass string
-	if conn.Password != "" {
-		pass, err = crypto.Decrypt(conn.Password, cfg.Security.AESKey)
-		if err != nil {
-			resp.InternalError(c, "解密失败")
-			return nil, false
-		}
-	}
-	var srv model.Server
-	if err := db.First(&srv, conn.ServerID).Error; err != nil {
-		resp.NotFound(c, "服务器不存在")
-		return nil, false
-	}
-	r, err := runner.For(&srv, cfg)
+	cx, err := usecase.GetDBConnContext(c.Request.Context(), db, cfg, uint(id))
 	if err != nil {
-		resp.Fail(c, http.StatusServiceUnavailable, 5003, "连接失败: "+err.Error())
+		if strings.Contains(err.Error(), "不存在") {
+			resp.NotFound(c, err.Error())
+		} else {
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, err.Error())
+		}
 		return nil, false
 	}
-	return &connCtx{conn: conn, pass: pass, runner: r}, true
-}
-
-func (cx *connCtx) mysqlArgs() string {
-	// Host == "localhost" (or empty) → let mysql client pick the default unix
-	// socket. That's the only way to satisfy `'user'@'localhost'` grants, which
-	// are *not* matched by TCP to 127.0.0.1. Passing `-h localhost -P 3306`
-	// would force a TCP attempt and break this case.
-	host := strings.ToLower(strings.TrimSpace(cx.conn.Host))
-	if host == "" || host == "localhost" {
-		return fmt.Sprintf("-u%s", shellQuote(cx.conn.Username))
-	}
-	return fmt.Sprintf("-u%s -h%s -P%d",
-		shellQuote(cx.conn.Username), shellQuote(cx.conn.Host), cx.conn.Port)
-}
-
-func (cx *connCtx) mysqlEnv() string {
-	if cx.pass == "" {
-		return ""
-	}
-	return "MYSQL_PWD=" + shellQuote(cx.pass) + " "
-}
-
-func (cx *connCtx) mysqlCmd(sql string) string {
-	db := ""
-	if cx.conn.Database != "" {
-		db = shellQuote(cx.conn.Database) + " "
-	}
-	return fmt.Sprintf("%smysql %s %s--batch --skip-column-names -e %s 2>&1",
-		cx.mysqlEnv(), cx.mysqlArgs(), db, shellQuote(sql))
-}
-
-func (cx *connCtx) redisCli(args string) string {
-	auth := ""
-	if cx.pass != "" {
-		auth = "-a " + shellQuote(cx.pass) + " --no-auth-warning "
-	}
-	return fmt.Sprintf("redis-cli -h %s -p %d %s%s 2>&1",
-		shellQuote(cx.conn.Host), cx.conn.Port, auth, args)
-}
-
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+	return cx, true
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-func listConnsHandler(db *gorm.DB) gin.HandlerFunc {
+func listConnsHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		serverID := c.Query("server_id")
-		appID := c.Query("application_id")
-		var conns []model.DBConn
-		q := db.Model(&model.DBConn{})
-		if serverID != "" {
-			q = q.Where("server_id = ?", serverID)
+		serverID, _ := strconv.Atoi(c.Query("server_id"))
+		var appID *uint
+		if s := c.Query("application_id"); s != "" {
+			if v, err := strconv.Atoi(s); err == nil {
+				u := uint(v)
+				appID = &u
+			}
 		}
-		if appID != "" {
-			q = q.Where("application_id = ?", appID)
+		conns, err := usecase.ListDBConns(c.Request.Context(), db, uint(serverID), appID)
+		if err != nil {
+			resp.InternalError(c, "查询失败")
+			return
 		}
-		q.Find(&conns)
 		type item struct {
 			ID            uint   `json:"id"`
 			ServerID      uint   `json:"server_id"`
@@ -161,7 +99,7 @@ func listConnsHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func createConnHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func createConnHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
 			ServerID uint   `json:"server_id" binding:"required"`
@@ -177,43 +115,24 @@ func createConnHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "server_id、名称和类型不能为空")
 			return
 		}
-		if body.Host == "" {
-			body.Host = "127.0.0.1"
-		}
-		if body.Port == 0 {
-			if body.Type == "redis" {
-				body.Port = 6379
-			} else {
-				body.Port = 3306
-			}
-		}
-		encPass := ""
-		if body.Password != "" {
-			var err error
-			encPass, err = crypto.Encrypt(body.Password, cfg.Security.AESKey)
-			if err != nil {
-				resp.InternalError(c, "加密失败")
-				return
-			}
-		}
-		conn := model.DBConn{
+		conn, err := usecase.CreateDBConn(c.Request.Context(), db, cfg, usecase.CreateDBConnInput{
 			ServerID: body.ServerID, Name: body.Name, Type: body.Type,
 			Host: body.Host, Port: body.Port, Username: body.Username,
-			Password: encPass, Database: body.Database,
-		}
-		if err := db.Create(&conn).Error; err != nil {
-			resp.InternalError(c, "创建失败")
+			Password: body.Password, Database: body.Database,
+		})
+		if err != nil {
+			resp.InternalError(c, err.Error())
 			return
 		}
 		resp.OK(c, gin.H{"id": conn.ID})
 	}
 }
 
-func getConnHandler(db *gorm.DB) gin.HandlerFunc {
+func getConnHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
-		var conn model.DBConn
-		if err := db.First(&conn, id).Error; err != nil {
+		conn, err := usecase.GetDBConn(c.Request.Context(), db, uint(id))
+		if err != nil {
 			resp.NotFound(c, "资源不存在")
 			return
 		}
@@ -224,14 +143,9 @@ func getConnHandler(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func updateConnHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func updateConnHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
-		var conn model.DBConn
-		if err := db.First(&conn, id).Error; err != nil {
-			resp.NotFound(c, "资源不存在")
-			return
-		}
 		var body struct {
 			Name     string `json:"name"`
 			Host     string `json:"host"`
@@ -244,55 +158,39 @@ func updateConnHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "请求体格式错误")
 			return
 		}
-		if body.Name != "" {
-			conn.Name = body.Name
+		err := usecase.UpdateDBConn(c.Request.Context(), db, cfg, uint(id), usecase.UpdateDBConnInput{
+			Name: body.Name, Host: body.Host, Port: body.Port,
+			Username: body.Username, Password: body.Password, Database: body.Database,
+		})
+		if err != nil {
+			resp.NotFound(c, "资源不存在")
+			return
 		}
-		if body.Host != "" {
-			conn.Host = body.Host
-		}
-		if body.Port != 0 {
-			conn.Port = body.Port
-		}
-		if body.Username != "" {
-			conn.Username = body.Username
-		}
-		if body.Database != "" {
-			conn.Database = body.Database
-		}
-		if body.Password != "" {
-			enc, err := crypto.Encrypt(body.Password, cfg.Security.AESKey)
-			if err != nil {
-				resp.InternalError(c, "加密失败")
-				return
-			}
-			conn.Password = enc
-		}
-		db.Save(&conn)
 		resp.OK(c, nil)
 	}
 }
 
-func deleteConnHandler(db *gorm.DB) gin.HandlerFunc {
+func deleteConnHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		id, _ := strconv.Atoi(c.Param("id"))
-		db.Delete(&model.DBConn{}, id)
+		_ = usecase.DeleteDBConn(c.Request.Context(), db, uint(id))
 		resp.OK(c, nil)
 	}
 }
 
-func testConnHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func testConnHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
 			return
 		}
 		var cmd string
-		if cx.conn.Type == "redis" {
-			cmd = cx.redisCli("PING")
+		if cx.Conn.Type == "redis" {
+			cmd = cx.RedisCli("PING")
 		} else {
-			cmd = cx.mysqlCmd("SELECT 1")
+			cmd = cx.MySQLCmd("SELECT 1")
 		}
-		out, err := cx.runner.Run(cmd)
+		out, err := cx.Runner.Run(cmd)
 		if err != nil {
 			resp.Fail(c, 200, 5010, "连接失败: "+err.Error())
 			return
@@ -318,11 +216,11 @@ func parseMySQLTable(out string) (columns []string, rows [][]string) {
 	return
 }
 
-func mysqlRun(cx *connCtx, sql string) (string, error) {
-	return cx.runner.Run(cx.mysqlCmd(sql))
+func mysqlRun(cx *usecase.ConnContext, sql string) (string, error) {
+	return cx.Runner.Run(cx.MySQLCmd(sql))
 }
 
-func mysqlListDatabases(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func mysqlListDatabases(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
@@ -344,7 +242,7 @@ func mysqlListDatabases(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func mysqlCreateDatabase(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func mysqlCreateDatabase(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
@@ -373,7 +271,7 @@ func mysqlCreateDatabase(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func mysqlDropDatabase(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func mysqlDropDatabase(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
@@ -390,7 +288,7 @@ func mysqlDropDatabase(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func mysqlListUsers(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func mysqlListUsers(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
@@ -416,7 +314,7 @@ func mysqlListUsers(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func mysqlCreateUser(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func mysqlCreateUser(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
@@ -460,7 +358,7 @@ func mysqlCreateUser(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func mysqlQuery(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func mysqlQuery(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
@@ -474,7 +372,7 @@ func mysqlQuery(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			resp.BadRequest(c, "SQL 语句不能为空")
 			return
 		}
-		useDB := cx.conn.Database
+		useDB := cx.Conn.Database
 		if body.Database != "" {
 			useDB = body.Database
 		}
@@ -483,8 +381,8 @@ func mysqlQuery(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 			dbPrefix = fmt.Sprintf("USE `%s`; ", strings.ReplaceAll(useDB, "`", ""))
 		}
 		cmd := fmt.Sprintf("%smysql %s --batch -e %s 2>&1",
-			cx.mysqlEnv(), cx.mysqlArgs(), shellQuote(dbPrefix+body.SQL))
-		out, err := cx.runner.Run(cmd)
+			cx.MySQLEnv(), cx.MySQLArgs(), usecase.ShellQuote(dbPrefix+body.SQL))
+		out, err := cx.Runner.Run(cmd)
 		if err != nil || strings.Contains(out, "ERROR") {
 			resp.Fail(c, 200, 5020, strings.TrimSpace(out))
 			return
@@ -494,7 +392,7 @@ func mysqlQuery(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func mysqlExport(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func mysqlExport(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
@@ -502,9 +400,9 @@ func mysqlExport(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		dbName := c.Param("dbname")
 		cmd := fmt.Sprintf("%smysqldump -h%s -P%d -u%s %s 2>/dev/null",
-			cx.mysqlEnv(), shellQuote(cx.conn.Host), cx.conn.Port,
-			shellQuote(cx.conn.Username), shellQuote(dbName))
-		out, err := cx.runner.Run(cmd)
+			cx.MySQLEnv(), usecase.ShellQuote(cx.Conn.Host), cx.Conn.Port,
+			usecase.ShellQuote(cx.Conn.Username), usecase.ShellQuote(dbName))
+		out, err := cx.Runner.Run(cmd)
 		if err != nil {
 			resp.InternalError(c, "数据库导出失败")
 			return
@@ -514,7 +412,7 @@ func mysqlExport(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func mysqlStatus(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func mysqlStatus(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
@@ -532,11 +430,11 @@ func mysqlStatus(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 // ── Redis ─────────────────────────────────────────────────────────────────────
 
-func redisRun(cx *connCtx, args string) (string, error) {
-	return cx.runner.Run(cx.redisCli(args))
+func redisRun(cx *usecase.ConnContext, args string) (string, error) {
+	return cx.Runner.Run(cx.RedisCli(args))
 }
 
-func redisInfo(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func redisInfo(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
@@ -562,14 +460,14 @@ func redisInfo(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func redisKeys(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func redisKeys(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
 			return
 		}
 		pattern := c.DefaultQuery("pattern", "*")
-		out, err := redisRun(cx, fmt.Sprintf("--scan --pattern %s --count 100", shellQuote(pattern)))
+		out, err := redisRun(cx, fmt.Sprintf("--scan --pattern %s --count 100", usecase.ShellQuote(pattern)))
 		if err != nil {
 			resp.InternalError(c, out)
 			return
@@ -587,46 +485,46 @@ func redisKeys(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func redisGetKey(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func redisGetKey(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
 			return
 		}
 		key := strings.TrimPrefix(c.Param("key"), "/")
-		typeOut, _ := redisRun(cx, fmt.Sprintf("TYPE %s", shellQuote(key)))
+		typeOut, _ := redisRun(cx, fmt.Sprintf("TYPE %s", usecase.ShellQuote(key)))
 		keyType := strings.TrimSpace(typeOut)
 		var val string
 		switch keyType {
 		case "string":
-			val, _ = redisRun(cx, fmt.Sprintf("GET %s", shellQuote(key)))
+			val, _ = redisRun(cx, fmt.Sprintf("GET %s", usecase.ShellQuote(key)))
 		case "hash":
-			val, _ = redisRun(cx, fmt.Sprintf("HGETALL %s", shellQuote(key)))
+			val, _ = redisRun(cx, fmt.Sprintf("HGETALL %s", usecase.ShellQuote(key)))
 		case "list":
-			val, _ = redisRun(cx, fmt.Sprintf("LRANGE %s 0 99", shellQuote(key)))
+			val, _ = redisRun(cx, fmt.Sprintf("LRANGE %s 0 99", usecase.ShellQuote(key)))
 		case "set":
-			val, _ = redisRun(cx, fmt.Sprintf("SMEMBERS %s", shellQuote(key)))
+			val, _ = redisRun(cx, fmt.Sprintf("SMEMBERS %s", usecase.ShellQuote(key)))
 		case "zset":
-			val, _ = redisRun(cx, fmt.Sprintf("ZRANGE %s 0 99 WITHSCORES", shellQuote(key)))
+			val, _ = redisRun(cx, fmt.Sprintf("ZRANGE %s 0 99 WITHSCORES", usecase.ShellQuote(key)))
 		}
-		ttl, _ := redisRun(cx, fmt.Sprintf("TTL %s", shellQuote(key)))
+		ttl, _ := redisRun(cx, fmt.Sprintf("TTL %s", usecase.ShellQuote(key)))
 		resp.OK(c, gin.H{"type": keyType, "value": strings.TrimSpace(val), "ttl": strings.TrimSpace(ttl)})
 	}
 }
 
-func redisDelKey(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func redisDelKey(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {
 			return
 		}
 		key := strings.TrimPrefix(c.Param("key"), "/")
-		redisRun(cx, fmt.Sprintf("DEL %s", shellQuote(key))) //nolint:errcheck
+		redisRun(cx, fmt.Sprintf("DEL %s", usecase.ShellQuote(key))) //nolint:errcheck
 		resp.OK(c, nil)
 	}
 }
 
-func redisFlushDB(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func redisFlushDB(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cx, ok := getConnCtx(c, db, cfg)
 		if !ok {

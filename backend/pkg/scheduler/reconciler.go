@@ -1,26 +1,25 @@
 package scheduler
 
 import (
-	"fmt"
+	"context"
 	"sync"
 	"time"
 
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/usecase"
 	"gorm.io/gorm"
 )
 
-// lastReconcileAt tracks per-service last run time to respect SyncInterval
+// lastReconcileAt tracks per-service last run time to respect SyncInterval.
+// 调度状态保留在 scheduler 包；业务编排已迁至 usecase.ReconcileOne。
 var lastReconcileAt sync.Map // key: svc.ID (uint) → time.Time
 
-// StartReconciler launches the background reconcile loop. In M3 the old
-// DesiredVersion ↔ ActualVersion drift check is gone; reconcile now re-applies
-// the Service's CurrentReleaseID so any out-of-band drift (manual changes on
-// the host, killed containers) is corrected on schedule.
+// StartReconciler 启动后台 reconcile loop,每 30s 触发一次。
+// 逐个 Service 的节流（SyncInterval）+ CAS + ApplyRelease + 状态回写
+// 由 usecase.ReconcileOne 完成。
 func StartReconciler(db *gorm.DB, cfg *config.Config) {
 	go func() {
-		reconcileAll(db, cfg) // immediate first pass
+		reconcileAll(db, cfg) // 启动后立刻跑一次
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
@@ -30,41 +29,21 @@ func StartReconciler(db *gorm.DB, cfg *config.Config) {
 }
 
 func reconcileAll(db *gorm.DB, cfg *config.Config) {
-	var services []model.Service
-	db.Where("auto_sync = ? AND current_release_id IS NOT NULL", true).Find(&services)
-	for _, svc := range services {
-		go reconcileOne(db, cfg, svc)
-	}
-}
-
-func reconcileOne(db *gorm.DB, cfg *config.Config, svc model.Service) {
-	if svc.CurrentReleaseID == nil {
+	svcs, err := usecase.ListAutoSyncServices(context.Background(), db)
+	if err != nil {
 		return
 	}
-
-	// Respect per-service SyncInterval
-	if svc.SyncInterval > 0 {
-		if last, ok := lastReconcileAt.Load(svc.ID); ok {
-			if time.Since(last.(time.Time)) < time.Duration(svc.SyncInterval)*time.Second {
-				return
+	for _, svc := range svcs {
+		svc := svc
+		// 节流：遵守 per-service SyncInterval
+		if svc.SyncInterval > 0 {
+			if last, ok := lastReconcileAt.Load(svc.ID); ok {
+				if time.Since(last.(time.Time)) < time.Duration(svc.SyncInterval)*time.Second {
+					continue
+				}
 			}
 		}
+		lastReconcileAt.Store(svc.ID, time.Now())
+		go usecase.ReconcileOne(context.Background(), db, cfg, svc.ID)
 	}
-	lastReconcileAt.Store(svc.ID, time.Now())
-
-	fmt.Printf("[reconciler] service %d (%s) re-applying release %d\n", svc.ID, svc.Name, *svc.CurrentReleaseID)
-
-	// Atomic guard: skip if another goroutine already started syncing
-	tx := db.Model(&svc).Where("sync_status != ?", "syncing").Update("sync_status", "syncing")
-	if tx.RowsAffected == 0 {
-		return
-	}
-
-	_, err := usecase.ApplyRelease(db, cfg, svc.ID, *svc.CurrentReleaseID, "schedule", nil)
-	if err != nil {
-		fmt.Printf("[reconciler] service %d apply failed: %v\n", svc.ID, err)
-		db.Model(&svc).Update("sync_status", "error")
-		return
-	}
-	db.Model(&svc).Update("sync_status", "synced")
 }

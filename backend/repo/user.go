@@ -3,24 +3,25 @@ package repo
 import (
 	"context"
 
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"gorm.io/gorm"
 )
 
-func GetUserByID(ctx context.Context, db *gorm.DB, id uint) (model.User, error) {
+func GetUserByID(ctx context.Context, db *gorm.DB, id uint) (domain.User, error) {
 	var u model.User
 	if err := db.WithContext(ctx).First(&u, id).Error; err != nil {
-		return model.User{}, err
+		return domain.User{}, err
 	}
-	return u, nil
+	return model.ToDomainUser(u), nil
 }
 
-func GetUserByUsername(ctx context.Context, db *gorm.DB, username string) (model.User, error) {
+func GetUserByUsername(ctx context.Context, db *gorm.DB, username string) (domain.User, error) {
 	var u model.User
 	if err := db.WithContext(ctx).Where("username = ?", username).First(&u).Error; err != nil {
-		return model.User{}, err
+		return domain.User{}, err
 	}
-	return u, nil
+	return model.ToDomainUser(u), nil
 }
 
 func CountUsers(ctx context.Context, db *gorm.DB) (int64, error) {
@@ -39,15 +40,25 @@ func CountUsersByUsernameExcludingID(ctx context.Context, db *gorm.DB, username 
 	return n, nil
 }
 
-func CreateUser(ctx context.Context, db *gorm.DB, u *model.User) error {
-	return db.WithContext(ctx).Create(u).Error
+func CreateUser(ctx context.Context, db *gorm.DB, u *domain.User) error {
+	m := model.FromDomainUser(*u)
+	if err := db.WithContext(ctx).Create(&m).Error; err != nil {
+		return err
+	}
+	*u = model.ToDomainUser(m)
+	return nil
 }
 
-func SaveUser(ctx context.Context, db *gorm.DB, u *model.User) error {
-	return db.WithContext(ctx).Save(u).Error
+func SaveUser(ctx context.Context, db *gorm.DB, u *domain.User) error {
+	m := model.FromDomainUser(*u)
+	if err := db.WithContext(ctx).Save(&m).Error; err != nil {
+		return err
+	}
+	*u = model.ToDomainUser(m)
+	return nil
 }
 
-func ListUsersByIDs(ctx context.Context, db *gorm.DB, ids []uint) ([]model.User, error) {
+func ListUsersByIDs(ctx context.Context, db *gorm.DB, ids []uint) ([]domain.User, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
@@ -55,7 +66,11 @@ func ListUsersByIDs(ctx context.Context, db *gorm.DB, ids []uint) ([]model.User,
 	if err := db.WithContext(ctx).Select("id, username").Where("id IN ?", ids).Find(&out).Error; err != nil {
 		return nil, err
 	}
-	return out, nil
+	result := make([]domain.User, len(out))
+	for i, u := range out {
+		result[i] = model.ToDomainUser(u)
+	}
+	return result, nil
 }
 
 func UpdateUserFields(ctx context.Context, db *gorm.DB, id uint, updates map[string]any) error {

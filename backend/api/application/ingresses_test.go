@@ -14,12 +14,13 @@ import (
 
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/repo"
 )
 
 // 反向视图独立测试:不打 SSH,只覆盖 service_id 反查 + Upstream JSON 解析 +
 // MatchingRoutes 子集筛选 + Server.Name 注入。
 
-func setupApp(t *testing.T) (*gin.Engine, *gorm.DB) {
+func setupApp(t *testing.T) (*gin.Engine, repo.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{

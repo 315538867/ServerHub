@@ -15,11 +15,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
+	"github.com/serverhub/serverhub/repo"
 	"golang.org/x/sync/semaphore"
-	"gorm.io/gorm"
 )
 
 var searchSem = semaphore.NewWeighted(8)
@@ -40,7 +39,7 @@ var (
 	reService   = regexp.MustCompile(`^[a-zA-Z0-9@_.\-]{1,128}$`)
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	r.POST("/:id/logs/search", searchHandler(db, cfg))
 }
 
@@ -63,14 +62,14 @@ func sq(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
-func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
+func getRunner(c *gin.Context, db repo.DB, cfg *config.Config) (runner.Runner, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
 		return nil, false
 	}
-	var s model.Server
-	if err := db.First(&s, id).Error; err != nil {
+	s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
+	if err != nil {
 		resp.NotFound(c, "服务器不存在")
 		return nil, false
 	}
@@ -82,7 +81,7 @@ func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, 
 	return rn, true
 }
 
-func searchHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func searchHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req searchReq
 		if err := c.ShouldBindJSON(&req); err != nil {

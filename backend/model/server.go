@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/serverhub/serverhub/domain"
 	"gorm.io/gorm"
 )
 
@@ -89,7 +90,8 @@ func (s *Server) BeforeSave(_ *gorm.DB) error {
 	}
 	// 2) 校验
 	for i := range s.Networks {
-		if err := s.Networks[i].Validate(); err != nil {
+		dn := toDomainNet(s.Networks[i])
+		if err := (&dn).Validate(); err != nil {
 			return fmt.Errorf("server.networks[%d]: %w", i, err)
 		}
 	}
@@ -134,4 +136,16 @@ func (s *Server) AfterCreate(tx *gorm.DB) error {
 		return tx.Model(s).Update("networks", s.Networks).Error
 	}
 	return nil
+}
+
+// toDomainNet 将 model.Network 转为 domain.Network，用于委托校验。
+func toDomainNet(n Network) domain.Network {
+	return domain.Network{
+		Kind:          n.Kind,
+		NetworkID:     n.NetworkID,
+		Address:       n.Address,
+		Priority:      n.Priority,
+		ReachableFrom: n.ReachableFrom,
+		Label:         n.Label,
+	}
 }

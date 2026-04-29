@@ -12,10 +12,10 @@ import (
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/sysinfo"
 	"github.com/serverhub/serverhub/usecase"
-	"gorm.io/gorm"
+	"github.com/serverhub/serverhub/repo"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB) {
 	r.GET("/status", statusHandler(db))
 	r.POST("/admin", createAdminHandler(db))
 }
@@ -25,7 +25,7 @@ type statusResp struct {
 	NeedsAdmin    bool `json:"needs_admin"`
 }
 
-func statusHandler(db *gorm.DB) gin.HandlerFunc {
+func statusHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		needsAdmin, err := usecase.SetupStatus(c.Request.Context(), db)
 		if err != nil {
@@ -44,7 +44,7 @@ type adminReq struct {
 	Password string `json:"password" binding:"required"`
 }
 
-func createAdminHandler(db *gorm.DB) gin.HandlerFunc {
+func createAdminHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req adminReq
 		if err := c.ShouldBindJSON(&req); err != nil {

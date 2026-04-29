@@ -6,14 +6,13 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/repo"
-	"gorm.io/gorm"
 )
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB) {
 	r.GET("/logs", logsHandler(db))
 }
 
-func logsHandler(db *gorm.DB) gin.HandlerFunc {
+func logsHandler(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 		size, _ := strconv.Atoi(c.DefaultQuery("size", "50"))

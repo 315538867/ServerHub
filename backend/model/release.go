@@ -1,6 +1,11 @@
 package model
 
-import "time"
+import (
+	"errors"
+	"time"
+
+	"gorm.io/gorm"
+)
 
 // ReleaseStatus 枚举
 const (
@@ -37,3 +42,19 @@ type Release struct {
 }
 
 func (Release) TableName() string { return "releases" }
+
+// BeforeUpdate 钩子：INV-2 — status≠draft 时不可变字段保护。
+// 已非 draft 的 Release（active/rolled_back/archived），其 ArtifactID、
+// EnvSetID、ConfigSetID、StartSpec 四个字段不可修改。
+func (r *Release) BeforeUpdate(tx *gorm.DB) error {
+	if r.Status == ReleaseStatusDraft {
+		return nil
+	}
+	if tx.Statement.Changed("ArtifactID") ||
+		tx.Statement.Changed("EnvSetID") ||
+		tx.Statement.Changed("ConfigSetID") ||
+		tx.Statement.Changed("StartSpec") {
+		return errors.New("release: status≠draft 时不可修改 ArtifactID/EnvSetID/ConfigSetID/StartSpec(INV-2)")
+	}
+	return nil
+}

@@ -9,13 +9,12 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/middleware"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
+	"github.com/serverhub/serverhub/repo"
 	"github.com/serverhub/serverhub/pkg/safeshell"
 	"github.com/serverhub/serverhub/pkg/sshpool"
 	"github.com/serverhub/serverhub/pkg/wsstream"
-	"gorm.io/gorm"
 )
 
 var upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096}
@@ -23,7 +22,7 @@ var upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096}
 // 站点 CRUD 已由 Ingress 模型(POST /api/v1/ingresses)接管,nginx 包只剩
 // reload/restart/日志/profile 四类"实例级"操作。任何 site 路由都不在此注册——
 // 客户端命中老路径直接 404,这就是层架构表达"已下架"的写法。
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	upgrader.CheckOrigin = middleware.WSCheckOrigin(cfg)
 	r.POST("/:id/nginx/reload", reloadHandler(db, cfg))
 	r.POST("/:id/nginx/restart", restartHandler(db, cfg))
@@ -34,14 +33,14 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
+func getRunner(c *gin.Context, db repo.DB, cfg *config.Config) (runner.Runner, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
 		return nil, false
 	}
-	var s model.Server
-	if err := db.First(&s, id).Error; err != nil {
+	s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
+	if err != nil {
 		resp.NotFound(c, "服务器不存在")
 		return nil, false
 	}
@@ -53,14 +52,14 @@ func getRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, 
 	return rn, true
 }
 
-func getDedicatedRunner(c *gin.Context, db *gorm.DB, cfg *config.Config) (runner.Runner, bool) {
+func getDedicatedRunner(c *gin.Context, db repo.DB, cfg *config.Config) (runner.Runner, bool) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
 		return nil, false
 	}
-	var s model.Server
-	if err := db.First(&s, id).Error; err != nil {
+	s, err := repo.GetServerByID(c.Request.Context(), db, uint(id))
+	if err != nil {
 		resp.NotFound(c, "服务器不存在")
 		return nil, false
 	}
@@ -76,7 +75,7 @@ func sq(s string) string { return safeshell.Quote(s) }
 
 // ── reload/restart ────────────────────────────────────────────────────────────
 
-func reloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func reloadHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		client, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -91,7 +90,7 @@ func reloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func restartHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func restartHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		client, ok := getRunner(c, db, cfg)
 		if !ok {
@@ -108,7 +107,7 @@ func restartHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 
 // ── logs ─────────────────────────────────────────────────────────────────────
 
-func accessLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func accessLogsHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		client, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {
@@ -129,7 +128,7 @@ func accessLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func errorLogsHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func errorLogsHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		client, ok := getDedicatedRunner(c, db, cfg)
 		if !ok {

@@ -5,11 +5,13 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/serverhub/serverhub/core/source"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/infra"
-	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
+	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
 
@@ -30,16 +32,19 @@ type DiscoveryResult struct {
 func DiscoverServer(ctx context.Context, db *gorm.DB, r infra.Runner,
 	serverID uint, kinds []string) DiscoveryResult {
 
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
 	want := map[string]bool{}
 	for _, k := range kinds {
 		want[k] = true
 	}
 	all := len(want) == 0
 
-	var existing []string
-	db.Model(&model.Service{}).
-		Where("server_id = ? AND source_fingerprint != ''", serverID).
-		Pluck("source_fingerprint", &existing)
+	existing, err := repo.ListServiceFingerprintsByServer(ctx, db, serverID)
+	if err != nil {
+		existing = []string{}
+	}
 	known := make(map[string]struct{}, len(existing))
 	for _, fp := range existing {
 		known[fp] = struct{}{}
@@ -102,31 +107,28 @@ func ImportCandidates(db *gorm.DB, serverID uint, cands []source.Candidate, aesK
 			res.Errors = append(res.Errors, "candidate missing kind/source_id: "+c.Name)
 			continue
 		}
-		var existing model.Service
-		q := db.Where("server_id = ? AND source_kind = ? AND source_id = ?",
-			serverID, c.Kind, c.SourceID).First(&existing)
-		if q.Error == nil {
+		if _, err := repo.GetServiceBySource(context.Background(), db, serverID, c.Kind, c.SourceID); err == nil {
 			res.Skipped++
 			continue
 		}
 		svcType := c.Suggested.Type
 		if svcType == "" {
-			svcType = model.ServiceTypeNative
+			svcType = string(domain.ServiceTypeNative)
 		}
 		name := c.Name
 		if name == "" {
 			name = c.Kind + "-" + c.SourceID
 		}
-		d := model.Service{
+		svc := domain.Service{
 			Name:       name,
 			ServerID:   serverID,
-			Type:       svcType,
+			Type:       domain.ServiceType(svcType),
 			WorkDir:    c.Suggested.Workdir,
 			SourceKind: c.Kind,
 			SourceID:   c.SourceID,
 			SyncStatus: "synced",
 		}
-		if err := db.Create(&d).Error; err != nil {
+		if err := repo.CreateService(context.Background(), db, &svc); err != nil {
 			res.Errors = append(res.Errors, c.Name+": "+err.Error())
 			continue
 		}
@@ -134,11 +136,11 @@ func ImportCandidates(db *gorm.DB, serverID uint, cands []source.Candidate, aesK
 			enc, err := crypto.Encrypt(envJSON, aesKey)
 			if err != nil {
 				res.Errors = append(res.Errors, c.Name+": env-set encrypt: "+err.Error())
-			} else if err := db.Create(&model.EnvVarSet{
-				ServiceID: d.ID,
+			} else if err := repo.CreateEnvSet(context.Background(), db, &domain.EnvVarSet{
+				ServiceID: svc.ID,
 				Label:     "imported",
 				Content:   enc,
-			}).Error; err != nil {
+			}); err != nil {
 				res.Errors = append(res.Errors, c.Name+": env-set: "+err.Error())
 			}
 		}

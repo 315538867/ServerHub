@@ -7,10 +7,10 @@ import (
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/totp"
 	"github.com/serverhub/serverhub/usecase"
-	"gorm.io/gorm"
+	"github.com/serverhub/serverhub/repo"
 )
 
-func totpSetupHandler(db *gorm.DB, _ *config.Config) gin.HandlerFunc {
+func totpSetupHandler(db repo.DB, _ *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims := middleware.GetClaims(c)
 		if claims == nil {
@@ -27,7 +27,7 @@ func totpSetupHandler(db *gorm.DB, _ *config.Config) gin.HandlerFunc {
 	}
 }
 
-func totpConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func totpConfirmHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims := middleware.GetClaims(c)
 		if claims == nil {
@@ -55,7 +55,7 @@ func totpConfirmHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func totpDisableHandler(db *gorm.DB, _ *config.Config) gin.HandlerFunc {
+func totpDisableHandler(db repo.DB, _ *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		claims := middleware.GetClaims(c)
 		if claims == nil {
@@ -70,7 +70,7 @@ func totpDisableHandler(db *gorm.DB, _ *config.Config) gin.HandlerFunc {
 	}
 }
 
-func totpLoginHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func totpLoginHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var body struct {
 			TmpToken string `json:"tmp_token" binding:"required"`

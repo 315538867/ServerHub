@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/runner"
 )
 
@@ -34,7 +34,7 @@ func AdaptV1(rn runner.Runner) Runner { return v1Adapter{rn: rn} }
 // For 接 v1 runner.For:发现/接管路径单点入口,避免每个 caller 都 import
 // pkg/runner 又包一次。返回 infra.Runner;v1 runner 的 Close/Session 不在此
 // 暴露——发现/接管全部走 Run 一条路。
-func For(s *model.Server, cfg *config.Config) (Runner, error) {
+func For(s *domain.Server, cfg *config.Config) (Runner, error) {
 	if s == nil {
 		return nil, fmt.Errorf("nil server")
 	}

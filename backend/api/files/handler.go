@@ -11,11 +11,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/serverhub/serverhub/config"
-	"github.com/serverhub/serverhub/model"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/pkg/fsclient"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
-	"gorm.io/gorm"
+	"github.com/serverhub/serverhub/repo"
 )
 
 const maxReadSize = 2 * 1024 * 1024 // 2 MB
@@ -28,7 +28,7 @@ type FileEntry struct {
 	ModTime string `json:"mod_time"`
 }
 
-func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
+func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
 	r.GET("/:id/files/list", listHandler(db, cfg))
 	r.GET("/:id/files/content", contentGetHandler(db, cfg))
 	r.PUT("/:id/files/content", contentPutHandler(db, cfg))
@@ -42,14 +42,14 @@ func RegisterRoutes(r *gin.RouterGroup, db *gorm.DB, cfg *config.Config) {
 
 // ctx loads the server, an FS client (sftp or local) and a Runner (for chmod/rm
 // where shelling out is simpler than walking the FS). Writes the response on error.
-func ctx(c *gin.Context, db *gorm.DB, cfg *config.Config) (*model.Server, fsclient.Client, runner.Runner, bool) {
+func ctx(c *gin.Context, db repo.DB, cfg *config.Config) (*domain.Server, fsclient.Client, runner.Runner, bool) {
 	sid, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		resp.BadRequest(c, "服务器 ID 无效")
 		return nil, nil, nil, false
 	}
-	var s model.Server
-	if err := db.First(&s, sid).Error; err != nil {
+	s, err := repo.GetServerByID(c.Request.Context(), db, uint(sid))
+	if err != nil {
 		resp.NotFound(c, "服务器不存在")
 		return nil, nil, nil, false
 	}
@@ -72,7 +72,7 @@ func shellQuote(s string) string {
 
 // ── handlers ─────────────────────────────────────────────────────────────────
 
-func listHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func listHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
@@ -98,7 +98,7 @@ func listHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func contentGetHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func contentGetHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
@@ -129,7 +129,7 @@ func contentGetHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func contentPutHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func contentPutHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
@@ -157,7 +157,7 @@ func contentPutHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func downloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func downloadHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
@@ -181,7 +181,7 @@ func downloadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func uploadHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
@@ -214,7 +214,7 @@ func uploadHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func mkdirHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func mkdirHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
@@ -235,7 +235,7 @@ func mkdirHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func deleteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func deleteHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, _, rn, ok := ctx(c, db, cfg)
 		if !ok {
@@ -255,7 +255,7 @@ func deleteHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func renameHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func renameHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, fc, _, ok := ctx(c, db, cfg)
 		if !ok {
@@ -277,7 +277,7 @@ func renameHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
 	}
 }
 
-func chmodHandler(db *gorm.DB, cfg *config.Config) gin.HandlerFunc {
+func chmodHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		_, _, rn, ok := ctx(c, db, cfg)
 		if !ok {

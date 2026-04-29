@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/crypto"
 	"github.com/serverhub/serverhub/pkg/runner"
@@ -64,7 +65,7 @@ const testAES = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde
 
 func installFakeCertRunner(t *testing.T, fr *fakeRunner) {
 	t.Helper()
-	old := SetCertRunnerFactory(func(*model.Server, *config.Config) (runner.Runner, error) {
+	old := SetCertRunnerFactory(func(*domain.Server, *config.Config) (runner.Runner, error) {
 		return fr, nil
 	})
 	t.Cleanup(func() { SetCertRunnerFactory(old) })

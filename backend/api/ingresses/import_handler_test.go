@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/serverhub/serverhub/config"
+	"github.com/serverhub/serverhub/domain"
 	"github.com/serverhub/serverhub/model"
 	"github.com/serverhub/serverhub/pkg/runner"
 )
@@ -68,7 +69,7 @@ server {
 		listingOut: "/etc/nginx/sites-enabled/app\n",
 		catOut:     map[string]string{"/etc/nginx/sites-enabled/app": body},
 	}
-	old := SetImportRunnerFactory(func(*model.Server, *config.Config) (runner.Runner, error) {
+	old := SetImportRunnerFactory(func(*domain.Server, *config.Config) (runner.Runner, error) {
 		return rn, nil
 	})
 	t.Cleanup(func() { SetImportRunnerFactory(old) })
@@ -125,7 +126,7 @@ func TestImportCandidates_EdgeNotFound(t *testing.T) {
 func TestImportCandidates_RunnerError(t *testing.T) {
 	r, db := setup(t)
 	edgeID := mkEdge(t, db)
-	old := SetImportRunnerFactory(func(*model.Server, *config.Config) (runner.Runner, error) {
+	old := SetImportRunnerFactory(func(*domain.Server, *config.Config) (runner.Runner, error) {
 		return nil, errors.New("ssh down")
 	})
 	t.Cleanup(func() { SetImportRunnerFactory(old) })
@@ -174,7 +175,7 @@ server {
 		listingOut: "/etc/nginx/sites-enabled/api\n",
 		catOut:     map[string]string{"/etc/nginx/sites-enabled/api": body},
 	}
-	old := SetImportRunnerFactory(func(*model.Server, *config.Config) (runner.Runner, error) {
+	old := SetImportRunnerFactory(func(*domain.Server, *config.Config) (runner.Runner, error) {
 		return rn, nil
 	})
 	t.Cleanup(func() { SetImportRunnerFactory(old) })
