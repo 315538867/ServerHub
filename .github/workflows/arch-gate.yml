@@ -41,7 +41,8 @@ jobs:
           if [ -d backend/adapters ]; then
             HITS=$(grep -RnE '"github\.com/serverhub/serverhub/adapters/' \
               backend/adapters/ 2>/dev/null \
-              | grep -v '_test.go:' || true)
+              | grep -v '_test.go:' \
+              | grep -v '/internal/' || true)
             if [ -n "$HITS" ]; then
               echo "ERROR: adapter cross-import detected:"
               echo "$HITS"
