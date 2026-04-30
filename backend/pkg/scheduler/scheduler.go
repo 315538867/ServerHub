@@ -22,6 +22,12 @@ func Start(db *gorm.DB, cfg *config.Config) {
 		interval = 10 * time.Second
 	}
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("[scheduler] PANIC: %v\n", r)
+			}
+		}()
+		fmt.Printf("[scheduler] started, interval=%v\n", interval)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		collectAll(db, cfg) // immediate first run
@@ -33,7 +39,10 @@ func Start(db *gorm.DB, cfg *config.Config) {
 
 func collectAll(db *gorm.DB, cfg *config.Config) {
 	var servers []model.Server
-	db.Find(&servers)
+	if err := db.Find(&servers).Error; err != nil {
+		fmt.Printf("[scheduler] db.Find servers error: %v\n", err)
+		return
+	}
 	ctx := context.Background()
 	for _, s := range servers {
 		s := s
@@ -59,9 +68,11 @@ func collectOne(db *gorm.DB, cfg *config.Config, s model.Server) {
 	if s.Type == "local" {
 		metrics, err = sshpool.CollectLocalMetrics()
 		if err != nil {
-			fmt.Printf("[scheduler] local metrics error: %v\n", err)
+			fmt.Printf("[scheduler] local metrics error server %d: %v\n", s.ID, err)
 			probe.ErrMsg = err.Error()
-			db.Create(&probe)
+			if cerr := db.Create(&probe).Error; cerr != nil {
+				fmt.Printf("[scheduler] create probe error: %v\n", cerr)
+			}
 			return
 		}
 	} else {
@@ -88,15 +99,19 @@ func collectOne(db *gorm.DB, cfg *config.Config, s model.Server) {
 		}
 	}
 
-	db.Create(&probe)
-	db.Create(&model.Metric{
+	if cerr := db.Create(&probe).Error; cerr != nil {
+		fmt.Printf("[scheduler] create probe error server %d: %v\n", s.ID, cerr)
+	}
+	if cerr := db.Create(&model.Metric{
 		ServerID: s.ID,
 		CPU:      metrics.CPU,
 		Mem:      metrics.Mem,
 		Disk:     metrics.Disk,
 		Load1:    metrics.Load1,
 		Uptime:   metrics.Uptime,
-	})
+	}).Error; cerr != nil {
+		fmt.Printf("[scheduler] create metric error server %d: %v\n", s.ID, cerr)
+	}
 	go checkAlerts(db, cfg, s.ID, metrics.CPU, metrics.Mem, metrics.Disk, false)
 }
 
