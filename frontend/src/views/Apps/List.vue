@@ -1,13 +1,13 @@
 <template>
   <div class="page apps-list">
-    <UiPageHeader title="应用列表" subtitle="管理所有部署在你服务器上的应用">
+    <UiPageHeader title="项目列表" subtitle="管理所有部署的项目">
       <template #actions>
         <UiButton v-if="selected.length" variant="danger" size="sm" @click="batchDelete">
           删除 {{ selected.length }} 项
         </UiButton>
         <UiButton variant="primary" size="sm" @click="$router.push('/apps/create')">
           <template #icon><Plus :size="14" /></template>
-          新建应用
+          新建项目
         </UiButton>
       </template>
     </UiPageHeader>
@@ -157,8 +157,8 @@ const grouped = computed<Group[]>(() => {
 })
 
 const emptyText = computed(() => {
-  if (appStore.apps.length === 0) return '暂无应用，点击右上角「新建应用」创建第一个'
-  if (keyword.value || filterStatus.value || filterServer.value) return '没有匹配的应用，调整搜索或过滤条件'
+  if (appStore.apps.length === 0) return '暂无项目，点击右上角「新建项目」创建第一个'
+  if (keyword.value || filterStatus.value || filterServer.value) return '没有匹配的项目，调整搜索或过滤条件'
   return '暂无数据'
 })
 
@@ -191,17 +191,17 @@ function renderOps(row: Application) {
 
 const columns = computed<DataTableColumns<Application>>(() => [
   { type: 'selection', width: 40 },
-  { title: '应用名称', key: 'name', minWidth: 180, render: renderName },
+  { title: '项目名称', key: 'name', minWidth: 180, render: renderName },
   { title: '服务器', key: 'server', minWidth: 130, render: (row) => h('span', { class: 'muted-cell' }, serverName(row.server_id)) },
-  { title: '域名 / 描述', key: 'domain', minWidth: 200, render: (row) => row.domain || row.description || '—' },
+  { title: '访问入口', key: 'access_url', minWidth: 200, render: (row) => row.access_url ? h('code', { class: 'url-cell' }, row.access_url) : h('span', { class: 'muted-cell' }, '—') },
   { title: '状态', key: 'status', width: 100, render: (row) => h(UiBadge, { tone: statusTone(row.status) }, () => statusText(row.status)) },
   { title: '更新时间', key: 'updated_at', minWidth: 160, render: (row) => h('span', { class: 'time-cell' }, row.updated_at) },
   { title: '操作', key: 'operations', width: 160, fixed: 'right' as const, render: renderOps },
 ])
 
 const groupColumns = computed<DataTableColumns<Application>>(() => [
-  { title: '应用名称', key: 'name', minWidth: 180, render: renderName },
-  { title: '域名 / 描述', key: 'domain', minWidth: 200, render: (row) => row.domain || row.description || '—' },
+  { title: '项目名称', key: 'name', minWidth: 180, render: renderName },
+  { title: '访问入口', key: 'access_url', minWidth: 200, render: (row) => row.access_url ? h('code', { class: 'url-cell' }, row.access_url) : h('span', { class: 'muted-cell' }, '—') },
   { title: '状态', key: 'status', width: 100, render: (row) => h(UiBadge, { tone: statusTone(row.status) }, () => statusText(row.status)) },
   { title: '更新时间', key: 'updated_at', minWidth: 160, render: (row) => h('span', { class: 'time-cell' }, row.updated_at) },
   { title: '操作', key: 'operations', width: 160, fixed: 'right' as const, render: renderOps },
@@ -212,7 +212,7 @@ function batchDelete() {
   if (ids.length === 0) return
   dialog.warning({
     title: '批量删除',
-    content: `确认删除选中的 ${ids.length} 个应用？此操作不可恢复。`,
+    content: `确认删除选中的 ${ids.length} 个项目？此操作不可恢复。`,
     positiveText: '删除',
     negativeText: '取消',
     onPositiveClick: async () => {
@@ -291,4 +291,13 @@ onMounted(async () => {
 :deep(.muted-cell) { color: var(--ui-fg-3); font-size: var(--fs-xs); }
 :deep(.time-cell) { color: var(--ui-fg-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 :deep(.cell-ops) { display: inline-flex; gap: var(--space-1); align-items: center; }
+:deep(.url-cell) {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ui-brand-fg);
+  background: var(--ui-brand-soft);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
 </style>

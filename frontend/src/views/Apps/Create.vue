@@ -2,8 +2,8 @@
   <div class="create-page">
     <div class="create-card">
       <div class="create-header">
-        <h2 class="create-title">新建应用</h2>
-        <p class="create-subtitle">分 4 步完成应用创建：信息 → 容器 → 网络 → 部署</p>
+        <h2 class="create-title">新建项目</h2>
+        <p class="create-subtitle">分 4 步完成项目创建：信息 → 容器 → 网络 → 部署</p>
         <NSteps :current="step + 1" class="create-steps" size="small">
           <NStep v-for="(s, i) in stepDefs" :key="i" :title="s.title" :description="s.subtitle" />
         </NSteps>
@@ -14,7 +14,7 @@
           <div v-if="step === 0" key="s0" class="step-pane">
             <div class="form-grid">
               <div class="form-field">
-                <label class="form-label">应用名称 <span class="form-required">*</span></label>
+                <label class="form-label">项目名称 <span class="form-required">*</span></label>
                 <NInput v-model:value="form.name" placeholder="例如：my-blog" autofocus />
                 <span class="form-hint">唯一标识符，创建后不可修改；将用于自动生成基础目录</span>
               </div>
@@ -29,7 +29,7 @@
                   placeholder="选择服务器"
                   :options="serverOptions"
                 />
-                <span class="form-hint">应用的所有运行操作（部署、容器、终端）都将在该服务器上执行</span>
+                <span class="form-hint">项目的所有运行操作（部署、容器、终端）都将在该服务器上执行</span>
               </div>
             </div>
           </div>
@@ -42,9 +42,9 @@
                 <span class="form-hint">关联已有/即将创建的容器名；填写后开启「运维」Tab，可看实时指标、日志、控制</span>
               </div>
               <div class="form-field">
-                <label class="form-label">应用基础目录</label>
+                <label class="form-label">项目基础目录</label>
                 <NInput v-model:value="form.base_dir" :placeholder="`/srv/apps/${form.name || 'my-app'}`" />
-                <span class="form-hint">服务器上自动创建 data / logs / config / backup 子目录；留空按应用名自动填充</span>
+                <span class="form-hint">服务器上自动创建 data / logs / config / backup 子目录；留空按项目名自动填充</span>
               </div>
             </div>
             <NAlert type="info" title="这一步全部可选" class="step-alert">
@@ -82,6 +82,15 @@
                 <NInput v-model:value="form.domain" placeholder="blog.example.com" />
                 <span class="form-hint">独立站点的访问域名，Nginx 将以此域名生成 server_name 配置</span>
               </div>
+
+              <div v-if="urlPreview" class="form-field">
+                <label class="form-label">访问入口预览</label>
+                <div class="url-preview">
+                  <Globe :size="14" />
+                  <code>{{ urlPreview }}</code>
+                </div>
+                <span class="form-hint">创建项目后自动生成 draft Ingress，前往对应 Edge 服务器「应用配置」后生效</span>
+              </div>
             </div>
           </div>
 
@@ -102,18 +111,18 @@
             <transition name="fade-step">
               <div v-if="deployType" class="deploy-type-fields">
                 <NAlert type="info" title="部署细节移到 Releases Tab" class="step-alert">
-                  M3 起部署参数（工作目录 / 启动命令 / 镜像 / Compose 文件）由 Release 表达，请在创建应用后于「Releases」Tab 创建首个 Release。
+                  部署参数（工作目录 / 启动命令 / 镜像 / Compose 文件）由 Release 表达，请在创建项目后于「Releases」Tab 创建首个 Release。
                 </NAlert>
               </div>
               <NAlert v-else type="info" title="暂不配置部署？" class="step-alert">
-                可点「完成创建」直接建好应用，稍后随时在「部署」Tab 配置。
+                可点「完成创建」直接建好项目，稍后随时在「部署」Tab 配置。
               </NAlert>
             </transition>
 
             <div class="summary-block">
               <div class="summary-title">即将创建</div>
               <div class="summary-grid">
-                <div><span class="sl">应用</span><span class="sv">{{ form.name || '—' }}</span></div>
+                <div><span class="sl">项目</span><span class="sv">{{ form.name || '—' }}</span></div>
                 <div><span class="sl">服务器</span><span class="sv">{{ serverName }}</span></div>
                 <div><span class="sl">容器</span><span class="sv">{{ form.container_name || '未绑定' }}</span></div>
                 <div><span class="sl">基础目录</span><span class="sv">{{ form.base_dir || '—' }}</span></div>
@@ -141,6 +150,7 @@
 import { reactive, ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { NSteps, NStep, NInput, NSelect, NAlert, useMessage } from 'naive-ui'
+import { Globe } from 'lucide-vue-next'
 import { createApp } from '@/api/application'
 import { useServerStore } from '@/stores/server'
 import { useAppStore } from '@/stores/app'
@@ -207,6 +217,16 @@ const exposeSummary = computed(() => {
   return o.label
 })
 
+const urlPreview = computed(() => {
+  if (form.expose_mode === 'none' || !form.domain) return ''
+  if (form.expose_mode === 'site') return `https://${form.domain}`
+  if (form.expose_mode === 'path') {
+    if (!form.domain || !form.site_name) return ''
+    return `https://${form.domain}/${form.site_name}`
+  }
+  return ''
+})
+
 const canNext = computed(() => {
   if (step.value === 0) return !!(form.name && form.server_id)
   if (step.value === 2) return form.expose_mode !== 'site' || !!form.domain
@@ -218,7 +238,7 @@ const canCreate = computed(() => {
 
 function onNext() {
   if (!canNext.value) {
-    if (step.value === 0) message.warning('请填写应用名称和服务器')
+    if (step.value === 0) message.warning('请填写项目名称和服务器')
     else if (step.value === 2) message.warning('独立站点模式需填写域名')
     return
   }
@@ -230,19 +250,23 @@ function onSkip() {
 }
 
 async function handleCreate() {
-  if (!form.name || !form.server_id) { step.value = 0; message.warning('请填写应用名称和服务器'); return }
+  if (!form.name || !form.server_id) { step.value = 0; message.warning('请填写项目名称和服务器'); return }
   if (form.expose_mode === 'site' && !form.domain) { step.value = 2; message.warning('独立站点模式需填写域名'); return }
   saving.value = true
   try {
     const app = await createApp(form as any)
-    // M3：部署方式不再由向导一步创建，用户在 Releases Tab 建 Release 时选择。
+    await appStore.fetch()
+
+    // Plan B: 创建后展示 access_url 预览
+    const urlHint = app.access_url
+      ? `访问入口：${app.access_url}（配置 Ingress 路由后生效）`
+      : '项目创建成功'
+
     if (deployType.value) {
-      message.success('应用创建成功，请前往 Releases Tab 创建首个 Release')
-      await appStore.fetch()
+      message.success(urlHint)
       router.push(`/apps/${app.id}/releases`)
     } else {
-      message.success('应用创建成功')
-      await appStore.fetch()
+      message.success(urlHint)
       router.push(`/apps/${app.id}/overview`)
     }
   } catch (e: any) {
@@ -389,6 +413,20 @@ onMounted(() => serverStore.fetch())
 .sv {
   color: var(--ui-fg);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: var(--fw-medium);
+}
+
+.url-preview {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--ui-brand-soft);
+  border: 1px solid color-mix(in srgb, var(--ui-brand) 30%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--ui-brand-fg);
+  font-size: var(--fs-sm);
+}
+.url-preview code {
+  font-family: var(--font-mono);
   font-weight: var(--fw-medium);
 }
 

@@ -29,9 +29,11 @@ const router = createRouter({
       children: [
         { path: 'dashboard', name: 'Dashboard', component: () => import('@/views/Dashboard/index.vue') },
 
-        // ── 应用 ──
+        // ── 项目（主路由 /apps，/projects 作为别名） ──
         { path: 'apps', name: 'AppList', component: () => import('@/views/Apps/List.vue') },
+        { path: 'projects', redirect: '/apps' },
         { path: 'apps/create', name: 'AppCreate', component: () => import('@/views/Apps/Create.vue') },
+        { path: 'projects/create', redirect: '/apps/create' },
         {
           path: 'apps/:appId',
           component: () => import('@/layouts/AppLayout.vue'),
@@ -66,6 +68,14 @@ const router = createRouter({
             ...appLegacyRedirects,
           ],
         },
+
+        // ── 项目别名 (/projects/* → /apps/*) ──
+        { path: 'projects/:id', redirect: (to) => `/apps/${to.params.id}` },
+        { path: 'projects/:id/overview', redirect: (to) => `/apps/${to.params.id}/overview` },
+        { path: 'projects/:id/deploy', redirect: (to) => `/apps/${to.params.id}/releases` },
+        { path: 'projects/:id/traffic', redirect: (to) => `/apps/${to.params.id}/network/ingresses` },
+        { path: 'projects/:id/ops', redirect: (to) => `/apps/${to.params.id}/ops/logs` },
+        { path: 'projects/:id/data', redirect: (to) => `/apps/${to.params.id}/data` },
 
         // ── 服务器 ──
         { path: 'servers', name: 'Servers', component: () => import('@/views/Servers/index.vue') },

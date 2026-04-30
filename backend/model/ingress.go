@@ -22,7 +22,7 @@ type Ingress struct {
 	// 强制 80→443 跳转；仅当 CertID 非空时才允许置 true（API 层校验）。
 	// 显式 column 避免 GORM 默认把 HTTPS 拆成 force_http_s。
 	ForceHTTPS    bool       `gorm:"default:false;column:force_https" json:"force_https"`
-	Status        string     `gorm:"default:'pending'" json:"status"` // pending|applied|drift|broken
+	Status        string     `gorm:"default:'draft'" json:"status"` // draft|pending|applied|drift|broken
 	LastAppliedAt *time.Time `json:"last_applied_at"`
 	// ArchivePath / OriginalConfigPath 标记"本 Ingress 是从 nginx 老 vhost 接管而来"。
 	//   - ArchivePath: 远端归档目录中 mv 后的绝对路径,如

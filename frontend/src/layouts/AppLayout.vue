@@ -12,11 +12,48 @@
           <span v-if="server" class="al__sub">
             <Server :size="13" /> {{ server.name }}
           </span>
-          <span v-if="app?.image" class="al__sep">·</span>
-          <code v-if="app?.image" class="al__code">{{ app.image }}</code>
+          <span v-if="app?.access_url" class="al__sep">·</span>
+          <code v-if="app?.access_url" class="al__code al__access-url">{{ app.access_url }}</code>
         </div>
       </div>
-      <div id="app-bar-actions" class="al__bar-actions" />
+      <div id="app-bar-actions" class="al__bar-actions">
+        <UiButton
+          v-if="app?.access_url"
+          size="sm"
+          variant="primary"
+          @click="openAccessUrl"
+        >
+          <template #icon><Globe :size="14" /></template>
+          访问
+        </UiButton>
+        <UiButton
+          v-if="app?.container_name"
+          size="sm"
+          variant="secondary"
+          @click="router.push(`/apps/${appId}/ops/terminal`)"
+        >
+          <template #icon><Terminal :size="14" /></template>
+          终端
+        </UiButton>
+        <UiButton
+          v-if="app?.container_name"
+          size="sm"
+          variant="secondary"
+          @click="router.push(`/apps/${appId}/ops/logs`)"
+        >
+          <template #icon><FileText :size="14" /></template>
+          日志
+        </UiButton>
+        <UiButton
+          v-if="app?.expose_mode !== 'none'"
+          size="sm"
+          variant="secondary"
+          @click="router.push(`/apps/${appId}/network/ingresses`)"
+        >
+          <template #icon><Route :size="14" /></template>
+          路由
+        </UiButton>
+      </div>
     </div>
 
     <UiTabs
@@ -39,12 +76,13 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Server } from 'lucide-vue-next'
+import { Server, Globe, Terminal, FileText, Route } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useServerStore } from '@/stores/server'
 import StatusDot from '@/components/ui/StatusDot.vue'
 import UiTabs from '@/components/ui/UiTabs.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
+import UiButton from '@/components/ui/UiButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -54,6 +92,10 @@ const serverStore = useServerStore()
 const appId  = computed(() => Number(route.params.appId))
 const app    = computed(() => appStore.getById(appId.value))
 const server = computed(() => app.value ? serverStore.getById(app.value.server_id) : undefined)
+
+function openAccessUrl() {
+  if (app.value?.access_url) window.open(app.value.access_url, '_blank', 'noopener')
+}
 
 const activeTab = computed(() => route.path.split('/').filter(Boolean)[2] || 'overview')
 const activeSub = computed(() => route.path.split('/').filter(Boolean)[3] || '')
@@ -75,7 +117,7 @@ const statusTone = computed<'success' | 'neutral' | 'danger' | 'warning'>(() => 
 const exposeModeLabel = computed(() => {
   const m = app.value?.expose_mode ?? ''
   if (!m || m === 'none') return ''
-  return ({ public: '公网', internal: '内网', custom: '自定义' } as Record<string, string>)[m] ?? m
+  return ({ site: '独立站点', path: '路径转发' } as Record<string, string>)[m] ?? m
 })
 
 const tabs = computed(() => {

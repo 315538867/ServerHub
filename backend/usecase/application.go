@@ -10,20 +10,25 @@ package usecase
 import (
 	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/serverhub/serverhub/derive"
 	"github.com/serverhub/serverhub/domain"
+	"github.com/serverhub/serverhub/pkg/accessurl"
 	"github.com/serverhub/serverhub/repo"
 	"gorm.io/gorm"
 )
 
 // ── 入参 / 出参 ─────────────────────────────────────────────────────────────
 
-// AppWithStatus 是 Application + 派生状态。
+// AppWithStatus 是 Application + 派生状态 + 扩展展示字段。
 type AppWithStatus struct {
 	domain.Application
-	Status string `json:"status"`
+	Status       string `json:"status"`
+	AccessURL    string `json:"access_url"`
+	IngressCount int    `json:"ingress_count"`
+	ServiceCount int    `json:"service_count"`
 }
 
 // AppIngressDTO 是 application 反向 ingress 视图的返回结构。
@@ -35,7 +40,7 @@ type AppIngressDTO struct {
 
 // ── list / get ──────────────────────────────────────────────────────────────
 
-// ListApplications 列出应用,可按 serverID 过滤,并附带派生状态。
+// ListApplications 列出应用,可按 serverID 过滤,并附带派生状态及扩展展示字段。
 func ListApplications(ctx context.Context, db *gorm.DB, serverID *uint) ([]AppWithStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -48,15 +53,27 @@ func ListApplications(ctx context.Context, db *gorm.DB, serverID *uint) ([]AppWi
 	for i, a := range apps {
 		ids[i] = a.ID
 	}
+
+	// 派生 status（批量）
 	statusMap := derive.AppStatus(db, ids)
+
+	// 批量 service_count
+	svcCnt, _ := repo.CountServicesByAppIDs(ctx, db, ids)
+
 	out := make([]AppWithStatus, len(apps))
 	for i, a := range apps {
-		out[i] = AppWithStatus{Application: a, Status: statusMap[a.ID].Result}
+		out[i] = AppWithStatus{
+			Application: a,
+			Status:      statusMap[a.ID].Result,
+			// 列表不查询 ingress，仅从 app 字段计算 access_url
+			AccessURL:    accessurl.Compute(nil, a),
+			ServiceCount: svcCnt[a.ID],
+		}
 	}
 	return out, nil
 }
 
-// GetApplication 返回单个应用及派生状态。
+// GetApplication 返回单个应用及派生状态 + 完整扩展字段。
 func GetApplication(ctx context.Context, db *gorm.DB, id uint) (AppWithStatus, error) {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -66,12 +83,35 @@ func GetApplication(ctx context.Context, db *gorm.DB, id uint) (AppWithStatus, e
 		return AppWithStatus{}, err
 	}
 	m := derive.AppStatus(db, []uint{app.ID})
-	return AppWithStatus{Application: app, Status: m[app.ID].Result}, nil
+
+	// service_count
+	services, _ := repo.ListServicesByApplicationID(ctx, db, id)
+
+	// ingress 反向查找，用于 access_url + ingress_count
+	appIngresses, iErr := ListAppIngresses(ctx, db, id)
+	var ingresses []domain.Ingress
+	ingressCount := 0
+	if iErr == nil {
+		ingressCount = len(appIngresses)
+		ingresses = make([]domain.Ingress, len(appIngresses))
+		for i, aig := range appIngresses {
+			ingresses[i] = aig.Ingress
+		}
+	}
+
+	return AppWithStatus{
+		Application:  app,
+		Status:       m[app.ID].Result,
+		AccessURL:    accessurl.Compute(ingresses, app),
+		IngressCount: ingressCount,
+		ServiceCount: len(services),
+	}, nil
 }
 
 // ── create / update / delete ────────────────────────────────────────────────
 
-// CreateApplication 校验 server 存在性 + 创建应用。
+// CreateApplication 校验 server 存在性、创建应用，并在 expose_mode!="none" 且 domain 非空时
+// 自动创建一个 draft 状态的 Ingress 骨架。
 func CreateApplication(ctx context.Context, db *gorm.DB, app *domain.Application) error {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
@@ -79,7 +119,29 @@ func CreateApplication(ctx context.Context, db *gorm.DB, app *domain.Application
 	if _, err := repo.GetServerByID(ctx, db, app.ServerID); err != nil {
 		return errors.New("服务器不存在")
 	}
-	return repo.CreateApplication(ctx, db, app)
+	if err := repo.CreateApplication(ctx, db, app); err != nil {
+		return err
+	}
+
+	// 自动创建 draft Ingress 骨架
+	if app.ExposeMode != "none" && app.Domain != "" {
+		ig := domain.Ingress{
+			EdgeServerID: app.ServerID,
+			MatchKind:    app.ExposeMode,
+			Domain:       app.Domain,
+			DefaultPath:  "/",
+			Status:       "draft",
+			ForceHTTPS:   false,
+		}
+		if app.ExposeMode == "path" && app.SiteName != "" {
+			ig.DefaultPath = "/" + app.SiteName
+		}
+		if err := repo.CreateIngress(ctx, db, &ig); err != nil {
+			log.Printf("[usecase] 自动创建 draft Ingress 失败(app=%d): %v", app.ID, err)
+		}
+	}
+
+	return nil
 }
 
 // UpdateApplication 加载 + 保存应用,并返回带状态的结果。

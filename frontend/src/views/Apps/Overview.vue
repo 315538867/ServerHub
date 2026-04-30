@@ -1,5 +1,30 @@
 <template>
   <div class="ov-page">
+    <!-- 访问入口 -->
+    <UiSection v-if="app?.expose_mode !== 'none' && app?.access_url" title="访问入口">
+      <UiCard padding="md">
+        <div class="ov__access-bar">
+          <div class="ov__access-left">
+            <Globe :size="18" class="ov__access-icon" />
+            <a :href="app.access_url" target="_blank" rel="noopener" class="ov__access-link">{{ app.access_url }}</a>
+          </div>
+          <div class="ov__access-actions">
+            <UiButton size="sm" variant="secondary" @click="copyUrl">
+              <template #icon><Copy :size="14" /></template>
+              复制
+            </UiButton>
+            <UiButton size="sm" variant="primary" @click="openUrl">
+              <template #icon><ExternalLink :size="14" /></template>
+              打开
+            </UiButton>
+          </div>
+        </div>
+      </UiCard>
+    </UiSection>
+
+    <!-- 拓扑 -->
+    <NetworkTopology :app-id="appId" :ingresses="appIngresses" />
+
     <AppMetricsCard v-if="app?.container_name" :app-id="appId" />
 
     <UiSection title="应用信息">
@@ -105,13 +130,14 @@ import { computed, ref, onMounted, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { NDataTable, useMessage, useDialog } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
-import { RefreshCw } from 'lucide-vue-next'
+import { RefreshCw, Globe, Copy, ExternalLink } from 'lucide-vue-next'
 import { useAppStore } from '@/stores/app'
 import { useServerStore } from '@/stores/server'
-import { deleteApp, getAppDirs, initAppDirs, listAppServices, detachServiceFromApp } from '@/api/application'
+import { deleteApp, getAppDirs, initAppDirs, listAppServices, detachServiceFromApp, listAppIngresses } from '@/api/application'
 import type { AppDirEntry } from '@/types/api'
-import type { AppService } from '@/api/application'
+import type { AppService, AppIngress } from '@/api/application'
 import AppMetricsCard from '@/components/apps/AppMetricsCard.vue'
+import NetworkTopology from '@/components/apps/NetworkTopology.vue'
 import UiSection from '@/components/ui/UiSection.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
@@ -129,6 +155,24 @@ const dialog = useDialog()
 const appId = computed(() => Number(route.params.appId))
 const app = computed(() => appStore.getById(appId.value))
 const server = computed(() => app.value ? serverStore.getById(app.value.server_id) : undefined)
+
+const appIngresses = ref<AppIngress[]>([])
+
+async function fetchIngresses() {
+  try { appIngresses.value = await listAppIngresses(appId.value) }
+  catch { /* 静默失败，拓扑自动回退 */ }
+}
+
+function copyUrl() {
+  if (!app.value?.access_url) return
+  navigator.clipboard.writeText(app.value.access_url).then(
+    () => message.success('已复制到剪贴板'),
+    () => message.error('复制失败'),
+  )
+}
+function openUrl() {
+  if (app.value?.access_url) window.open(app.value.access_url, '_blank', 'noopener')
+}
 
 // R3 起 app.status 枚举: running | syncing | error | unknown
 const statusTone = computed<any>(() => {
@@ -257,6 +301,7 @@ onMounted(async () => {
   if (!serverStore.servers.length) await serverStore.fetch()
   if (app.value?.base_dir) fetchDirs()
   fetchServices()
+  fetchIngresses()
 })
 </script>
 
@@ -317,4 +362,39 @@ onMounted(async () => {
 :deep(.ov__dir-name) { font-weight: var(--fw-medium); color: var(--ui-fg); font-size: var(--fs-sm); }
 
 .ov__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.ov__access-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.ov__access-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.ov__access-icon {
+  color: var(--ui-success);
+  flex-shrink: 0;
+}
+.ov__access-link {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--ui-brand-fg);
+  text-decoration: none;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color var(--dur-fast) var(--ease);
+}
+.ov__access-link:hover { color: var(--ui-brand); text-decoration: underline; }
+.ov__access-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
 </style>

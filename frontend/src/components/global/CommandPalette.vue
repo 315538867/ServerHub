@@ -9,7 +9,7 @@
             v-model="query"
             type="text"
             class="cp-input"
-            placeholder="搜索应用、服务器、页面，或输入操作…"
+            placeholder="搜索项目、服务器、页面，或输入操作…"
             @keydown.down.prevent="moveCursor(1)"
             @keydown.up.prevent="moveCursor(-1)"
             @keydown.enter.prevent="executeCurrent"
@@ -120,8 +120,8 @@ function close() { open.value = false }
 
 const navItems = computed<CmdItem[]>(() => [
   { id: 'nav:dashboard',  group: '页面', icon: '🏠', title: '工作台',     action: () => router.push('/dashboard') },
-  { id: 'nav:apps',       group: '页面', icon: '📋', title: '应用列表',   action: () => router.push('/apps') },
-  { id: 'nav:create',     group: '页面', icon: '➕', title: '新建应用',   action: () => router.push('/apps/create') },
+  { id: 'nav:apps',       group: '页面', icon: '📋', title: '项目列表',   action: () => router.push('/apps') },
+  { id: 'nav:create',     group: '页面', icon: '➕', title: '新建项目',   action: () => router.push('/apps/create') },
   { id: 'nav:servers',    group: '页面', icon: '🖥️', title: '服务器列表', action: () => router.push('/servers') },
   { id: 'nav:notif',      group: '页面', icon: '🔔', title: '通知中心',   action: () => router.push('/notifications') },
   { id: 'nav:settings',   group: '页面', icon: '⚙️', title: '设置',       action: () => router.push('/settings') },
@@ -131,7 +131,7 @@ const appItems = computed<CmdItem[]>(() =>
   appStore.apps.flatMap(a => [
     {
       id: `app:${a.id}`,
-      group: '应用',
+      group: '项目',
       icon: a.status === 'online' ? '🟢' : a.status === 'error' ? '⚠️' : '⚪',
       title: a.name,
       subtitle: [a.domain, a.container_name, a.description].filter(Boolean).join(' · '),
@@ -140,7 +140,7 @@ const appItems = computed<CmdItem[]>(() =>
     },
     {
       id: `app-releases:${a.id}`,
-      group: '应用',
+      group: '项目',
       icon: '🚀',
       title: `Releases ${a.name}`,
       subtitle: '查看发布历史 / 发起新 Release',
@@ -166,12 +166,12 @@ const contextItems = computed<CmdItem[]>(() => {
   if (!currentAppId.value) return []
   const id = currentAppId.value
   const app = appStore.getById(Number(id))
-  const name = app?.name || '当前应用'
+  const name = app?.name || '当前项目'
   return [
-    { id: 'ctx:releases', group: '操作（当前应用）', icon: '▶',  title: `Releases ${name}`, shortcut: '⌘+D', action: () => router.push(`/apps/${id}/releases`) },
-    { id: 'ctx:logs',    group: '操作（当前应用）', icon: '📜', title: `查看日志`,      shortcut: '⌘+L', action: () => router.push(`/apps/${id}/ops/logs`) },
-    { id: 'ctx:term',    group: '操作（当前应用）', icon: '💻', title: `打开终端`,                       action: () => router.push(`/apps/${id}/ops/terminal`) },
-    { id: 'ctx:metrics', group: '操作（当前应用）', icon: '📊', title: `实时指标 / 总览`,                 action: () => router.push(`/apps/${id}/overview`) },
+    { id: 'ctx:releases', group: '操作（当前项目）', icon: '▶',  title: `Releases ${name}`, shortcut: '⌘+D', action: () => router.push(`/apps/${id}/releases`) },
+    { id: 'ctx:logs',    group: '操作（当前项目）', icon: '📜', title: `查看日志`,      shortcut: '⌘+L', action: () => router.push(`/apps/${id}/ops/logs`) },
+    { id: 'ctx:term',    group: '操作（当前项目）', icon: '💻', title: `打开终端`,                       action: () => router.push(`/apps/${id}/ops/terminal`) },
+    { id: 'ctx:metrics', group: '操作（当前项目）', icon: '📊', title: `实时指标 / 总览`,                 action: () => router.push(`/apps/${id}/overview`) },
   ]
 })
 

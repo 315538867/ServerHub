@@ -1,15 +1,163 @@
+<template>
+  <div class="releases-page">
+    <!-- access_url 上下文 -->
+    <UiStateBanner
+      v-if="app?.access_url"
+      tone="info"
+      :title="`访问入口: ${app.access_url}`"
+      description="配置 Release Set 并 Apply 后生效。draft 状态的 Ingress 需前往对应 Edge 服务器「应用配置」后生效。"
+    />
+
+    <UiSection title="Release Set（应用级组合发布）">
+      <template #extra>
+        <UiButton variant="secondary" size="sm" :loading="loading" @click="reload">
+          刷新
+        </UiButton>
+        <UiButton variant="primary" size="sm" @click="showCreate = true">
+          从当前快照
+        </UiButton>
+      </template>
+
+      <UiCard padding="none">
+        <NDataTable
+          :columns="columns"
+          :data="rows"
+          :loading="loading"
+          :bordered="false"
+          :row-key="(r: AppReleaseSet) => r.id"
+          size="small"
+        />
+        <div v-if="!loading && rows.length === 0" class="releases-page__empty">
+          暂无发布集。点击「从当前快照」基于各 Service 的 CurrentRelease 创建第一个发布集。
+        </div>
+      </UiCard>
+    </UiSection>
+
+    <!-- 创建对话框 -->
+    <NModal
+      v-model:show="showCreate"
+      preset="card"
+      title="从当前 Service 状态创建发布集"
+      style="max-width:520px"
+    >
+      <NForm label-placement="top">
+        <NFormItem label="标签（可选，留空则按 YYYY-MM-DD-N 生成）">
+          <NInput v-model:value="createForm.label" placeholder="如 v1.2.0" />
+        </NFormItem>
+        <NFormItem label="备注">
+          <NInput
+            v-model:value="createForm.note"
+            type="textarea"
+            :rows="3"
+            placeholder="本次发布说明……"
+          />
+        </NFormItem>
+      </NForm>
+      <template #footer>
+        <NSpace justify="end">
+          <UiButton variant="secondary" size="sm" @click="showCreate = false">取消</UiButton>
+          <UiButton variant="primary" size="sm" :loading="creating" @click="doCreate">创建</UiButton>
+        </NSpace>
+      </template>
+    </NModal>
+
+    <!-- 进度抽屉 -->
+    <NDrawer v-model:show="showDrawer" :width="760">
+      <NDrawerContent
+        :title="activeSet ? `发布集 #${activeSet.id} ${activeSet.label || ''}` : ''"
+        :native-scrollbar="false"
+        closable
+      >
+        <template v-if="activeSet">
+          <NSpace align="center" style="margin-bottom:12px">
+            <UiBadge :tone="setStatusTone(activeSet.status)" size="sm">
+              {{ STATUS_LABEL[activeSet.status] || activeSet.status }}
+            </UiBadge>
+            <NText depth="3">
+              {{ activeSet.applied_at
+                ? `上次应用 ${new Date(activeSet.applied_at).toLocaleString()}`
+                : '尚未应用' }}
+            </NText>
+            <NSpace style="margin-left:auto">
+              <UiButton
+                variant="primary"
+                size="sm"
+                :loading="running && runMode === 'apply'"
+                :disabled="running"
+                @click="runApply"
+              >
+                {{ activeSet.status === 'draft' ? '首次 Apply' : '再次 Apply' }}
+              </UiButton>
+              <UiButton
+                variant="secondary"
+                size="sm"
+                :loading="running && runMode === 'rollback'"
+                :disabled="running || !canRollback"
+                @click="runRollback"
+              >
+                Rollback
+              </UiButton>
+            </NSpace>
+          </NSpace>
+
+          <NCard
+            v-for="p in panes"
+            :key="p.serviceId"
+            size="small"
+            style="margin-bottom:12px"
+          >
+            <template #header>
+              <NSpace align="center" justify="space-between" style="width:100%">
+                <NText>
+                  Service #{{ p.serviceId }}
+                  <NText depth="3"> · Release #{{ p.releaseId }}</NText>
+                </NText>
+                <NSpace>
+                  <UiBadge
+                    v-if="p.status === 'pending'"
+                    size="sm" tone="neutral"
+                  >待执行</UiBadge>
+                  <UiBadge
+                    v-else-if="p.status === 'running'"
+                    size="sm" tone="info"
+                  >执行中</UiBadge>
+                  <UiBadge
+                    v-else
+                    size="sm"
+                    :tone="itemStatusTone(p.status)"
+                  >
+                    {{ p.status }}
+                    <template v-if="p.durationSec !== undefined">
+                      · {{ p.durationSec }}s
+                    </template>
+                  </UiBadge>
+                </NSpace>
+              </NSpace>
+            </template>
+            <pre v-if="p.lines.length" class="log">{{ p.lines.join('\n') }}</pre>
+            <NText v-else depth="3" style="font-size:12px">
+              <template v-if="p.status === 'pending'">尚未开始</template>
+              <template v-else-if="p.status === 'running'">等待输出……</template>
+              <template v-else>无日志输出</template>
+            </NText>
+            <UiStateBanner
+              v-if="p.error"
+              tone="danger"
+              :title="p.error"
+            />
+          </NCard>
+        </template>
+      </NDrawerContent>
+    </NDrawer>
+  </div>
+</template>
+
 <script setup lang="ts">
-// App 级 Releases（AppReleaseSet）页面：
-//  - 列表 + "从当前快照"创建
-//  - 点击行打开"应用进度"抽屉，POST 走 SSE 实时推送 service_started/_line/_done
-//  - Rollback 按钮在抽屉内可见（仅当 status 为 success/partial 时启用）
-//
-// SSE 解析在 api/apprelease.ts 的 fetch+ReadableStream 里完成；本组件只消费事件。
 import { computed, h, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import {
-  NAlert, NButton, NCard, NDataTable, NDrawer, NDrawerContent,
-  NEmpty, NForm, NFormItem, NInput, NModal, NSpace, NTag, NText,
+  NCard, NDataTable, NDrawer, NDrawerContent, NForm,
+  NFormItem, NInput, NModal, NSpace, NText,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { $message } from '@/utils/discrete'
@@ -32,9 +180,17 @@ import type {
   ServiceStartedEvent,
   SetDoneEvent,
 } from '@/types/apprelease'
+import { useAppStore } from '@/stores/app'
+import UiSection from '@/components/ui/UiSection.vue'
+import UiCard from '@/components/ui/UiCard.vue'
+import UiButton from '@/components/ui/UiButton.vue'
+import UiBadge from '@/components/ui/UiBadge.vue'
+import UiStateBanner from '@/components/ui/UiStateBanner.vue'
 
 const route = useRoute()
+const appStore = useAppStore()
 const appId = computed(() => Number(route.params.appId))
+const app = computed(() => appStore.getById(appId.value))
 
 const rows = ref<AppReleaseSet[]>([])
 const loading = ref(false)
@@ -49,7 +205,6 @@ async function reload() {
     loading.value = false
   }
 }
-onMounted(reload)
 
 // ── Status helpers ──────────────────────────────────────────────────
 const STATUS_LABEL: Record<AppReleaseSetStatus, string> = {
@@ -60,21 +215,24 @@ const STATUS_LABEL: Record<AppReleaseSetStatus, string> = {
   failed: '失败',
   rolled_back: '已回滚',
 }
-const STATUS_TYPE: Record<AppReleaseSetStatus,
-  'default' | 'success' | 'warning' | 'error' | 'info'> = {
-  draft: 'default',
-  applying: 'info',
-  success: 'success',
-  partial: 'warning',
-  failed: 'error',
-  rolled_back: 'warning',
+
+function setStatusTone(s: string): 'success' | 'neutral' | 'warning' | 'danger' | 'info' {
+  switch (s) {
+    case 'success': return 'success'
+    case 'applying': return 'info'
+    case 'partial':
+    case 'rolled_back': return 'warning'
+    case 'failed': return 'danger'
+    default: return 'neutral'
+  }
 }
 
-const ITEM_STATUS_TYPE: Record<AppReleaseSummaryStatus,
-  'default' | 'success' | 'warning' | 'error'> = {
-  success: 'success',
-  failed: 'error',
-  skipped: 'default',
+function itemStatusTone(s: string): 'success' | 'neutral' | 'warning' | 'danger' | 'info' {
+  switch (s) {
+    case 'success': return 'success'
+    case 'failed': return 'danger'
+    default: return 'neutral'
+  }
 }
 
 // ── 创建对话框 ──────────────────────────────────────────────────────
@@ -105,8 +263,6 @@ const showDrawer = ref(false)
 const activeSet = ref<AppReleaseSet | null>(null)
 const running = ref(false)
 const runMode = ref<'apply' | 'rollback'>('apply')
-// SSE 流的 AbortController：组件卸载或重新发起时取消上一次 fetch，
-// 避免离开页面后 ReadableStream 仍在后台 push 事件到已销毁的 panes
 let abortCtrl: AbortController | null = null
 
 interface ServicePane {
@@ -129,7 +285,6 @@ function openSet(row: AppReleaseSet) {
     lines: [],
   }))
   summary.value = parseSummary(row.last_summary)
-  // 把 last_summary 的状态回填到 panes
   for (const s of summary.value) {
     const p = panes.value.find((x) => x.serviceId === s.service_id)
     if (p) {
@@ -152,7 +307,6 @@ function parseSummary(raw: string): AppReleaseSummaryItem[] {
 function applyEvent(e: ApplySseEvent) {
   switch (e.name) {
     case 'set_started': {
-      // 重置所有 pane 的状态为 pending（rollback 场景下 items 已知）
       for (const p of panes.value) {
         p.status = 'pending'
         p.lines = []
@@ -171,7 +325,6 @@ function applyEvent(e: ApplySseEvent) {
       const d = e.data as ServiceLineEvent
       const p = ensurePane(d.service_id)
       p.lines.push(d.line)
-      // 滚动窗口控制：保留最近 500 行
       if (p.lines.length > 500) p.lines.splice(0, p.lines.length - 500)
       break
     }
@@ -207,7 +360,6 @@ function ensurePane(serviceId: number, releaseId?: number): ServicePane {
 
 async function runStream(mode: 'apply' | 'rollback') {
   if (!activeSet.value) return
-  // 重发起先取消上一次（理论上 running 守卫已防住，这里是兜底）
   abortCtrl?.abort()
   abortCtrl = new AbortController()
   running.value = true
@@ -219,11 +371,9 @@ async function runStream(mode: 'apply' | 'rollback') {
       onEvent: applyEvent,
       signal: abortCtrl.signal,
     })
-    // 拉一次最新（status/last_summary）
     activeSet.value = await getAppReleaseSet(appId.value, activeSet.value.id)
     await reload()
   } catch (e) {
-    // 用户离开页面 abort 抛 AbortError，不弹错
     if ((e as Error).name === 'AbortError') return
     $message().error((e as Error).message || `${errPrefix} 失败`)
   } finally {
@@ -251,9 +401,9 @@ const columns: DataTableColumns<AppReleaseSet> = [
     title: '状态', key: 'status', width: 120,
     render(row) {
       return h(
-        NTag,
-        { type: STATUS_TYPE[row.status as AppReleaseSetStatus], size: 'small' },
-        { default: () => STATUS_LABEL[row.status as AppReleaseSetStatus] || row.status },
+        UiBadge,
+        { tone: setStatusTone(row.status), size: 'sm' },
+        () => STATUS_LABEL[row.status as AppReleaseSetStatus] || row.status,
       )
     },
   },
@@ -273,171 +423,33 @@ const columns: DataTableColumns<AppReleaseSet> = [
     title: '操作', key: '_act', width: 110,
     render(row) {
       return h(
-        NButton,
-        { size: 'small', onClick: () => openSet(row) },
-        { default: () => '查看 / 应用' },
+        UiButton,
+        { variant: 'secondary', size: 'sm', onClick: () => openSet(row) },
+        () => '查看 / 应用',
       )
     },
   },
 ]
+
+onMounted(async () => {
+  await appStore.ensure()
+  reload()
+})
 </script>
 
-<template>
-  <div class="releases-page">
-    <NCard :bordered="false">
-      <template #header>
-        <NSpace align="center" justify="space-between" style="width:100%">
-          <NText strong>App Releases</NText>
-          <NSpace>
-            <NButton size="small" @click="reload" :loading="loading">刷新</NButton>
-            <NButton type="primary" size="small" @click="showCreate = true">
-              从当前快照
-            </NButton>
-          </NSpace>
-        </NSpace>
-      </template>
-
-      <NAlert type="info" :bordered="false" style="margin-bottom:12px">
-        从 App 下所有已绑定 CurrentRelease 的 Service 拍快照，统一 Apply / Rollback。
-      </NAlert>
-
-      <NEmpty v-if="!loading && rows.length === 0" description="暂无发布集" />
-      <NDataTable
-        v-else
-        :columns="columns"
-        :data="rows"
-        :loading="loading"
-        :bordered="false"
-        :row-key="(r: AppReleaseSet) => r.id"
-        size="small"
-      />
-    </NCard>
-
-    <!-- 创建对话框 -->
-    <NModal
-      v-model:show="showCreate"
-      preset="card"
-      title="从当前 Service 状态创建发布集"
-      style="max-width:520px"
-    >
-      <NForm label-placement="top">
-        <NFormItem label="标签（可选，留空则按 YYYY-MM-DD-N 生成）">
-          <NInput v-model:value="createForm.label" placeholder="如 v1.2.0" />
-        </NFormItem>
-        <NFormItem label="备注">
-          <NInput
-            v-model:value="createForm.note"
-            type="textarea"
-            :rows="3"
-            placeholder="本次发布说明……"
-          />
-        </NFormItem>
-      </NForm>
-      <template #footer>
-        <NSpace justify="end">
-          <NButton @click="showCreate = false">取消</NButton>
-          <NButton type="primary" :loading="creating" @click="doCreate">创建</NButton>
-        </NSpace>
-      </template>
-    </NModal>
-
-    <!-- 进度抽屉 -->
-    <NDrawer v-model:show="showDrawer" :width="760">
-      <NDrawerContent
-        :title="activeSet ? `发布集 #${activeSet.id} ${activeSet.label || ''}` : ''"
-        :native-scrollbar="false"
-        closable
-      >
-        <template v-if="activeSet">
-          <NSpace align="center" style="margin-bottom:12px">
-            <NTag :type="STATUS_TYPE[activeSet.status]" size="small">
-              {{ STATUS_LABEL[activeSet.status] || activeSet.status }}
-            </NTag>
-            <NText depth="3">
-              {{ activeSet.applied_at
-                ? `上次应用 ${new Date(activeSet.applied_at).toLocaleString()}`
-                : '尚未应用' }}
-            </NText>
-            <NSpace style="margin-left:auto">
-              <NButton
-                type="primary"
-                size="small"
-                :loading="running && runMode === 'apply'"
-                :disabled="running"
-                @click="runApply"
-              >
-                {{ activeSet.status === 'draft' ? '首次 Apply' : '再次 Apply' }}
-              </NButton>
-              <NButton
-                size="small"
-                :loading="running && runMode === 'rollback'"
-                :disabled="running || !canRollback"
-                @click="runRollback"
-              >
-                Rollback
-              </NButton>
-            </NSpace>
-          </NSpace>
-
-          <NCard
-            v-for="p in panes"
-            :key="p.serviceId"
-            size="small"
-            style="margin-bottom:12px"
-          >
-            <template #header>
-              <NSpace align="center" justify="space-between" style="width:100%">
-                <NText>
-                  Service #{{ p.serviceId }}
-                  <NText depth="3"> · Release #{{ p.releaseId }}</NText>
-                </NText>
-                <NSpace>
-                  <NTag
-                    v-if="p.status === 'pending'"
-                    size="small"
-                    type="default"
-                  >待执行</NTag>
-                  <NTag
-                    v-else-if="p.status === 'running'"
-                    size="small"
-                    type="info"
-                  >执行中</NTag>
-                  <NTag
-                    v-else
-                    size="small"
-                    :type="ITEM_STATUS_TYPE[p.status as AppReleaseSummaryStatus]"
-                  >
-                    {{ p.status }}
-                    <template v-if="p.durationSec !== undefined">
-                      · {{ p.durationSec }}s
-                    </template>
-                  </NTag>
-                </NSpace>
-              </NSpace>
-            </template>
-            <pre v-if="p.lines.length" class="log">{{ p.lines.join('\n') }}</pre>
-            <NText v-else depth="3" style="font-size:12px">
-              <template v-if="p.status === 'pending'">尚未开始</template>
-              <template v-else-if="p.status === 'running'">等待输出……</template>
-              <template v-else>无日志输出</template>
-            </NText>
-            <NAlert
-              v-if="p.error"
-              type="error"
-              :bordered="false"
-              style="margin-top:8px"
-            >
-              {{ p.error }}
-            </NAlert>
-          </NCard>
-        </template>
-      </NDrawerContent>
-    </NDrawer>
-  </div>
-</template>
-
 <style scoped>
-.releases-page { padding: 0 4px; }
+.releases-page {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.releases-page__empty {
+  padding: var(--space-10) var(--space-4);
+  text-align: center;
+  color: var(--ui-fg-4);
+  font-size: var(--fs-sm);
+}
 .log {
   margin: 0;
   padding: 8px 10px;

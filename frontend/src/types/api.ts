@@ -162,6 +162,10 @@ export interface Application {
   //   - running:全部 Service success(无 DeployRun 视作 success)
   //   - unknown:无 Service 或全 unknown
   status: 'running' | 'syncing' | 'error' | 'unknown'
+  // Plan B: 后端 accessurl 包计算 + usecase 批量注入
+  access_url: string
+  ingress_count: number
+  service_count: number
   created_at: string
   updated_at: string
 }

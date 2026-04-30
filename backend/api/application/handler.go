@@ -12,6 +12,7 @@ import (
 	"github.com/serverhub/serverhub/config"
 	"github.com/serverhub/serverhub/derive"
 	"github.com/serverhub/serverhub/domain"
+	"github.com/serverhub/serverhub/pkg/accessurl"
 	"github.com/serverhub/serverhub/pkg/resp"
 	"github.com/serverhub/serverhub/pkg/runner"
 	"github.com/serverhub/serverhub/pkg/safeshell"
@@ -234,7 +235,11 @@ func createHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		go func() {
 			_ = initAppDirs(c, db, cfg, &app)
 		}()
-		resp.OK(c, usecase.AppWithStatus{Application: app, Status: derive.AppStatusUnknown})
+		resp.OK(c, usecase.AppWithStatus{
+			Application: app,
+			Status:      derive.AppStatusUnknown,
+			AccessURL:   accessurl.Compute(nil, app),
+		})
 	}
 }
 

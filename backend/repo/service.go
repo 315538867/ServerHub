@@ -102,6 +102,32 @@ func ListAllServices(ctx context.Context, db *gorm.DB) ([]domain.Service, error)
 }
 
 // ListAutoSyncServices 返回 auto_sync=true 且 current_release_id 不为空的 Service。
+// CountServicesByAppIDs 批量返回各 application 的 service 数量。
+func CountServicesByAppIDs(ctx context.Context, db *gorm.DB, appIDs []uint) (map[uint]int, error) {
+	if len(appIDs) == 0 {
+		return map[uint]int{}, nil
+	}
+	type row struct {
+		ApplicationID *uint `gorm:"column:application_id"`
+		Count         int   `gorm:"column:cnt"`
+	}
+	var rows []row
+	if err := db.WithContext(ctx).Model(&model.Service{}).
+		Select("application_id, count(*) as cnt").
+		Where("application_id IN ?", appIDs).
+		Group("application_id").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	m := make(map[uint]int, len(appIDs))
+	for _, r := range rows {
+		if r.ApplicationID != nil {
+			m[*r.ApplicationID] = r.Count
+		}
+	}
+	return m, nil
+}
+
 func ListAutoSyncServices(ctx context.Context, db *gorm.DB) ([]domain.Service, error) {
 	var out []model.Service
 	if err := db.WithContext(ctx).

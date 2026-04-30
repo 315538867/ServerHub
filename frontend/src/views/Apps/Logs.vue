@@ -16,7 +16,7 @@
 
     <UiCard padding="none" class="logs-card">
       <div v-if="activeSource" ref="logsEl" class="logs-terminal" />
-      <EmptyBlock v-else description="该应用未关联容器或 Nginx 站点，无日志可查看" />
+      <EmptyBlock v-else description="该项目未关联容器或 Nginx 站点，无日志可查看" />
     </UiCard>
   </div>
 </template>

@@ -3,7 +3,7 @@
     <UiCard padding="none">
       <div class="sv-toolbar">
         <div class="sv-hint">
-          列出当前服务器上所有 Service。未绑定应用（「浮动」）的 Service 可在 Discover 中或此处重新归属。
+          列出当前服务器上所有 Service。未绑定项目（「浮动」）的 Service 可在 Discover 中或此处重新归属。
         </div>
         <UiButton variant="secondary" size="sm" :loading="loading" @click="load">
           <template #icon><RefreshCw :size="14" /></template>

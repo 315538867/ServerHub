@@ -1,5 +1,11 @@
 <template>
   <div class="svc-page">
+    <UiStateBanner
+      v-if="app?.access_url"
+      tone="info"
+      :title="`访问入口: ${app.access_url}`"
+      description="容器控制、日志、终端操作不影响 Ingress 路由，修改路由请前往「流量」Tab。"
+    />
     <template v-if="app?.container_name && app?.server_id">
       <UiCard padding="none">
         <div class="svc-head">
@@ -20,7 +26,7 @@
       </UiCard>
     </template>
     <UiCard v-else padding="lg">
-      <EmptyBlock description="该应用未关联 Docker 容器，请先在应用设置中配置 container_name" />
+      <EmptyBlock description="该项目未关联 Docker 容器，请先在项目设置中配置 container_name" />
     </UiCard>
 
     <NDrawer v-model:show="logsVisible" :width="720" @after-leave="onLogsClosed">
@@ -51,6 +57,7 @@ import type { ContainerItem } from '@/api/docker'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
+import UiStateBanner from '@/components/ui/UiStateBanner.vue'
 import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 
 const route = useRoute()

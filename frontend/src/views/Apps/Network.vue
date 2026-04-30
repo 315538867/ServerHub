@@ -30,7 +30,7 @@ const app = computed(() => appStore.getById(appId.value))
 const subTabs = computed(() => {
   // Phase Nginx-P3F: "域名与 SSL"子页(Domain.vue)随 legacy site CRUD 一并下架,
   // 反代/SSL 配置统一归 Ingress 模型管;这里只保留反向视图(Ingresses 子页)
-  // 让用户从应用视角看到 "谁在路由我"。
+  // 让用户从项目视角看到 "谁在路由我"。
   return [{ value: 'ingresses', label: 'Ingress 路由' }]
 })
 

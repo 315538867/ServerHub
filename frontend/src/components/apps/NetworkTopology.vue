@@ -1,7 +1,7 @@
 <template>
   <div class="net-topo">
     <div class="topo-header">
-      <span class="topo-title">网络拓扑</span>
+      <span class="topo-title">请求链路拓扑</span>
       <span class="topo-mode">{{ modeLabel }}</span>
     </div>
 
@@ -15,36 +15,53 @@
 
       <div class="topo-arrow"><span class="arrow-label">HTTPS</span></div>
 
-      <!-- 域名（独立站点模式才显示） -->
-      <template v-if="app?.expose_mode === 'site'">
-        <div class="topo-node" :class="domainNodeClass">
-          <div class="node-icon">🌐</div>
-          <div class="node-title">{{ app?.domain || '未配置' }}</div>
-          <div class="node-sub">DNS A/AAAA 解析</div>
+      <!-- 域名 -->
+      <div class="topo-node" :class="domainNodeClass">
+        <div class="node-icon">🌐</div>
+        <div class="node-title">{{ displayDomain || '未配置' }}</div>
+        <div class="node-sub">{{ app?.expose_mode === 'site' ? '独立域名' : '路径前缀' }}</div>
+      </div>
+
+      <div class="topo-arrow"><span class="arrow-label">TLS/80</span></div>
+
+      <!-- Nginx Edge -->
+      <div class="topo-node" :class="edgeNodeClass">
+        <div class="node-icon">⚙️</div>
+        <div class="node-title">{{ edgeServerName }}</div>
+        <div class="node-sub">Nginx Edge</div>
+      </div>
+
+      <!-- 动态路由 -->
+      <template v-for="(rt, i) in displayRoutes" :key="rt.path">
+        <div class="topo-arrow">
+          <span class="arrow-label">{{ rt.path }}</span>
         </div>
-        <div class="topo-arrow"><span class="arrow-label">TCP 443/80</span></div>
+        <div class="topo-node" :class="rt.nodeClass">
+          <div class="node-icon">📦</div>
+          <div class="node-title">{{ rt.label }}</div>
+          <div class="node-sub">{{ rt.sub }}</div>
+        </div>
       </template>
 
-      <!-- Nginx -->
-      <div class="topo-node" :class="nginxNodeClass">
-        <div class="node-icon">⚙️</div>
-        <div class="node-title">Nginx</div>
-        <div class="node-sub">{{ app?.site_name || '未关联站点' }}</div>
-      </div>
-
-      <div class="topo-arrow"><span class="arrow-label">proxy_pass</span></div>
-
-      <!-- 容器 -->
-      <div class="topo-node" :class="containerNodeClass">
-        <div class="node-icon">🐳</div>
-        <div class="node-title">{{ app?.container_name || '未绑定容器' }}</div>
-        <div class="node-sub">{{ serverName }}</div>
-      </div>
+      <!-- 无路由时的占位 -->
+      <template v-if="displayRoutes.length === 0">
+        <div class="topo-arrow"><span class="arrow-label">—</span></div>
+        <div class="topo-node node--missing">
+          <div class="node-icon">📦</div>
+          <div class="node-title">待配置</div>
+          <div class="node-sub">尚无路由规则</div>
+        </div>
+      </template>
     </div>
 
     <!-- 检查项 -->
     <div class="topo-checks">
-      <div v-for="c in checks" :key="c.label" class="check-item" :class="`check-item--${c.status}`">
+      <div
+        v-for="c in checks"
+        :key="c.label"
+        class="check-item"
+        :class="`check-item--${c.status}`"
+      >
         <span class="check-dot" />
         <span class="check-label">{{ c.label }}</span>
         <span class="check-value">{{ c.value }}</span>
@@ -57,8 +74,12 @@
 import { computed } from 'vue'
 import { useAppStore } from '@/stores/app'
 import { useServerStore } from '@/stores/server'
+import type { AppIngress } from '@/api/application'
 
-const props = defineProps<{ appId: number }>()
+const props = defineProps<{
+  appId: number
+  ingresses?: AppIngress[]
+}>()
 
 const appStore = useAppStore()
 const serverStore = useServerStore()
@@ -66,62 +87,113 @@ const app = computed(() => appStore.getById(props.appId))
 
 const modeLabel = computed(() => {
   const m = app.value?.expose_mode
-  if (m === 'site') return '独立站点（独立 server 块 + 域名）'
-  if (m === 'path') return '路径转发（反代到已有 Nginx 站点）'
-  return '未通过 Nginx 暴露'
+  if (m === 'site') return '独立站点模式'
+  if (m === 'path') return '路径转发模式'
+  return '未暴露'
 })
 
-const serverName = computed(() => {
+// 从 ingress 数据派生域名
+const displayDomain = computed(() => {
+  if (props.ingresses?.length) {
+    const applied = props.ingresses.find(ig => ig.status === 'applied')
+    if (applied) return applied.domain
+    const draft = props.ingresses.find(ig => ig.status === 'draft')
+    if (draft) return `${draft.domain} (draft)`
+  }
+  return app.value?.domain || ''
+})
+
+// Edge server 名称
+const edgeServerName = computed(() => {
+  if (props.ingresses?.length) {
+    const first = props.ingresses[0]
+    return first.edge_server_name || `Edge #${first.edge_server_id}`
+  }
   const s = serverStore.getById(app.value?.server_id ?? -1)
-  return s ? `${s.name} · ${s.host}` : '—'
+  return s ? s.name : '—'
 })
 
-const domainNodeClass = computed(() => app.value?.domain ? 'node--ok' : 'node--missing')
-const nginxNodeClass = computed(() => app.value?.site_name ? 'node--ok' : 'node--warn')
-const containerNodeClass = computed(() => app.value?.container_name ? 'node--ok' : 'node--missing')
+interface DisplayRoute {
+  path: string
+  label: string
+  sub: string
+  nodeClass: string
+}
 
-interface Check { label: string; value: string; status: 'ok' | 'warn' | 'missing' }
+const displayRoutes = computed<DisplayRoute[]>(() => {
+  if (!props.ingresses?.length) return []
+  const routes: DisplayRoute[] = []
+  for (const ig of props.ingresses) {
+    for (const r of ig.matching_routes || []) {
+      const up = r.upstream
+      let label = ''
+      let sub = ''
+      if (up.type === 'service' && up.service_id) {
+        label = `Service #${up.service_id}`
+        sub = up.override_host || up.override_port ? `${up.override_host || ''}:${up.override_port || ''}` : '自动解析'
+      } else if (up.type === 'raw') {
+        label = up.raw_url || '—'
+        sub = '直连地址'
+      }
+      routes.push({
+        path: r.path,
+        label,
+        sub,
+        nodeClass: ig.status === 'applied' ? 'node--ok' : ig.status === 'draft' ? 'node--warn' : 'node--missing',
+      })
+    }
+  }
+  return routes
+})
+
+const domainNodeClass = computed(() =>
+  displayDomain.value ? 'node--ok' : 'node--missing',
+)
+const edgeNodeClass = computed(() =>
+  props.ingresses?.length ? 'node--ok' : 'node--warn',
+)
+
+interface Check {
+  label: string
+  value: string
+  status: 'ok' | 'warn' | 'missing'
+}
 
 const checks = computed<Check[]>(() => {
   const a = app.value
   if (!a) return []
   const list: Check[] = []
 
-  // 暴露模式
   list.push({
     label: '暴露模式',
     value: modeLabel.value,
     status: a.expose_mode === 'none' ? 'warn' : 'ok',
   })
 
-  // 域名
-  if (a.expose_mode === 'site') {
+  if (a.access_url) {
     list.push({
-      label: '域名',
-      value: a.domain || '未配置',
-      status: a.domain ? 'ok' : 'missing',
+      label: '访问入口',
+      value: a.access_url,
+      status: 'ok',
     })
   }
 
-  // 站点
   list.push({
-    label: 'Nginx 站点',
-    value: a.site_name || '未关联',
-    status: a.site_name ? 'ok' : 'warn',
+    label: 'Ingress 数',
+    value: `${a.ingress_count || props.ingresses?.length || 0} 个`,
+    status: (a.ingress_count || props.ingresses?.length) ? 'ok' : 'warn',
   })
 
-  // 容器
   list.push({
-    label: '后端容器',
-    value: a.container_name || '未绑定',
-    status: a.container_name ? 'ok' : 'missing',
+    label: 'Service 数',
+    value: `${a.service_count || 0} 个`,
+    status: a.service_count ? 'ok' : 'warn',
   })
 
-  // 服务器
   list.push({
-    label: '所属服务器',
-    value: serverName.value,
-    status: a.server_id ? 'ok' : 'missing',
+    label: '状态',
+    value: a.status || 'unknown',
+    status: a.status === 'running' ? 'ok' : a.status === 'error' ? 'missing' : 'warn',
   })
 
   return list
@@ -157,11 +229,11 @@ const checks = computed<Check[]>(() => {
 
 .topo-node {
   flex: 0 0 auto;
-  min-width: 150px;
-  max-width: 220px;
+  min-width: 140px;
+  max-width: 200px;
   border: 1px solid var(--ui-border);
   border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   background: var(--ui-bg-1);
   text-align: center;
   display: flex;
@@ -178,7 +250,7 @@ const checks = computed<Check[]>(() => {
 .node--warn    { border-color: color-mix(in srgb, var(--ui-warning) 50%, transparent); background: color-mix(in srgb, var(--ui-warning) 6%, transparent); }
 .node--missing { border-color: color-mix(in srgb, var(--ui-danger) 40%, transparent); background: color-mix(in srgb, var(--ui-danger) 6%, transparent); border-style: dashed; }
 
-.node-icon { font-size: 22px; line-height: 1; }
+.node-icon { font-size: 20px; line-height: 1; }
 .node-title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
@@ -200,7 +272,7 @@ const checks = computed<Check[]>(() => {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  width: 70px;
+  min-width: 60px;
   position: relative;
   color: var(--ui-fg-3);
 }
@@ -231,11 +303,16 @@ const checks = computed<Check[]>(() => {
   position: relative;
   z-index: 1;
   border: 1px solid var(--ui-border);
+  font-family: var(--font-mono);
+  max-width: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .topo-checks {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: var(--space-2) var(--space-4);
   padding-top: var(--space-4);
   border-top: 1px dashed var(--ui-border);
@@ -260,12 +337,13 @@ const checks = computed<Check[]>(() => {
 .check-label {
   color: var(--ui-fg-3);
   flex-shrink: 0;
-  min-width: 70px;
+  min-width: 64px;
 }
 .check-value {
   color: var(--ui-fg);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 </style>

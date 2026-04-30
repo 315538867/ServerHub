@@ -17,9 +17,9 @@
       <UiStatCard title="服务器总数" :value="total" />
       <UiStatCard title="服务器在线" :value="online" :hint="`占比 ${onlinePct}%`" />
       <UiStatCard title="服务器离线" :value="offline" />
-      <UiStatCard title="应用总数" :value="appStore.apps.length" />
-      <UiStatCard title="应用在线" :value="appsOnline" />
-      <UiStatCard title="应用异常" :value="appsOffline" />
+      <UiStatCard title="项目总数" :value="appStore.apps.length" />
+      <UiStatCard title="项目运行中" :value="appsOnline" />
+      <UiStatCard title="项目异常" :value="appsOffline" />
     </div>
 
     <!-- 服务器状态 -->
@@ -77,43 +77,76 @@
       </UiCard>
     </UiSection>
 
-    <!-- 应用状态 -->
+    <!-- 项目状态 -->
     <UiSection>
       <template #title>
-        <span class="dash__sec-title"><Package :size="16" /> 应用状态</span>
+        <span class="dash__sec-title"><Package :size="16" /> 项目</span>
       </template>
       <template #extra>
         <router-link to="/apps/create">
           <UiButton variant="primary" size="sm">
             <template #icon><Plus :size="14" /></template>
-            新建应用
+            新建项目
           </UiButton>
         </router-link>
       </template>
-      <EmptyBlock v-if="!appStore.apps.length" title="暂无应用" description="点击「新建应用」开始部署" />
-      <UiCard v-else padding="none">
-        <div class="dash__apps">
-          <router-link
-            v-for="app in appStore.apps"
-            :key="app.id"
-            :to="`/apps/${app.id}/overview`"
-            class="app-row"
-          >
-            <div class="app-row__left">
-              <StatusDot :status="app.status" :size="8" />
-              <div class="app-row__info">
-                <span class="app-row__name">{{ app.name }}</span>
-                <span class="app-row__desc">{{ app.description || app.domain || '—' }}</span>
-              </div>
+      <EmptyBlock v-if="!appStore.apps.length" title="暂无项目" description="点击「新建项目」开始部署" />
+      <div v-else class="dash__projects">
+        <div
+          v-for="app in appStore.apps"
+          :key="app.id"
+          class="proj-card"
+        >
+          <div class="proj-card__head">
+            <div class="proj-card__title-row">
+              <StatusDot :status="app.status" :size="9" :pulse="app.status === 'running'" />
+              <router-link :to="`/apps/${app.id}/overview`" class="proj-card__name">{{ app.name }}</router-link>
+              <UiBadge :tone="appStatusTone(app.status)" size="sm">{{ appStatusText(app.status) }}</UiBadge>
             </div>
-            <div class="app-row__right">
-              <code v-if="app.site_name" class="app-row__meta">Nginx · {{ app.site_name }}</code>
-              <code v-if="app.container_name" class="app-row__meta">{{ app.container_name }}</code>
-              <UiBadge :tone="appStatusTone(app.status)">{{ appStatusText(app.status) }}</UiBadge>
-            </div>
-          </router-link>
+            <div class="proj-card__desc">{{ app.description || '—' }}</div>
+          </div>
+
+          <!-- access_url -->
+          <div v-if="app.access_url" class="proj-card__url">
+            <Globe :size="12" />
+            <code>{{ app.access_url }}</code>
+          </div>
+
+          <div class="proj-card__meta">
+            <span class="proj-meta">
+              <Server :size="11" />
+              {{ serverMap[app.server_id]?.name || `#${app.server_id}` }}
+            </span>
+            <span class="proj-meta">
+              <Route :size="11" />
+              {{ app.ingress_count ?? 0 }} Ingress
+            </span>
+            <span class="proj-meta">
+              <Package :size="11" />
+              {{ app.service_count ?? 0 }} Service
+            </span>
+            <span v-if="app.container_name" class="proj-meta">
+              <Container :size="11" />
+              {{ app.container_name }}
+            </span>
+          </div>
+
+          <div class="proj-card__actions">
+            <router-link v-if="app.access_url" :to="`/apps/${app.id}/overview`" class="proj-act">
+              <Globe :size="13" /> 概览
+            </router-link>
+            <router-link :to="`/apps/${app.id}/releases`" class="proj-act">
+              <Rocket :size="13" /> Releases
+            </router-link>
+            <router-link v-if="app.expose_mode !== 'none'" :to="`/apps/${app.id}/network/ingresses`" class="proj-act">
+              <Route :size="13" /> 流量
+            </router-link>
+            <router-link :to="`/apps/${app.id}/ops/terminal`" class="proj-act">
+              <Terminal :size="13" /> 终端
+            </router-link>
+          </div>
         </div>
-      </UiCard>
+      </div>
     </UiSection>
   </div>
 </template>
@@ -122,10 +155,11 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, h } from 'vue'
 import * as echarts from 'echarts'
 import dayjs from 'dayjs'
-import { Server, LineChart, Package, Plus } from 'lucide-vue-next'
+import { Server, LineChart, Package, Plus, Globe, Route, Container, Terminal, Rocket } from 'lucide-vue-next'
 import { getOverview, getServerMetrics, type ServerOverview } from '@/api/metrics'
 import { getSelfMetrics, type SelfMetrics } from '@/api/system'
 import { useAppStore } from '@/stores/app'
+import { useServerStore } from '@/stores/server'
 import type { Metric } from '@/types/api'
 import UiSection from '@/components/ui/UiSection.vue'
 import UiStatCard from '@/components/ui/UiStatCard.vue'
@@ -138,7 +172,14 @@ import EmptyBlock from '@/components/ui/EmptyBlock.vue'
 import { useThemeStore } from '@/stores/theme'
 
 const appStore = useAppStore()
+const serverStore = useServerStore()
 const theme = useThemeStore()
+
+const serverMap = computed(() => {
+  const m: Record<number, typeof serverStore.servers[number]> = {}
+  for (const s of serverStore.servers) m[s.id] = s
+  return m
+})
 const overview = ref<ServerOverview[]>([])
 const loading = ref(false)
 const refreshInterval = 30_000
@@ -390,30 +431,92 @@ onBeforeUnmount(() => {
 
 .dash__chart { width: 100%; height: 280px; }
 
-.dash__apps { display: flex; flex-direction: column; }
-.app-row {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--ui-border);
-  text-decoration: none;
-  transition: background var(--dur-fast) var(--ease);
+.dash__projects {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3);
 }
-.app-row:last-child { border-bottom: 0; }
-.app-row:hover { background: var(--ui-bg-2); }
+@media (max-width: 768px) { .dash__projects { grid-template-columns: 1fr; } }
 
-.app-row__left { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
-.app-row__info { display: flex; flex-direction: column; min-width: 0; }
-.app-row__name { font-size: var(--fs-sm); font-weight: var(--fw-medium); color: var(--ui-fg); }
-.app-row__desc { font-size: var(--fs-xs); color: var(--ui-fg-3); }
+.proj-card {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-bg-1);
+  padding: var(--space-4);
+  display: flex; flex-direction: column;
+  gap: var(--space-3);
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.proj-card:hover {
+  border-color: var(--ui-border-strong);
+  box-shadow: var(--shadow-sm);
+}
 
-.app-row__right { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
-.app-row__meta {
+.proj-card__head { display: flex; flex-direction: column; gap: var(--space-1); }
+.proj-card__title-row {
+  display: flex; align-items: center; gap: var(--space-2);
+}
+.proj-card__name {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--ui-fg);
+  text-decoration: none;
+  transition: color var(--dur-fast) var(--ease);
+}
+.proj-card__name:hover { color: var(--ui-brand); }
+.proj-card__desc {
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+  padding-left: calc(var(--space-2) + 9px);
+}
+
+.proj-card__url {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--ui-brand-fg);
+  padding: var(--space-1) var(--space-2);
+  background: var(--ui-brand-soft);
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--ui-brand) 20%, transparent);
+}
+.proj-card__url code {
   font-family: var(--font-mono);
-  font-size: 11px;
+  color: var(--ui-brand-fg);
+  font-weight: var(--fw-medium);
+}
+
+.proj-card__meta {
+  display: flex; flex-wrap: wrap; gap: var(--space-2);
+}
+.proj-meta {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--fs-xs);
   color: var(--ui-fg-3);
   background: var(--ui-bg-2);
   border: 1px solid var(--ui-border);
-  padding: 1px 6px;
   border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
+.proj-card__actions {
+  display: flex; gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--ui-border);
+}
+.proj-act {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-2);
+  text-decoration: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: all var(--dur-fast) var(--ease);
+}
+.proj-act:hover {
+  background: var(--ui-bg-2);
+  border-color: var(--ui-border);
+  color: var(--ui-fg);
 }
 </style>

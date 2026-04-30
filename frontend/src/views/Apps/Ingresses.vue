@@ -1,6 +1,14 @@
 <template>
   <div class="app-ig">
-    <UiSection title="Ingress 路由（反向视图）">
+    <!-- access_url 上下文 -->
+    <UiStateBanner
+      v-if="app?.access_url"
+      tone="info"
+      :title="`访问入口: ${app.access_url}`"
+      description="下方 Ingress 路由配置生效后，用户将通过此地址访问项目。draft 状态的 Ingress 需前往对应 Edge 服务器「应用配置」后生效。"
+    />
+
+    <UiSection title="Ingress 路由">
       <template #extra>
         <UiButton variant="secondary" size="sm" :loading="loading" @click="load">
           <template #icon><RefreshCw :size="14" /></template>
@@ -10,12 +18,17 @@
 
       <UiCard v-if="!loading && rows.length === 0" padding="md">
         <div class="app-ig__empty">
-          <p>没有任何 Ingress 路由到本应用的 Service。</p>
+          <p>暂无 Ingress 路由到本项目。</p>
           <p class="app-ig__hint">
-            去
-            <RouterLink class="app-ig__link" to="/ingresses">Ingress 管理</RouterLink>
-            或对应 Server 的
-            <code>路由</code> 页新增一条把上游指到本应用的 Service。
+            <template v-if="app?.access_url">
+              项目已配置访问入口，前往对应 Edge 服务器的
+              <code>Ingress</code> 页添加路由，将流量指向本项目的 Service。
+            </template>
+            <template v-else>
+              前往
+              <RouterLink class="app-ig__link" to="/ingresses">Ingress 管理</RouterLink>
+              新增路由，将上游指到本项目的 Service。
+            </template>
           </p>
         </div>
       </UiCard>
@@ -45,14 +58,18 @@ import { RefreshCw } from 'lucide-vue-next'
 import { listAppIngresses, type AppIngress } from '@/api/application'
 import type { IngressRoute } from '@/api/ingresses'
 import { showApiError } from '@/utils/errors'
+import { useAppStore } from '@/stores/app'
 import UiSection from '@/components/ui/UiSection.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiButton from '@/components/ui/UiButton.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
+import UiStateBanner from '@/components/ui/UiStateBanner.vue'
 
 const route = useRoute()
 const router = useRouter()
+const appStore = useAppStore()
 const appId = computed(() => Number(route.params.appId))
+const app = computed(() => appStore.getById(appId.value))
 
 const loading = ref(false)
 const rows = ref<AppIngress[]>([])
@@ -68,13 +85,14 @@ async function load() {
   }
 }
 
-function statusTone(s: string): 'success' | 'neutral' | 'warning' | 'danger' {
+function statusTone(s: string): 'success' | 'neutral' | 'warning' | 'danger' | 'info' {
   switch (s) {
     case 'applied': return 'success'
     case 'pending':
     case 'drift': return 'warning'
     case 'broken':
     case 'failed': return 'danger'
+    case 'draft': return 'info'
     default: return 'neutral'
   }
 }
@@ -85,6 +103,7 @@ function statusLabel(s: string): string {
     case 'drift': return '漂移'
     case 'broken': return '异常'
     case 'failed': return '失败'
+    case 'draft': return '草稿'
     default: return s || '—'
   }
 }
@@ -141,7 +160,10 @@ function renderRoutes(row: AppIngress) {
   )
 }
 
-onMounted(load)
+onMounted(async () => {
+  await appStore.ensure()
+  load()
+})
 </script>
 
 <style scoped>

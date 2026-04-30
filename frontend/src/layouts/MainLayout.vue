@@ -12,11 +12,11 @@
 
       <!-- 导航 -->
       <nav class="nav">
-        <NavLink to="/dashboard" label="工作台" :collapsed="collapsed">
+        <NavLink to="/dashboard" label="项目总览" :collapsed="collapsed">
           <template #icon><LayoutDashboard :size="16" /></template>
         </NavLink>
 
-        <div v-show="!collapsed" class="nav__group">应用</div>
+        <div v-show="!collapsed" class="nav__group">项目</div>
         <NavLink
           v-for="app in appStore.apps"
           :key="`app-${app.id}`"
@@ -28,7 +28,7 @@
         >
           <template #icon><StatusDot :status="app.status" :size="8" :ring="false" /></template>
         </NavLink>
-        <NavLink to="/apps/create" label="新建应用" :collapsed="collapsed" muted>
+        <NavLink to="/apps/create" label="新建项目" :collapsed="collapsed" muted>
           <template #icon><Plus :size="16" /></template>
         </NavLink>
 
@@ -97,7 +97,7 @@
               <span v-if="i < breadcrumbs.length - 1" class="bc__sep">/</span>
             </template>
           </nav>
-          <span v-else class="header__title">工作台</span>
+          <span v-else class="header__title">项目总览</span>
         </div>
 
         <div class="header__right">
@@ -212,7 +212,7 @@ const unreadCount = computed(() => 0)
 
 const breadcrumbs = computed<Array<{ label: string; path?: string }>>(() => {
   const path = route.path
-  if (path === '/dashboard') return []
+  if (path === '/dashboard') return [{ label: '项目总览' }]
   if (route.params.appId) {
     const appId = Number(route.params.appId)
     const app = appStore.getById(appId)
@@ -222,8 +222,8 @@ const breadcrumbs = computed<Array<{ label: string; path?: string }>>(() => {
       ops: '运维', data: '数据',
     }
     return [
-      { label: '应用', path: '/apps' },
-      { label: app?.name ?? `应用 ${appId}`, path: `/apps/${appId}/overview` },
+      { label: '项目', path: '/apps' },
+      { label: app?.name ?? `项目 ${appId}`, path: `/apps/${appId}/overview` },
       ...(tab && tabLabel[tab] ? [{ label: tabLabel[tab] }] : []),
     ]
   }
@@ -243,15 +243,15 @@ const breadcrumbs = computed<Array<{ label: string; path?: string }>>(() => {
   }
   if (path === '/apps/create') {
     return [
-      { label: '应用', path: '/apps' },
-      { label: '新建应用' },
+      { label: '项目', path: '/apps' },
+      { label: '新建项目' },
     ]
   }
   const topLabels: Record<string, string> = {
     '/servers': '服务器管理',
     '/notifications': '通知',
     '/settings': '设置',
-    '/apps': '应用',
+    '/apps': '项目',
     '/ingresses': 'Ingress 总览',
   }
   return topLabels[path] ? [{ label: topLabels[path] }] : []

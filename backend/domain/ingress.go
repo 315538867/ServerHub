@@ -11,7 +11,7 @@ type Ingress struct {
 	DefaultPath        string     `json:"default_path"`
 	CertID             *uint      `json:"cert_id"`
 	ForceHTTPS         bool       `json:"force_https"`
-	Status             string     `json:"status"` // pending|applied|drift|broken
+	Status             string     `json:"status"` // draft|pending|applied|drift|broken
 	LastAppliedAt      *time.Time `json:"last_applied_at"`
 	ArchivePath        string     `json:"archive_path"`
 	OriginalConfigPath string     `json:"original_config_path"`

@@ -1,6 +1,6 @@
 <template>
   <div class="page srv-page">
-    <UiPageHeader title="服务器管理" subtitle="维护所有可被应用调度的物理或虚拟节点">
+    <UiPageHeader title="服务器管理" subtitle="维护所有可被项目调度的物理或虚拟节点">
       <template #actions>
         <UiButton variant="primary" size="sm" @click="openCreate">
           <template #icon><Plus :size="14" /></template>
