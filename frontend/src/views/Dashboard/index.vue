@@ -1,88 +1,14 @@
 <template>
   <div class="page dash">
-    <!-- ServerHub 自身资源 -->
-    <div v-if="self" class="dash__self">
-      <UiStatCard title="ServerHub CPU" :value="cpuText" :hint="`${self.num_cpu} 核`">
-        <UiSparkline :points="self.history.cpu" :width="120" :height="28" color="brand" />
-      </UiStatCard>
-      <UiStatCard title="ServerHub 内存" :value="memText" :hint="`堆 ${memSysText}`">
-        <UiSparkline :points="self.history.mem" :width="120" :height="28" color="success" />
-      </UiStatCard>
-      <UiStatCard title="Goroutine" :value="self.goroutines" :hint="`连接 ${self.connections}`" />
-      <UiStatCard title="运行时长" :value="uptimeText" hint="自服务启动" />
-    </div>
-
-    <!-- 顶部统计 -->
-    <div class="dash__stats">
-      <UiStatCard title="服务器总数" :value="total" />
-      <UiStatCard title="服务器在线" :value="online" :hint="`占比 ${onlinePct}%`" />
-      <UiStatCard title="服务器离线" :value="offline" />
-      <UiStatCard title="项目总数" :value="appStore.apps.length" />
-      <UiStatCard title="项目运行中" :value="appsOnline" />
-      <UiStatCard title="项目异常" :value="appsOffline" />
-    </div>
-
-    <!-- 服务器状态 -->
-    <UiSection>
-      <template #title>
-        <span class="dash__sec-title"><Server :size="16" /> 服务器状态</span>
-      </template>
-      <template #extra>
-        <UiBadge tone="neutral">每 {{ refreshInterval / 1000 }}s 刷新</UiBadge>
-        <UiButton variant="secondary" size="sm" :loading="loading" @click="loadOverview">刷新</UiButton>
-      </template>
-      <EmptyBlock v-if="!loading && overview.length === 0" title="暂无服务器" description="先去「服务器管理」添加一台" />
-      <div v-else class="dash__grid">
-        <div
-          v-for="item in overview"
-          :key="item.id"
-          class="srv-card"
-          :class="{ 'is-active': selectedId === item.id }"
-          @click="selectServer(item)"
-        >
-          <div class="srv-card__head">
-            <div class="srv-card__name-row">
-              <StatusDot :status="item.status" :size="8" :pulse="item.status === 'online'" />
-              <span class="srv-card__name">{{ item.name }}</span>
-            </div>
-            <UiBadge :tone="statusTone(item.status)">{{ statusText(item.status) }}</UiBadge>
-          </div>
-          <div class="srv-card__host"><code>{{ item.host }}:{{ item.port }}</code></div>
-
-          <template v-if="item.metric">
-            <MetricRow label="CPU"  :value="round(item.metric.cpu)" />
-            <MetricRow label="内存" :value="round(item.metric.mem)" />
-            <MetricRow label="磁盘" :value="round(item.metric.disk)" />
-            <div class="srv-card__foot">
-              负载 <b>{{ item.metric.load1.toFixed(2) }}</b>
-              <span class="srv-card__sep">·</span>
-              运行 <b>{{ formatUptime(item.metric.uptime) }}</b>
-            </div>
-          </template>
-          <div v-else class="srv-card__nometric">暂无指标</div>
-        </div>
-      </div>
-    </UiSection>
-
-    <!-- 趋势图 -->
-    <UiSection v-if="selectedId">
-      <template #title>
-        <span class="dash__sec-title"><LineChart :size="16" /> {{ selectedName }} · 资源趋势</span>
-      </template>
-      <template #extra>
-        <UiBadge tone="brand">{{ chartMetrics.length }} 采样点</UiBadge>
-      </template>
-      <UiCard padding="md">
-        <div ref="chartEl" class="dash__chart" />
-      </UiCard>
-    </UiSection>
-
-    <!-- 项目状态 -->
+    <!-- 项目卡片（Primary） -->
     <UiSection>
       <template #title>
         <span class="dash__sec-title"><Package :size="16" /> 项目</span>
       </template>
       <template #extra>
+        <UiBadge tone="neutral">{{ appStore.apps.length }} 个项目</UiBadge>
+        <UiBadge tone="success">{{ appsOnline }} 运行中</UiBadge>
+        <UiBadge v-if="appsOffline" tone="danger">{{ appsOffline }} 异常</UiBadge>
         <router-link to="/apps/create">
           <UiButton variant="primary" size="sm">
             <template #icon><Plus :size="14" /></template>
@@ -90,7 +16,7 @@
           </UiButton>
         </router-link>
       </template>
-      <EmptyBlock v-if="!appStore.apps.length" title="暂无项目" description="点击「新建项目」开始部署" />
+      <EmptyBlock v-if="!appStore.apps.length" title="暂无项目" description="点击「新建项目」开始部署第一个项目" />
       <div v-else class="dash__projects">
         <div
           v-for="app in appStore.apps"
@@ -148,6 +74,99 @@
         </div>
       </div>
     </UiSection>
+
+    <!-- 服务器状态 -->
+    <UiSection>
+      <template #title>
+        <span class="dash__sec-title"><Server :size="16" /> 服务器状态</span>
+      </template>
+      <template #extra>
+        <UiBadge tone="neutral">{{ total }} 台 · 在线 {{ online }}{{ onlinePct > 0 ? ` (${onlinePct}%)` : '' }}</UiBadge>
+        <UiButton v-if="showServerCards" size="sm" variant="secondary" @click="showServerCards = false">收起</UiButton>
+        <UiButton variant="secondary" size="sm" :loading="loading" @click="loadOverview">刷新</UiButton>
+      </template>
+      <EmptyBlock v-if="!loading && overview.length === 0" title="暂无服务器" description="先去「服务器管理」添加一台" />
+      <div v-else-if="showServerCards" class="dash__grid">
+        <div
+          v-for="item in overview"
+          :key="item.id"
+          class="srv-card"
+          :class="{ 'is-active': selectedId === item.id }"
+          @click="selectServer(item)"
+        >
+          <div class="srv-card__head">
+            <div class="srv-card__name-row">
+              <StatusDot :status="item.status" :size="8" :pulse="item.status === 'online'" />
+              <span class="srv-card__name">{{ item.name }}</span>
+            </div>
+            <UiBadge :tone="statusTone(item.status)">{{ statusText(item.status) }}</UiBadge>
+          </div>
+          <div class="srv-card__host"><code>{{ item.host }}:{{ item.port }}</code></div>
+
+          <template v-if="item.metric">
+            <MetricRow label="CPU"  :value="round(item.metric.cpu)" />
+            <MetricRow label="内存" :value="round(item.metric.mem)" />
+            <MetricRow label="磁盘" :value="round(item.metric.disk)" />
+            <div class="srv-card__foot">
+              负载 <b>{{ item.metric.load1.toFixed(2) }}</b>
+              <span class="srv-card__sep">·</span>
+              运行 <b>{{ formatUptime(item.metric.uptime) }}</b>
+            </div>
+          </template>
+          <div v-else class="srv-card__nometric">暂无指标</div>
+        </div>
+      </div>
+      <!-- 紧凑模式：仅展示服务器简表 -->
+      <div v-else class="dash__srv-compact">
+        <div
+          v-for="item in overview"
+          :key="item.id"
+          class="srv-compact-row"
+          @click="showServerCards = true; selectServer(item)"
+        >
+          <StatusDot :status="item.status" :size="7" :pulse="item.status === 'online'" />
+          <span class="srv-compact-name">{{ item.name }}</span>
+          <code class="srv-compact-host">{{ item.host }}</code>
+          <UiBadge :tone="statusTone(item.status)" size="sm">{{ statusText(item.status) }}</UiBadge>
+          <span v-if="item.metric" class="srv-compact-metrics">
+            CPU {{ round(item.metric.cpu) }}% · 内存 {{ round(item.metric.mem) }}%
+          </span>
+        </div>
+      </div>
+    </UiSection>
+
+    <!-- 趋势图 -->
+    <UiSection v-if="selectedId">
+      <template #title>
+        <span class="dash__sec-title"><LineChart :size="16" /> {{ selectedName }} · 资源趋势</span>
+      </template>
+      <template #extra>
+        <UiBadge tone="brand">{{ chartMetrics.length }} 采样点</UiBadge>
+      </template>
+      <UiCard padding="md">
+        <div ref="chartEl" class="dash__chart" />
+      </UiCard>
+    </UiSection>
+
+    <!-- ServerHub 自身资源（折叠） -->
+    <details v-if="self" class="dash__self-details">
+      <summary class="dash__self-summary">
+        <Zap :size="13" /> ServerHub 自身资源
+        <span class="dash__self-summary-vals">
+          {{ cpuText }} CPU · {{ memText }} RAM · {{ uptimeText }}
+        </span>
+      </summary>
+      <div class="dash__self">
+        <UiStatCard title="CPU" :value="cpuText" :hint="`${self.num_cpu} 核`">
+          <UiSparkline :points="self.history.cpu" :width="120" :height="28" color="brand" />
+        </UiStatCard>
+        <UiStatCard title="内存" :value="memText" :hint="`堆 ${memSysText}`">
+          <UiSparkline :points="self.history.mem" :width="120" :height="28" color="success" />
+        </UiStatCard>
+        <UiStatCard title="Goroutine" :value="self.goroutines" :hint="`连接 ${self.connections}`" />
+        <UiStatCard title="运行时长" :value="uptimeText" hint="自服务启动" />
+      </div>
+    </details>
   </div>
 </template>
 
@@ -155,7 +174,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick, h } from 'vue'
 import * as echarts from 'echarts'
 import dayjs from 'dayjs'
-import { Server, LineChart, Package, Plus, Globe, Route, Container, Terminal, Rocket } from 'lucide-vue-next'
+import { Server, LineChart, Package, Plus, Globe, Route, Container, Terminal, Rocket, Zap } from 'lucide-vue-next'
 import { getOverview, getServerMetrics, type ServerOverview } from '@/api/metrics'
 import { getSelfMetrics, type SelfMetrics } from '@/api/system'
 import { useAppStore } from '@/stores/app'
@@ -181,6 +200,7 @@ const serverMap = computed(() => {
   return m
 })
 const overview = ref<ServerOverview[]>([])
+const showServerCards = ref(false)
 const loading = ref(false)
 const refreshInterval = 30_000
 
@@ -313,6 +333,32 @@ onBeforeUnmount(() => {
   padding: var(--space-6);
 }
 
+.dash__self-details {
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-md);
+  background: var(--ui-bg-1);
+  overflow: hidden;
+}
+.dash__self-summary {
+  display: flex; align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+  color: var(--ui-fg-2);
+  font-weight: var(--fw-medium);
+  user-select: none;
+  transition: background var(--dur-fast) var(--ease);
+}
+.dash__self-summary:hover { background: var(--ui-bg-2); }
+.dash__self-summary-vals {
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+  font-weight: 400;
+}
+.dash__self details[open] > .dash__self-summary { border-bottom: 1px solid var(--ui-border); }
+.dash__self details[open] .dash__self { padding: var(--space-3) var(--space-4); }
+
 .dash__self {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -320,13 +366,44 @@ onBeforeUnmount(() => {
 }
 @media (max-width: 1024px) { .dash__self { grid-template-columns: repeat(2, 1fr); } }
 
-.dash__stats {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: var(--space-3);
+.dash__stats { display: none; }
+
+.dash__srv-compact {
+  display: flex; flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2);
 }
-@media (max-width: 1400px) { .dash__stats { grid-template-columns: repeat(3, 1fr); } }
-@media (max-width: 768px)  { .dash__stats { grid-template-columns: repeat(2, 1fr); } }
+.srv-compact-row {
+  display: flex; align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+  font-size: var(--fs-sm);
+}
+.srv-compact-row:hover { background: var(--ui-bg-2); }
+.srv-compact-name {
+  font-weight: var(--fw-medium);
+  color: var(--ui-fg);
+  min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.srv-compact-host {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+  background: var(--ui-bg-2);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--radius-sm);
+  padding: 1px 6px;
+}
+.srv-compact-metrics {
+  font-size: var(--fs-xs);
+  color: var(--ui-fg-3);
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
 
 .dash__sec-title {
   display: inline-flex; align-items: center; gap: var(--space-2);
