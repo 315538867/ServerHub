@@ -169,7 +169,7 @@ func containerActionHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		out, err := rn.Run(cmd)
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.Fail(c, http.StatusNotFound, 1004, strings.TrimSpace(out))
 			return
 		}
 		resp.OK(c, gin.H{"output": strings.TrimSpace(out)})

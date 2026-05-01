@@ -3,6 +3,7 @@ package nginx
 import (
 	"encoding/json"
 	"errors"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -224,7 +225,7 @@ func probeProfileHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		pr, err := usecase.ProbeNginxProfile(c.Request.Context(), db, cfg, edgeID)
 		if err != nil {
-			resp.InternalError(c, "probe 失败: "+err.Error())
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, "probe 失败: "+err.Error())
 			return
 		}
 		resp.OK(c, makeProfileResp(pr))

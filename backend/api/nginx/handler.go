@@ -83,7 +83,7 @@ func reloadHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		out, err := client.Run("sudo -n nginx -s reload 2>&1")
 		if err != nil {
-			resp.InternalError(c, sshpool.HumanizeErr(out))
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, sshpool.HumanizeErr(out))
 			return
 		}
 		resp.OK(c, gin.H{"output": strings.TrimSpace(out)})
@@ -98,7 +98,7 @@ func restartHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		out, err := client.Run("sudo -n systemctl restart nginx 2>&1")
 		if err != nil {
-			resp.InternalError(c, sshpool.HumanizeErr(out))
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, sshpool.HumanizeErr(out))
 			return
 		}
 		resp.OK(c, gin.H{"output": strings.TrimSpace(out)})

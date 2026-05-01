@@ -293,7 +293,7 @@ func chmodHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		out, err := rn.Run("chmod " + shellQuote(body.Mode) + " " + shellQuote(body.Path))
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.Fail(c, http.StatusNotFound, 1004, strings.TrimSpace(out))
 			return
 		}
 		resp.OK(c, nil)

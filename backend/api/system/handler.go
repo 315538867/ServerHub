@@ -166,12 +166,12 @@ func firewallAddHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 			cmd = fmt.Sprintf("firewall-cmd --permanent --add-port=%s/%s && firewall-cmd --reload",
 				sq(body.Port), sq(body.Proto))
 		default:
-			resp.InternalError(c, "未检测到支持的防火墙")
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, "未检测到支持的防火墙")
 			return
 		}
 		out, err := rn.Run(cmd)
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, strings.TrimSpace(out))
 			return
 		}
 		resp.OK(c, gin.H{"output": strings.TrimSpace(out)})
@@ -197,12 +197,12 @@ func firewallDelHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		case "firewalld":
 			cmd = fmt.Sprintf("firewall-cmd --permanent --remove-port=%s && firewall-cmd --reload", sq(rule))
 		default:
-			resp.InternalError(c, "未检测到支持的防火墙")
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, "未检测到支持的防火墙")
 			return
 		}
 		out, err := rn.Run(cmd)
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, strings.TrimSpace(out))
 			return
 		}
 		resp.OK(c, gin.H{"output": strings.TrimSpace(out)})
@@ -408,7 +408,7 @@ func processKillHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		out, err := rn.Run("kill -9 " + pid)
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.Fail(c, http.StatusNotFound, 1004, strings.TrimSpace(out))
 			return
 		}
 		resp.OK(c, nil)
@@ -485,7 +485,7 @@ func serviceActionHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		}
 		out, err := rn.Run(fmt.Sprintf("systemctl %s %s", body.Action, sq(name)))
 		if err != nil {
-			resp.InternalError(c, strings.TrimSpace(out))
+			resp.Fail(c, http.StatusServiceUnavailable, 5003, strings.TrimSpace(out))
 			return
 		}
 		resp.OK(c, gin.H{"output": strings.TrimSpace(out)})

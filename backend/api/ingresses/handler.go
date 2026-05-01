@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -351,8 +352,14 @@ func applyHandler(db repo.DB, cfg *config.Config) gin.HandlerFunc {
 		_ = middleware.GetClaims(c) // 触发 claim 解析（部分中间件依赖）
 		res, err := usecase.ApplyIngress(context.Background(), db, cfg, edgeID, actor)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"code":    5000,
+			code := 5001
+			httpStatus := http.StatusInternalServerError
+			if strings.Contains(err.Error(), "apply 拒绝") {
+				httpStatus = http.StatusConflict
+				code = 4009
+			}
+			c.JSON(httpStatus, gin.H{
+				"code":    code,
 				"message": err.Error(),
 				"data":    res,
 			})
