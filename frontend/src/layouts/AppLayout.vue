@@ -125,7 +125,7 @@ const tabs = computed(() => {
   const hasNetwork = (a?.expose_mode && a.expose_mode !== 'none') || !!a?.site_name
   return [
     { value: 'overview', label: '总览' },
-    { value: 'releases', label: 'Releases' },
+    { value: 'services', label: 'Services' },
     ...(hasNetwork ? [{ value: 'network', label: '网络' }] : []),
     { value: 'ops',      label: '运维' },
     ...(a?.db_conn_id ? [{ value: 'data', label: '数据' }] : []),

@@ -35,10 +35,8 @@ import (
 // RegisterRoutes 挂载 Release 模型相关的子路由。
 // 调用方需把 r 传成 protected.Group("/services") 。
 func RegisterRoutes(r *gin.RouterGroup, db repo.DB, cfg *config.Config) {
-	// Service 列表 + 单条只读。M2 之前由 apideploy 包提供;现在 service 写路径
-	// 已经全部归 Release 链路,这两个只读端点也跟着收到这里——避免再起一个
-	// "服务基础信息"的小包,保持 /services/:id 子树语义内聚。
 	r.GET("", listServices(db))
+	r.POST("", createServiceHandler(db))
 	r.GET("/:id", getService(db))
 
 	g := r.Group("/:id")
@@ -80,10 +78,21 @@ func parseServiceID(c *gin.Context) (uint, bool) {
 	return uint(v), true
 }
 
-// listServices 返回所有 Service。
+// listServices 返回所有 Service，支持 ?server_id= 过滤。
 func listServices(db repo.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		services, err := repo.ListAllServices(c.Request.Context(), db)
+		var services []domain.Service
+		var err error
+		if sid := c.Query("server_id"); sid != "" {
+			v, parseErr := strconv.ParseUint(sid, 10, 64)
+			if parseErr != nil || v == 0 {
+				resp.BadRequest(c, "invalid server_id")
+				return
+			}
+			services, err = repo.ListServicesByServerID(c.Request.Context(), db, uint(v))
+		} else {
+			services, err = repo.ListAllServices(c.Request.Context(), db)
+		}
 		if err != nil {
 			resp.InternalError(c, err.Error())
 			return
@@ -105,6 +114,41 @@ func getService(db repo.DB) gin.HandlerFunc {
 			return
 		}
 		resp.OK(c, s)
+	}
+}
+
+// createServiceReq 是手动创建 Service 的请求体。
+type createServiceReq struct {
+	Name          string `json:"name" binding:"required"`
+	ServerID      uint   `json:"server_id" binding:"required"`
+	Type          string `json:"type" binding:"required"`
+	WorkDir       string `json:"work_dir"`
+	ApplicationID *uint  `json:"application_id"`
+}
+
+func createServiceHandler(db repo.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req createServiceReq
+		if err := c.ShouldBindJSON(&req); err != nil {
+			resp.BadRequest(c, err.Error())
+			return
+		}
+		svc, err := usecase.CreateService(c.Request.Context(), db, usecase.CreateServiceParams{
+			Name:          req.Name,
+			ServerID:      req.ServerID,
+			Type:          req.Type,
+			WorkDir:       req.WorkDir,
+			ApplicationID: req.ApplicationID,
+		})
+		if err != nil {
+			if repo.IsNotFound(err) {
+				resp.NotFound(c, err.Error())
+			} else {
+				resp.BadRequest(c, err.Error())
+			}
+			return
+		}
+		resp.OK(c, svc)
 	}
 }
 

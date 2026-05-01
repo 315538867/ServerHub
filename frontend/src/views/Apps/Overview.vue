@@ -96,6 +96,12 @@
 
     <UiSection title="关联服务">
       <template #extra>
+        <UiButton variant="primary" size="sm" @click="createServiceModalRef?.open()">
+          新建服务
+        </UiButton>
+        <UiButton variant="secondary" size="sm" @click="attachServiceModalRef?.open()">
+          挂载已有
+        </UiButton>
         <UiButton variant="secondary" size="sm" :loading="loadingServices" @click="fetchServices">
           <template #icon><RefreshCw :size="14" /></template>
           刷新
@@ -122,6 +128,19 @@
         </div>
       </UiCard>
     </UiSection>
+
+    <CreateServiceModal
+      ref="createServiceModalRef"
+      :server-id="app?.server_id ?? 0"
+      :application-id="appId"
+      @done="fetchServices"
+    />
+    <AttachServiceModal
+      ref="attachServiceModalRef"
+      :app-id="appId"
+      :server-id="app?.server_id ?? 0"
+      @done="fetchServices"
+    />
   </div>
 </template>
 
@@ -138,6 +157,8 @@ import type { AppDirEntry } from '@/types/api'
 import type { AppService, AppIngress } from '@/api/application'
 import AppMetricsCard from '@/components/apps/AppMetricsCard.vue'
 import NetworkTopology from '@/components/apps/NetworkTopology.vue'
+import CreateServiceModal from '@/components/apps/CreateServiceModal.vue'
+import AttachServiceModal from '@/components/apps/AttachServiceModal.vue'
 import UiSection from '@/components/ui/UiSection.vue'
 import UiCard from '@/components/ui/UiCard.vue'
 import UiBadge from '@/components/ui/UiBadge.vue'
@@ -229,8 +250,14 @@ async function fetchDirs() {
 const services = ref<AppService[]>([])
 const loadingServices = ref(false)
 
+const createServiceModalRef = ref<InstanceType<typeof CreateServiceModal>>()
+const attachServiceModalRef = ref<InstanceType<typeof AttachServiceModal>>()
+
 const serviceColumns = computed<DataTableColumns<AppService>>(() => [
-  { title: '名称', key: 'name', minWidth: 140, render: (row) => h('code', { class: 'ov__code' }, row.name) },
+  {
+    title: '名称', key: 'name', minWidth: 140,
+    render: (row) => h('router-link', { to: `/services/${row.id}`, class: 'ov__link' }, () => row.name),
+  },
   { title: '类型', key: 'type', width: 130 },
   {
     title: '状态', key: 'last_status', width: 90,

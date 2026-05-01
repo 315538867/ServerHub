@@ -76,10 +76,14 @@ func ParseInspect(raw string) (map[string]ActualFile, error) {
 			continue
 		}
 		parts := strings.SplitN(line, "\t", 3)
-		if len(parts) != 3 {
+		if len(parts) < 2 {
 			return nil, fmt.Errorf("inspect 输出第 %d 行格式异常: %q", ln+1, line)
 		}
-		decoded, err := base64.StdEncoding.DecodeString(parts[2])
+		b64 := ""
+		if len(parts) >= 3 {
+			b64 = parts[2]
+		}
+		decoded, err := base64.StdEncoding.DecodeString(b64)
 		if err != nil {
 			return nil, fmt.Errorf("inspect 第 %d 行 base64 解码失败: %w", ln+1, err)
 		}

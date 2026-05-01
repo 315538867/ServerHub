@@ -182,7 +182,7 @@ func extractIngressProxyCandidate(block string) (ingress.IngressCandidate, bool)
 			if m := ingressProxyPassRe.FindStringSubmatch(line); m != nil {
 				cur.proxyPass = strings.TrimSpace(m[1])
 			} else if !strings.HasPrefix(trimmed, "location") || cur.started {
-				if trimmed != "" {
+				if trimmed != "" && trimmed != "{" && trimmed != "}" {
 					cur.body.WriteString(line + "\n")
 				}
 			}

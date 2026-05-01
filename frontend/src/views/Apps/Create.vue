@@ -3,7 +3,7 @@
     <div class="create-card">
       <div class="create-header">
         <h2 class="create-title">新建项目</h2>
-        <p class="create-subtitle">分 4 步完成项目创建：信息 → 容器 → 网络 → 部署</p>
+        <p class="create-subtitle">分 2 步完成项目创建：基本信息 → 网络暴露</p>
         <NSteps :current="step + 1" class="create-steps" size="small">
           <NStep v-for="(s, i) in stepDefs" :key="i" :title="s.title" :description="s.subtitle" />
         </NSteps>
@@ -11,12 +11,13 @@
 
       <div class="create-body">
         <transition name="fade-step" mode="out-in">
+          <!-- Step 0: 基本信息 -->
           <div v-if="step === 0" key="s0" class="step-pane">
             <div class="form-grid">
               <div class="form-field">
                 <label class="form-label">项目名称 <span class="form-required">*</span></label>
                 <NInput v-model:value="form.name" placeholder="例如：my-blog" autofocus />
-                <span class="form-hint">唯一标识符，创建后不可修改；将用于自动生成基础目录</span>
+                <span class="form-hint">唯一标识符，创建后不可修改</span>
               </div>
               <div class="form-field">
                 <label class="form-label">描述</label>
@@ -34,28 +35,11 @@
             </div>
           </div>
 
-          <div v-else-if="step === 1" key="s1" class="step-pane">
+          <!-- Step 1: 网络暴露 -->
+          <div v-else key="s1" class="step-pane">
             <div class="form-grid">
               <div class="form-field">
-                <label class="form-label">Docker 容器名</label>
-                <NInput v-model:value="form.container_name" placeholder="例如：my-nginx（可选）" />
-                <span class="form-hint">关联已有/即将创建的容器名；填写后开启「运维」Tab，可看实时指标、日志、控制</span>
-              </div>
-              <div class="form-field">
-                <label class="form-label">项目基础目录</label>
-                <NInput v-model:value="form.base_dir" :placeholder="`/srv/apps/${form.name || 'my-app'}`" />
-                <span class="form-hint">服务器上自动创建 data / logs / config / backup 子目录；留空按项目名自动填充</span>
-              </div>
-            </div>
-            <NAlert type="info" title="这一步全部可选" class="step-alert">
-              如果暂不绑定容器或目录，可点「跳过」直接进入下一步——后续仍可在「总览」编辑。
-            </NAlert>
-          </div>
-
-          <div v-else-if="step === 2" key="s2" class="step-pane">
-            <div class="form-grid">
-              <div class="form-field">
-                <label class="form-label">Nginx 暴露方式 <span class="form-required">*</span></label>
+                <label class="form-label">Nginx 暴露方式</label>
                 <div class="expose-cards">
                   <div
                     v-for="o in exposeOptions"
@@ -72,9 +56,9 @@
               </div>
 
               <div v-if="form.expose_mode !== 'none'" class="form-field">
-                <label class="form-label">Nginx 站点</label>
+                <label class="form-label">Nginx 站点名</label>
                 <NInput v-model:value="form.site_name" :placeholder="form.expose_mode === 'site' ? '将自动按域名生成' : 'conf.d 中的配置文件名'" />
-                <span class="form-hint">填写后开启「网络 / 域名」Tab，用于管理对应 Nginx 站点配置</span>
+                <span class="form-hint">填写后可在项目「网络」Tab 管理对应 Nginx 站点配置</span>
               </div>
 
               <div v-if="form.expose_mode === 'site'" class="form-field">
@@ -92,42 +76,13 @@
                 <span class="form-hint">创建项目后自动生成 draft Ingress，前往对应 Edge 服务器「应用配置」后生效</span>
               </div>
             </div>
-          </div>
-
-          <div v-else key="s3" class="step-pane">
-            <div class="deploy-type-cards">
-              <div
-                v-for="t in deployTypes" :key="t.value"
-                class="deploy-type-card"
-                :class="{ 'is-active': deployType === t.value }"
-                @click="deployType = deployType === t.value ? '' : t.value"
-              >
-                <div class="dtc-icon">{{ t.icon }}</div>
-                <div class="dtc-title">{{ t.label }}</div>
-                <div class="dtc-desc">{{ t.desc }}</div>
-              </div>
-            </div>
-
-            <transition name="fade-step">
-              <div v-if="deployType" class="deploy-type-fields">
-                <NAlert type="info" title="部署细节移到 Releases Tab" class="step-alert">
-                  部署参数（工作目录 / 启动命令 / 镜像 / Compose 文件）由 Release 表达，请在创建项目后于「Releases」Tab 创建首个 Release。
-                </NAlert>
-              </div>
-              <NAlert v-else type="info" title="暂不配置部署？" class="step-alert">
-                可点「完成创建」直接建好项目，稍后随时在「部署」Tab 配置。
-              </NAlert>
-            </transition>
 
             <div class="summary-block">
               <div class="summary-title">即将创建</div>
               <div class="summary-grid">
                 <div><span class="sl">项目</span><span class="sv">{{ form.name || '—' }}</span></div>
                 <div><span class="sl">服务器</span><span class="sv">{{ serverName }}</span></div>
-                <div><span class="sl">容器</span><span class="sv">{{ form.container_name || '未绑定' }}</span></div>
-                <div><span class="sl">基础目录</span><span class="sv">{{ form.base_dir || '—' }}</span></div>
                 <div><span class="sl">网络</span><span class="sv">{{ exposeSummary }}</span></div>
-                <div><span class="sl">部署方式</span><span class="sv">{{ deployType ? deployTypes.find(t=>t.value===deployType)?.label : '稍后配置' }}</span></div>
               </div>
             </div>
           </div>
@@ -138,8 +93,7 @@
         <UiButton variant="ghost" size="sm" @click="$router.back()">取消</UiButton>
         <span class="footer-spacer" />
         <UiButton v-if="step > 0" variant="secondary" size="sm" @click="step--">上一步</UiButton>
-        <UiButton v-if="step === 1 || (step === 3 && !deployType)" variant="secondary" size="sm" @click="onSkip">跳过</UiButton>
-        <UiButton v-if="step < 3" variant="primary" size="sm" :disabled="!canNext" @click="onNext">下一步</UiButton>
+        <UiButton v-if="step === 0" variant="primary" size="sm" :disabled="!canNext" @click="onNext">下一步</UiButton>
         <UiButton v-else variant="primary" size="sm" :loading="saving" :disabled="!canCreate" @click="handleCreate">完成创建</UiButton>
       </div>
     </div>
@@ -147,9 +101,9 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, watch, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { NSteps, NStep, NInput, NSelect, NAlert, useMessage } from 'naive-ui'
+import { NSteps, NStep, NInput, NSelect, useMessage } from 'naive-ui'
 import { Globe } from 'lucide-vue-next'
 import { createApp } from '@/api/application'
 import { useServerStore } from '@/stores/server'
@@ -165,18 +119,14 @@ const saving = ref(false)
 const step = ref(0)
 const stepDefs = [
   { title: '基本信息', subtitle: '名称 / 服务器' },
-  { title: '容器目录', subtitle: '容器 / base_dir' },
   { title: '网络暴露', subtitle: 'Nginx 模式' },
-  { title: '部署方式', subtitle: 'Compose / Docker / 文件' },
 ]
 
 const form = reactive({
   name: '', description: '',
   server_id: null as number | null,
-  domain: '', site_name: '', container_name: '',
-  base_dir: '',
+  domain: '', site_name: '',
   expose_mode: 'none' as 'none' | 'path' | 'site',
-  deploy_id: null as number | null, db_conn_id: null as number | null,
 })
 
 const exposeOptions = [
@@ -185,30 +135,15 @@ const exposeOptions = [
   { value: 'site', icon: '🌐', label: '独立站点', desc: '新建 server 块 + 域名' },
 ] as const
 
-const deployTypes = [
-  { value: 'docker-compose', icon: '🐙', label: 'Docker Compose', desc: 'compose 文件管理多容器' },
-  { value: 'docker',         icon: '🐳', label: 'Docker',         desc: '直接拉取镜像并运行' },
-  { value: 'native',         icon: '📦', label: '文件部署',        desc: '上传可执行文件 + 启动命令' },
-] as const
-type DeployTypeVal = typeof deployTypes[number]['value']
-
-const deployType = ref<DeployTypeVal | ''>('')
-
 const serverOptions = computed(() => serverStore.servers.map(s => ({
   label: `${s.name} · ${s.host}`, value: s.id,
 })))
-
-watch(() => form.name, (name, oldName) => {
-  const autoOld = oldName ? `/srv/apps/${oldName}` : ''
-  if (!form.base_dir || form.base_dir === autoOld) {
-    form.base_dir = name ? `/srv/apps/${name}` : ''
-  }
-})
 
 const serverName = computed(() => {
   const s = serverStore.servers.find(x => x.id === form.server_id)
   return s ? `${s.name} · ${s.host}` : '—'
 })
+
 const exposeSummary = computed(() => {
   const o = exposeOptions.find(o => o.value === form.expose_mode)
   if (!o) return '—'
@@ -227,48 +162,32 @@ const urlPreview = computed(() => {
   return ''
 })
 
-const canNext = computed(() => {
-  if (step.value === 0) return !!(form.name && form.server_id)
-  if (step.value === 2) return form.expose_mode !== 'site' || !!form.domain
-  return true
-})
+const canNext = computed(() => !!(form.name && form.server_id))
 const canCreate = computed(() => {
+  if (form.expose_mode === 'site' && !form.domain) return false
   return true
 })
 
 function onNext() {
   if (!canNext.value) {
-    if (step.value === 0) message.warning('请填写项目名称和服务器')
-    else if (step.value === 2) message.warning('独立站点模式需填写域名')
+    message.warning('请填写项目名称和服务器')
     return
   }
   step.value++
 }
-function onSkip() {
-  if (step.value === 1) { step.value = 2; return }
-  if (step.value === 3) handleCreate()
-}
 
 async function handleCreate() {
   if (!form.name || !form.server_id) { step.value = 0; message.warning('请填写项目名称和服务器'); return }
-  if (form.expose_mode === 'site' && !form.domain) { step.value = 2; message.warning('独立站点模式需填写域名'); return }
+  if (form.expose_mode === 'site' && !form.domain) { message.warning('独立站点模式需填写域名'); return }
   saving.value = true
   try {
     const app = await createApp(form as any)
     await appStore.fetch()
-
-    // Plan B: 创建后展示 access_url 预览
     const urlHint = app.access_url
       ? `访问入口：${app.access_url}（配置 Ingress 路由后生效）`
       : '项目创建成功'
-
-    if (deployType.value) {
-      message.success(urlHint)
-      router.push(`/apps/${app.id}/releases`)
-    } else {
-      message.success(urlHint)
-      router.push(`/apps/${app.id}/overview`)
-    }
+    message.success(urlHint)
+    router.push(`/apps/${app.id}/overview`)
   } catch (e: any) {
     message.error(e.message || '创建失败')
   } finally {
@@ -313,9 +232,8 @@ onMounted(() => serverStore.fetch())
 }
 .create-steps { padding: var(--space-1) 0 var(--space-3); }
 
-.create-body { padding: var(--space-1) 0; min-height: 320px; }
+.create-body { padding: var(--space-1) 0; min-height: 280px; }
 .step-pane { padding: var(--space-5) var(--space-6) var(--space-4); }
-.step-alert { margin-top: var(--space-4); }
 
 .form-grid { display: flex; flex-direction: column; gap: var(--space-4); }
 .form-field { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -326,14 +244,13 @@ onMounted(() => serverStore.fetch())
 .form-required { color: var(--ui-danger); margin-left: var(--space-1); }
 .form-hint { font-size: var(--fs-xs); color: var(--ui-fg-3); line-height: 1.45; }
 
-.expose-cards, .deploy-type-cards {
+.expose-cards {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: var(--space-3);
 }
-.deploy-type-cards { margin-bottom: var(--space-4); }
 
-.expose-card, .deploy-type-card {
+.expose-card {
   position: relative;
   border: 1px solid var(--ui-border);
   border-radius: var(--radius-md);
@@ -347,36 +264,32 @@ onMounted(() => serverStore.fetch())
     box-shadow var(--dur-fast) var(--ease),
     transform var(--dur-fast) var(--ease);
 }
-.expose-card:hover, .deploy-type-card:hover {
+.expose-card:hover {
   border-color: var(--ui-brand);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
-.expose-card.is-active, .deploy-type-card.is-active {
+.expose-card.is-active {
   border-color: var(--ui-brand);
   background: var(--ui-brand-soft);
   box-shadow: var(--shadow-ring);
 }
 
-.ec-icon, .dtc-icon {
+.ec-icon {
   font-size: 24px;
   margin-bottom: var(--space-2);
   line-height: 1;
 }
-.ec-title, .dtc-title {
+.ec-title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
   color: var(--ui-fg);
   margin-bottom: var(--space-1);
 }
-.ec-desc, .dtc-desc {
+.ec-desc {
   font-size: var(--fs-xs);
   color: var(--ui-fg-3);
   line-height: 1.45;
-}
-.deploy-type-fields {
-  border-top: 1px dashed var(--ui-border);
-  padding-top: var(--space-4);
 }
 
 .summary-block {

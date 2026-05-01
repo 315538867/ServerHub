@@ -212,6 +212,62 @@ func DetachService(ctx context.Context, db *gorm.DB, appID, serviceID uint) erro
 	return nil
 }
 
+// ── service 创建 ──────────────────────────────────────────────────────────────
+
+// CreateServiceParams 是手动创建 Service 的入参。
+type CreateServiceParams struct {
+	Name          string
+	ServerID      uint
+	Type          string // docker | docker-compose | native | static
+	WorkDir       string
+	ApplicationID *uint
+}
+
+// CreateService 新建一个 Service。若 ApplicationID 非空则同时挂载到该 App。
+func CreateService(ctx context.Context, db *gorm.DB, p CreateServiceParams) (domain.Service, error) {
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	if _, err := repo.GetServerByID(ctx, db, p.ServerID); err != nil {
+		return domain.Service{}, errors.New("服务器不存在")
+	}
+
+	switch p.Type {
+	case "docker", "docker-compose", "native", "static":
+	default:
+		return domain.Service{}, errors.New("不支持的服务类型: " + p.Type)
+	}
+
+	var app *domain.Application
+	if p.ApplicationID != nil {
+		a, err := repo.GetApplicationByID(ctx, db, *p.ApplicationID)
+		if err != nil {
+			return domain.Service{}, errors.New("应用不存在")
+		}
+		if a.ServerID != p.ServerID {
+			return domain.Service{}, errors.New("服务与应用不在同一服务器，不可创建")
+		}
+		app = &a
+	}
+
+	svc := domain.Service{
+		Name:          p.Name,
+		ServerID:      p.ServerID,
+		Type:          domain.ServiceType(p.Type),
+		WorkDir:       p.WorkDir,
+		ApplicationID: p.ApplicationID,
+	}
+	if err := repo.CreateService(ctx, db, &svc); err != nil {
+		return domain.Service{}, err
+	}
+
+	if app != nil && app.PrimaryServiceID == nil {
+		_ = repo.UpdatePrimaryService(ctx, db, *p.ApplicationID, &svc.ID)
+	}
+
+	return svc, nil
+}
+
 // ── ingress 反向视图 ────────────────────────────────────────────────────────
 
 // ListAppIngresses 返回引用了本 app 任一 Service 的所有 Ingress,

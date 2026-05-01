@@ -41,7 +41,8 @@ const router = createRouter({
           children: [
             // ── 5 Tab 新结构 ──
             { path: 'overview', name: 'AppOverview', component: () => import('@/views/Apps/Overview.vue') },
-            { path: 'releases', name: 'AppReleases', component: () => import('@/views/Apps/Releases.vue') },
+            { path: 'services', name: 'AppServices', component: () => import('@/views/Apps/Services.vue') },
+            { path: 'releases', redirect: (to) => `/apps/${to.params.appId}/services` },
             {
               path: 'network',
               component: () => import('@/views/Apps/Network.vue'),
@@ -72,7 +73,7 @@ const router = createRouter({
         // ── 项目别名 (/projects/* → /apps/*) ──
         { path: 'projects/:id', redirect: (to) => `/apps/${to.params.id}` },
         { path: 'projects/:id/overview', redirect: (to) => `/apps/${to.params.id}/overview` },
-        { path: 'projects/:id/deploy', redirect: (to) => `/apps/${to.params.id}/releases` },
+        { path: 'projects/:id/deploy', redirect: (to) => `/apps/${to.params.id}/services` },
         { path: 'projects/:id/traffic', redirect: (to) => `/apps/${to.params.id}/network/ingresses` },
         { path: 'projects/:id/ops', redirect: (to) => `/apps/${to.params.id}/ops/logs` },
         { path: 'projects/:id/data', redirect: (to) => `/apps/${to.params.id}/data` },

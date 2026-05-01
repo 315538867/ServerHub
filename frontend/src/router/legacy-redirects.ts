@@ -24,9 +24,9 @@ export const appLegacyRedirects: RouteRecordRaw[] = [
   { path: 'logs', redirect: (to) => `/apps/${to.params.appId}/ops/logs` },
   { path: 'terminal', redirect: (to) => `/apps/${to.params.appId}/ops/terminal` },
   { path: 'database', redirect: (to) => `/apps/${to.params.appId}/data` },
-  // M3: /apps/:id/deploy & /env 退役,统一去 Releases Tab。
-  { path: 'deploy', redirect: (to) => `/apps/${to.params.appId}/releases` },
-  { path: 'env', redirect: (to) => `/apps/${to.params.appId}/releases` },
+  // M3: /apps/:id/deploy & /env 退役,统一去 Services Tab。
+  { path: 'deploy', redirect: (to) => `/apps/${to.params.appId}/services` },
+  { path: 'env', redirect: (to) => `/apps/${to.params.appId}/services` },
 ]
 
 // EXPIRES: 2026-10-01

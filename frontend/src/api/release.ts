@@ -13,9 +13,24 @@ import type {
   TriggerSource,
 } from '@/types/release'
 
-// Service 基础信息(只读)。M2 之前住在 @/api/deploy,deploy 包退役后归这里——
-// /services/:id 子树本就是 Release 链路的入口,基础查询和 Release 操作放在
-// 同一个 API 模块里语义最自洽。Deploy 类型是 Service 的历史别名,字段未变。
+// Service CRUD
+export interface CreateServicePayload {
+  name: string
+  server_id: number
+  type: 'docker' | 'docker-compose' | 'native' | 'static'
+  work_dir?: string
+  application_id?: number
+}
+
+export function listServices(serverId?: number) {
+  const params = serverId ? { server_id: serverId } : {}
+  return request.get<never, Deploy[]>('/services', { params })
+}
+
+export function createService(payload: CreateServicePayload) {
+  return request.post<never, Deploy>('/services', payload)
+}
+
 export function getService(sid: number) {
   return request.get<never, Deploy>(`/services/${sid}`)
 }
